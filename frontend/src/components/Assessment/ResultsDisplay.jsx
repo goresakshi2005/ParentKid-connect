@@ -16,18 +16,23 @@ function ResultsDisplay({ result, onRetake }) {
     };
 
     return (
-        <div className="bg-white p-6 rounded-lg shadow">
-            <h2 className="text-2xl font-bold mb-4">Assessment Results</h2>
+        <div className="card dark:bg-slate-900 border dark:border-slate-800 p-8 shadow-2xl transition-all duration-300">
+            <h2 className="text-3xl font-black mb-8 dark:text-white flex items-center gap-3">
+                <span className="p-2 bg-blue-100 dark:bg-pink-500/10 rounded-xl text-blue-600 dark:text-pink-500">🏆</span>
+                Assessment Analysis
+            </h2>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
-                <div className="text-center p-4 bg-gray-50 rounded">
-                    <div className="text-4xl font-bold text-blue-600">{result.final_score}%</div>
-                    <div className="text-sm text-gray-600">Overall Score</div>
-                    <div className="mt-2">{getRiskBadge(result.risk_level)}</div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-10">
+                <div className="text-center p-8 bg-gray-50 dark:bg-slate-800 rounded-2xl border border-gray-100 dark:border-slate-700/50 shadow-sm relative overflow-hidden">
+                    <div className="absolute top-0 right-0 w-16 h-16 bg-blue-500/5 dark:bg-pink-500/5 rounded-bl-full"></div>
+                    <div className="text-5xl font-black text-blue-600 dark:text-pink-500 mb-2">{result.final_score}%</div>
+                    <div className="text-sm font-bold text-gray-500 dark:text-slate-400 uppercase tracking-widest mb-4">Overall Performance</div>
+                    <div className="flex justify-center">{getRiskBadge(result.risk_level)}</div>
                 </div>
-                <div className="text-center p-4 bg-gray-50 rounded">
-                    <div className="text-4xl font-bold text-purple-600">{result.weighted_score}%</div>
-                    <div className="text-sm text-gray-600">Weighted Score</div>
+                <div className="text-center p-8 bg-gray-50 dark:bg-slate-800 rounded-2xl border border-gray-100 dark:border-slate-700/50 shadow-sm relative overflow-hidden">
+                    <div className="absolute top-0 right-0 w-16 h-16 bg-purple-500/5 rounded-bl-full"></div>
+                    <div className="text-5xl font-black text-purple-600 mb-2">{result.weighted_score}%</div>
+                    <div className="text-sm font-bold text-gray-500 dark:text-slate-400 uppercase tracking-widest mb-4">Weighted Potential</div>
                 </div>
             </div>
 
@@ -38,34 +43,53 @@ function ResultsDisplay({ result, onRetake }) {
                 <ProgressBar value={result.emotional_score} label="Emotional" color="red" />
             </div>
 
-            <div className="grid md:grid-cols-2 gap-6 mb-6">
-                <div>
-                    <h3 className="font-semibold text-green-600 mb-2">Strengths</h3>
-                    <ul className="list-disc pl-5">
-                        {result.strengths.map((s, i) => <li key={i}>{s}</li>)}
+            <div className="grid md:grid-cols-2 gap-8 mb-10">
+                <div className="p-6 bg-green-50 dark:bg-green-500/5 rounded-2xl border border-green-100 dark:border-green-500/20">
+                    <h3 className="font-bold text-green-700 dark:text-green-400 mb-4 flex items-center gap-2">
+                        <span className="text-xl">✅</span> Strengths
+                    </h3>
+                    <ul className="space-y-2">
+                        {result.strengths.map((s, i) => (
+                            <li key={i} className="text-green-800 dark:text-green-300 flex items-start gap-2">
+                                <span className="font-bold">•</span>
+                                {s}
+                            </li>
+                        ))}
                     </ul>
                 </div>
-                <div>
-                    <h3 className="font-semibold text-orange-600 mb-2">Areas for Improvement</h3>
-                    <ul className="list-disc pl-5">
-                        {result.improvements.map((i, idx) => <li key={idx}>{i}</li>)}
+                <div className="p-6 bg-orange-50 dark:bg-orange-500/5 rounded-2xl border border-orange-100 dark:border-orange-500/20">
+                    <h3 className="font-bold text-orange-700 dark:text-orange-400 mb-4 flex items-center gap-2">
+                        <span className="text-xl">🚀</span> Areas to Grow
+                    </h3>
+                    <ul className="space-y-2">
+                        {result.improvements.map((i, idx) => (
+                            <li key={idx} className="text-orange-800 dark:text-orange-300 flex items-start gap-2">
+                                <span className="font-bold">•</span>
+                                {i}
+                            </li>
+                        ))}
                     </ul>
                 </div>
             </div>
 
-            <div className="mb-6">
-                <h3 className="font-semibold mb-2">Recommendations</h3>
-                <ul className="list-disc pl-5 space-y-1">
-                    {result.recommendations.map((rec, idx) => <li key={idx}>{rec}</li>)}
+            <div className="mb-10 p-8 bg-blue-50 dark:bg-pink-500/5 rounded-2xl border-2 border-dashed border-blue-200 dark:border-pink-500/20">
+                <h3 className="font-bold text-blue-700 dark:text-pink-400 mb-4 flex items-center gap-2 uppercase tracking-widest text-xs">AI Recommendations</h3>
+                <ul className="space-y-4">
+                    {result.recommendations.map((rec, idx) => (
+                        <li key={idx} className="text-blue-900 dark:text-slate-300 flex gap-3 italic">
+                            <span className="text-blue-500 dark:text-pink-500 font-bold">💡</span>
+                            {rec}
+                        </li>
+                    ))}
                 </ul>
             </div>
 
             <div className="flex justify-center">
                 <button
                     onClick={onRetake}
-                    className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
+                    className="px-10 py-3 bg-blue-600 text-white rounded-xl font-bold hover:bg-blue-700 dark:bg-pink-600 dark:hover:bg-pink-700 shadow-lg dark:shadow-pink-500/20 transform active:scale-95 transition-all"
                 >
-                    Take Again
+                    Retake Assessment
                 </button>
             </div>
         </div>

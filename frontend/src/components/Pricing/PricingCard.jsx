@@ -29,17 +29,23 @@ function PricingCard({ plan }) {
   return (
     <div className="border border-gray-200 dark:border-slate-700 rounded-lg p-6 shadow-sm hover:shadow-md dark:bg-slate-800 transition-all duration-300">
       <h3 className="text-2xl font-bold mb-2 dark:text-white">{details.name}</h3>
-      <p className="text-3xl font-bold mb-4 dark:text-blue-400">₹{details.price}<span className="text-sm font-normal text-gray-500 dark:text-gray-400">/month</span></p>
-      <ul className="space-y-2 mb-6">
+      <p className="text-4xl font-black mb-6 dark:text-white">₹{details.price}<span className="text-sm font-normal text-gray-500 dark:text-slate-400">/month</span></p>
+      <ul className="space-y-3 mb-8">
         {details.features.map((feat, idx) => (
-          <li key={idx} className="text-gray-600 dark:text-gray-300">✓ {feat}</li>
+          <li key={idx} className="text-gray-600 dark:text-slate-300 flex items-center gap-2">
+            <span className="text-green-500 dark:text-pink-500 font-bold">✓</span>
+            {feat}
+          </li>
         ))}
       </ul>
       <button
         onClick={handleSelectPlan}
-        className="w-full px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 dark:bg-blue-500 dark:hover:bg-blue-600 transition-colors"
+        className={`w-full px-4 py-3.5 rounded-xl font-bold shadow-lg transition-all duration-300 transform active:scale-[0.98] ${plan.plan_name === 'free'
+            ? 'bg-gray-100 text-gray-500 dark:bg-slate-700/50 dark:text-pink-400 border-2 border-pink-500 dark:border-pink-500'
+            : 'bg-blue-600 text-white hover:bg-blue-700 dark:bg-pink-600 dark:hover:bg-pink-700 dark:shadow-pink-500/25'
+          }`}
       >
-        {plan.plan_name === 'free' ? 'Current Plan' : 'Upgrade'}
+        {plan.plan_name === 'free' ? 'Default Plan' : 'Go Premium'}
       </button>
     </div>
   );

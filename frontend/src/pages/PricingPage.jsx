@@ -15,13 +15,21 @@ function PricingPage() {
     }
   }, [user, navigate]);
 
-  if (loading) return <div className="text-center py-20">Loading plans...</div>;
+  if (loading) return (
+    <div className="flex flex-col items-center justify-center py-32 space-y-4">
+      <div className="w-12 h-12 border-4 border-blue-600 dark:border-pink-500 border-t-transparent rounded-full animate-spin"></div>
+      <p className="text-gray-500 dark:text-slate-400 font-medium italic">Preparing plans...</p>
+    </div>
+  );
 
   return (
-    <div className="max-w-7xl mx-auto px-4 py-20 transition-colors duration-300">
-      <h1 className="text-4xl font-bold text-center mb-12 dark:text-white">Simple, Transparent Pricing</h1>
+    <div className="max-w-7xl mx-auto px-4 pt-10 pb-24 transition-colors duration-300">
+      <div className="text-center mb-16">
+        <h1 className="text-5xl font-extrabold mb-4 dark:text-white tracking-tight">Simple, <span className="dark:text-pink-500">Transparent</span> Pricing</h1>
+        <p className="text-xl text-gray-600 dark:text-slate-400 max-w-2xl mx-auto">Choose the perfect plan to unlock your child's full potential and track their growth journey with precision.</p>
+      </div>
 
-      <div className="grid md:grid-cols-4 gap-8">
+      <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-8 items-stretch">
         {plans.map((plan) => (
           <PricingCard key={plan.id} plan={plan} />
         ))}

@@ -8,8 +8,9 @@ function Loading({ size = 'medium' }) {
     };
 
     return (
-        <div className="flex justify-center items-center">
-            <div className={`${sizeClasses[size]} border-4 border-blue-200 border-t-blue-600 rounded-full animate-spin`}></div>
+        <div className="flex flex-col justify-center items-center py-12 space-y-4">
+            <div className={`${sizeClasses[size]} border-4 border-gray-100 dark:border-pink-500/10 border-t-blue-600 dark:border-t-pink-600 rounded-full animate-spin shadow-sm`}></div>
+            <p className="text-sm font-medium text-gray-500 dark:text-slate-400 italic animate-pulse">Just a moment...</p>
         </div>
     );
 }

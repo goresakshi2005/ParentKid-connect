@@ -18,12 +18,12 @@ function Navbar() {
   return (
     <nav className="bg-white dark:bg-slate-900 shadow-md sticky top-0 z-50 transition-colors duration-300">
       <div className="max-w-7xl mx-auto px-4 py-4 flex justify-between items-center">
-        <Link to="/" className="text-2xl font-bold text-blue-600 dark:text-blue-400">
-          ParentKid Connect
+        <Link to="/" className="text-2xl font-bold text-blue-600 dark:text-pink-500 hover:scale-105 transition-transform duration-300">
+          ParentKid <span className="dark:text-white">Connect</span>
         </Link>
 
         <div className="hidden md:flex gap-8 items-center">
-           <button
+          <button
             onClick={toggleTheme}
             className="p-2 rounded-full hover:bg-gray-100 dark:hover:bg-slate-800 transition-colors"
             aria-label="Toggle theme"
@@ -37,13 +37,13 @@ function Navbar() {
               <div className="flex gap-4">
                 <Link
                   to="/login/parent"
-                  className="px-4 py-2 border border-blue-600 rounded text-blue-600 hover:bg-blue-50 dark:border-blue-400 dark:text-blue-400 dark:hover:bg-slate-800"
+                  className="px-4 py-2 border border-blue-600 rounded text-blue-600 hover:bg-blue-50 dark:border-pink-500/50 dark:text-pink-400 dark:hover:bg-pink-500/10 transition-all duration-300"
                 >
                   Parent Login
                 </Link>
                 <Link
                   to="/login/teen"
-                  className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 dark:bg-blue-500 dark:hover:bg-blue-600"
+                  className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 dark:bg-pink-600 dark:hover:bg-pink-700 dark:shadow-lg dark:shadow-pink-500/20 transition-all duration-300"
                 >
                   Teen Login
                 </Link>

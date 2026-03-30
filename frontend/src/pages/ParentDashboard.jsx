@@ -32,11 +32,16 @@ function ParentDashboard() {
     }
   };
 
-  if (loading) return <div className="text-center py-20">Loading dashboard...</div>;
+  if (loading) return (
+    <div className="flex flex-col items-center justify-center py-32 space-y-4">
+      <div className="w-12 h-12 border-4 border-blue-600 dark:border-pink-500 border-t-transparent rounded-full animate-spin"></div>
+      <p className="text-gray-500 dark:text-slate-400 font-medium italic">Loading your dashboard...</p>
+    </div>
+  );
 
   return (
     <div className="max-w-7xl mx-auto px-4 py-8">
-      <h1 className="text-3xl font-bold mb-8">Parent Dashboard</h1>
+      <h1 className="text-4xl font-extrabold mb-10 dark:text-white tracking-tight">Parent <span className="dark:text-pink-500">Dashboard</span></h1>
 
       <div className="grid md:grid-cols-3 gap-8">
         <div className="md:col-span-1">
@@ -52,13 +57,14 @@ function ParentDashboard() {
           {selectedChild ? (
             <ProgressTracking childId={selectedChild.id} child={selectedChild} />
           ) : (
-            <div className="bg-white p-8 rounded-lg shadow text-center">
-              <p className="text-gray-600 mb-4">No children added yet.</p>
+            <div className="card dark:bg-slate-900 border dark:border-slate-800 p-12 text-center flex flex-col items-center justify-center min-h-[400px]">
+              <div className="w-20 h-20 bg-blue-100 dark:bg-pink-500/10 rounded-full flex items-center justify-center mb-6 text-4xl">👶</div>
+              <p className="text-gray-600 dark:text-slate-400 mb-8 text-xl">No children added to your profile yet.</p>
               <button
-                onClick={() => {/* Open add child modal */ }}
-                className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
+                onClick={() => {/* This is usually handled by the ChildManagement button above */ }}
+                className="px-8 py-3 bg-blue-600 text-white rounded-xl hover:bg-blue-700 dark:bg-pink-600 dark:hover:bg-pink-700 shadow-lg dark:shadow-pink-500/20 font-bold transition-all transform hover:scale-105"
               >
-                Add First Child
+                Get Started: Add Your First Child
               </button>
             </div>
           )}

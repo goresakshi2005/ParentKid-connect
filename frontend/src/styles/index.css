@@ -12,6 +12,12 @@ body {
   font-family: 'Inter', sans-serif;
   background-color: #f9fafb;
   color: #1f2937;
+  transition: background-color 0.3s ease, color 0.3s ease;
+}
+
+.dark body {
+  background-color: #020617;
+  color: #f3f4f6;
 }
 
 ::-webkit-scrollbar {
@@ -22,13 +28,26 @@ body {
   background: #f1f5f9;
 }
 
+.dark ::-webkit-scrollbar-track {
+  background: #0f172a;
+}
+
 ::-webkit-scrollbar-thumb {
   background: #cbd5e1;
   border-radius: 10px;
 }
 
+.dark ::-webkit-scrollbar-thumb {
+  background: #334155;
+  border: 2px solid #0f172a;
+}
+
 ::-webkit-scrollbar-thumb:hover {
   background: #94a3b8;
+}
+
+.dark ::-webkit-scrollbar-thumb:hover {
+  background: #ec4899;
 }
 
 @keyframes fadeIn {
@@ -36,6 +55,7 @@ body {
     opacity: 0;
     transform: translateY(10px);
   }
+
   to {
     opacity: 1;
     transform: translateY(0);
@@ -50,12 +70,24 @@ body {
   @apply px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition;
 }
 
+.dark .btn-primary {
+  @apply bg-pink-600 hover:bg-pink-700 shadow-pink-500/20 text-white;
+}
+
 .btn-secondary {
   @apply px-4 py-2 border border-blue-600 text-blue-600 rounded-lg hover:bg-blue-50 transition;
 }
 
+.dark .btn-secondary {
+  @apply border-pink-500 text-pink-400 hover:bg-pink-500/10;
+}
+
 .card {
   @apply bg-white rounded-lg shadow-md hover:shadow-lg transition p-6;
+}
+
+.dark .card {
+  @apply bg-slate-900 border-slate-800 shadow-xl shadow-black/20;
 }
 
 .badge {
@@ -66,10 +98,48 @@ body {
   @apply bg-green-100 text-green-800;
 }
 
+.dark .badge-success {
+  @apply bg-green-900/30 text-green-400 border border-green-800/50;
+}
+
 .badge-warning {
   @apply bg-yellow-100 text-yellow-800;
 }
 
+.dark .badge-warning {
+  @apply bg-yellow-900/30 text-yellow-400 border border-yellow-800/50;
+}
+
 .badge-danger {
   @apply bg-red-100 text-red-800;
+}
+
+.dark .badge-danger {
+  @apply bg-red-900/30 text-red-400 border border-red-800/50;
+}
+
+/* Typography, Accents & Overrides for dark mode */
+.dark h1, .dark h2, .dark h3, .dark h4, .dark h5, .dark h6 {
+  @apply text-white font-bold;
+}
+
+.dark p, .dark label, .dark span:not(.badge, .text-pink-400, .text-pink-500, .text-blue-400, .text-blue-600) {
+  @apply text-slate-300;
+}
+
+.dark .text-accent {
+  @apply text-pink-400;
+}
+
+.dark .bg-accent {
+  @apply bg-pink-600;
+}
+
+.dark .border-accent {
+  @apply border-pink-500/30;
+}
+
+/* Specific overrides for cards and containers */
+.dark section, .dark main, .dark article {
+  @apply text-white;
 }
