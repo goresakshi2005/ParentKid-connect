@@ -18,8 +18,8 @@ function PricingPage() {
   if (loading) return <div className="text-center py-20">Loading plans...</div>;
 
   return (
-    <div className="max-w-7xl mx-auto px-4 py-20">
-      <h1 className="text-4xl font-bold text-center mb-12">Simple, Transparent Pricing</h1>
+    <div className="max-w-7xl mx-auto px-4 py-20 transition-colors duration-300">
+      <h1 className="text-4xl font-bold text-center mb-12 dark:text-white">Simple, Transparent Pricing</h1>
 
       <div className="grid md:grid-cols-4 gap-8">
         {plans.map((plan) => (
