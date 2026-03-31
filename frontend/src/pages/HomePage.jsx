@@ -1,3 +1,5 @@
+// frontend/src/pages/HomePage.jsx
+
 import React from 'react';
 import { Link } from 'react-router-dom';
 import { FiArrowRight } from 'react-icons/fi';
@@ -7,7 +9,13 @@ function HomePage() {
     <div className="min-h-screen bg-gradient-to-b from-blue-50 to-white dark:from-slate-900 dark:to-slate-950 transition-colors duration-300">
       <section className="max-w-7xl mx-auto px-4 py-20 text-center">
         <h1 className="text-5xl font-bold text-gray-900 dark:text-white mb-6">
-          Track Your Child's Growth with <span className="text-blue-600 dark:text-transparent" style={{ backgroundImage: 'linear-gradient(to right, #ec4899, #ffffff)', WebkitBackgroundClip: 'text', backgroundClip: 'text' }}>ParentKid Connect</span>
+          Track Your Child's Growth with{' '}
+          <span
+            className="text-blue-600 dark:text-transparent"
+            style={{ backgroundImage: 'linear-gradient(to right, #ec4899, #ffffff)', WebkitBackgroundClip: 'text', backgroundClip: 'text' }}
+          >
+            ParentKid Connect
+          </span>
         </h1>
         <p className="text-xl text-gray-600 dark:text-slate-300 mb-12 max-w-2xl mx-auto">
           Comprehensive assessments and personalized insights to support your child's development journey
@@ -25,6 +33,13 @@ function HomePage() {
             className="px-8 py-4 border-2 border-blue-600 text-blue-600 rounded-lg hover:bg-blue-50 dark:border-pink-500 dark:text-pink-400 dark:hover:bg-pink-500/10 font-semibold transition-all"
           >
             I'm a Teen
+          </Link>
+          {/* New button for expecting parents */}
+          <Link
+            to="/signup/parent"
+            className="px-8 py-4 bg-green-600 text-white rounded-lg hover:bg-green-700 dark:bg-emerald-600 dark:hover:bg-emerald-700 font-semibold flex items-center justify-center gap-2 transition-all shadow-lg dark:shadow-emerald-500/20"
+          >
+            I'm Expecting <FiArrowRight />
           </Link>
         </div>
 
