@@ -7,7 +7,7 @@ import QuestionRenderer from '../Assessment/QuestionRenderer';
 import ResultsDisplay from '../Assessment/ResultsDisplay';
 import Loading from '../Common/Loading';
 
-function ChildSelfAssessment({ childId, onComplete }) {
+function ChildSelfAssessment({ childId, onComplete, onClose }) {
     const { token } = useAuth();
     const [assessment, setAssessment] = useState(null);
     const [answers, setAnswers] = useState([]);
@@ -84,7 +84,19 @@ function ChildSelfAssessment({ childId, onComplete }) {
     if (loading) return <Loading />;
 
     if (result) {
-        return <ResultsDisplay result={result} onRetake={handleRetake} />;
+        return (
+            <div>
+                <ResultsDisplay result={result} onRetake={handleRetake} />
+                <div className="flex justify-center mt-8">
+                    <button
+                        onClick={onClose}
+                        className="px-8 py-3 bg-gray-600 text-white rounded-xl font-bold hover:bg-gray-700 dark:bg-gray-700 dark:hover:bg-gray-600 shadow-lg transition-all"
+                    >
+                        Back to Dashboard
+                    </button>
+                </div>
+            </div>
+        );
     }
 
     const currentQuestionData = assessment.questions[currentQuestion];

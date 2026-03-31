@@ -59,8 +59,12 @@ function ParentDashboard() {
     };
 
     const handleChildAssessmentComplete = (resultData) => {
+        // Optionally refresh children data
+        fetchChildren();
+    };
+
+    const handleCloseChildAssessment = () => {
         setTakingChildSelfAssessment(null);
-        fetchChildren(); // refresh to show updated results
     };
 
     const handleParentAssessmentComplete = (resultData) => {
@@ -83,7 +87,7 @@ function ParentDashboard() {
         return (
             <div className="max-w-4xl mx-auto px-4 py-8">
                 <button
-                    onClick={() => setTakingChildSelfAssessment(null)}
+                    onClick={handleCloseChildAssessment}
                     className="mb-6 text-blue-600 dark:text-pink-400 hover:underline flex items-center gap-2"
                 >
                     ← Back to Dashboard
@@ -91,6 +95,7 @@ function ParentDashboard() {
                 <ChildSelfAssessment
                     childId={takingChildSelfAssessment}
                     onComplete={handleChildAssessmentComplete}
+                    onClose={handleCloseChildAssessment}
                 />
             </div>
         );
