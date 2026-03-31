@@ -8,7 +8,7 @@ function ChildManagement({ onRefresh, children }) {
     const [showModal, setShowModal] = useState(false);
     const [showTeenNotice, setShowTeenNotice] = useState(false);
     const [teenCode, setTeenCode] = useState('');
-    const [formData, setFormData] = useState({ name: '', date_of_birth: '', stage: 'early_childhood' });
+    const [formData, setFormData] = useState({ name: '', date_of_birth: '' });
     const [editingId, setEditingId] = useState(null);
 
     const handleSubmit = async (e) => {
@@ -16,28 +16,30 @@ function ChildManagement({ onRefresh, children }) {
         try {
             let savedChild = null;
             if (editingId) {
+                // For editing, we only send name and date_of_birth
                 const res = await axios.put(
                     `${process.env.REACT_APP_API_URL}/children/${editingId}/`,
-                    formData,
+                    { name: formData.name, date_of_birth: formData.date_of_birth },
                     { headers: { Authorization: `Bearer ${token}` } }
                 );
                 savedChild = res.data;
             } else {
+                // For new child, only send name and date_of_birth
                 const res = await axios.post(
                     `${process.env.REACT_APP_API_URL}/children/`,
-                    formData,
+                    { name: formData.name, date_of_birth: formData.date_of_birth },
                     { headers: { Authorization: `Bearer ${token}` } }
                 );
                 savedChild = res.data;
             }
-            const isTeen = !editingId && formData.stage === 'teen_age';
+            const isTeen = !editingId && savedChild && savedChild.stage === 'teen_age';
             onRefresh();
             setShowModal(false);
             if (isTeen && savedChild) {
                 setTeenCode(savedChild.invite_code);
                 setShowTeenNotice(true);
             }
-            setFormData({ name: '', date_of_birth: '', stage: 'early_childhood' });
+            setFormData({ name: '', date_of_birth: '' });
             setEditingId(null);
         } catch (error) {
             alert(error.response?.data?.error || 'Error saving child');
@@ -59,16 +61,27 @@ function ChildManagement({ onRefresh, children }) {
     };
 
     const editChild = (child) => {
-        setFormData({ name: child.name, date_of_birth: child.date_of_birth, stage: child.stage });
+        setFormData({ name: child.name, date_of_birth: child.date_of_birth });
         setEditingId(child.id);
         setShowModal(true);
+    };
+
+    // Helper to format the stage label for display in the edit modal
+    const getStageLabel = (stage) => {
+        const stages = {
+            pregnancy: 'Pregnancy',
+            early_childhood: 'Early Childhood (0-5)',
+            growing_stage: 'Growing (6-12)',
+            teen_age: 'Teen (13-21)'   // updated range
+        };
+        return stages[stage] || stage;
     };
 
     return (
         <>
             {/* Add Child Button */}
             <button
-                onClick={() => { setShowModal(true); setEditingId(null); setFormData({ name: '', date_of_birth: '', stage: 'early_childhood' }); }}
+                onClick={() => { setShowModal(true); setEditingId(null); setFormData({ name: '', date_of_birth: '' }); }}
                 className="mb-6 px-6 py-3 bg-blue-600 text-white rounded-xl hover:bg-blue-700 dark:bg-pink-600 dark:hover:bg-pink-700 shadow-lg flex items-center gap-2 font-bold transition-all"
             >
                 <FiPlus /> Add New Child
@@ -107,19 +120,19 @@ function ChildManagement({ onRefresh, children }) {
                                     className="w-full px-4 py-2.5 bg-gray-50 dark:bg-slate-800 border-gray-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-blue-500 dark:focus:ring-pink-500 dark:text-white transition-all"
                                 />
                             </div>
-                            <div>
-                                <label className="block text-sm font-semibold mb-2 dark:text-slate-300">Stage</label>
-                                <select
-                                    value={formData.stage}
-                                    onChange={(e) => setFormData({ ...formData, stage: e.target.value })}
-                                    className="w-full px-4 py-2.5 bg-gray-50 dark:bg-slate-800 border-gray-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-blue-500 dark:focus:ring-pink-500 dark:text-white transition-all"
-                                >
-                                    <option value="pregnancy">Pregnancy</option>
-                                    <option value="early_childhood">Early Childhood (0-5)</option>
-                                    <option value="growing_stage">Growing (6-12)</option>
-                                    <option value="teen_age">Teen (13-20)</option>
-                                </select>
-                            </div>
+
+                            {/* Stage is now read-only and displayed only when editing */}
+                            {editingId && (
+                                <div>
+                                    <label className="block text-sm font-semibold mb-2 dark:text-slate-300">Stage (auto-calculated)</label>
+                                    <div className="px-4 py-2.5 bg-gray-100 dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-xl text-gray-700 dark:text-slate-300">
+                                        {getStageLabel(children.find(c => c.id === editingId)?.stage)}
+                                    </div>
+                                    <p className="text-xs text-gray-500 dark:text-slate-400 mt-1">
+                                        Based on date of birth
+                                    </p>
+                                </div>
+                            )}
 
                             {children && children.length > 0 && !editingId && (
                                 <div className="border-t pt-4 mt-2">
@@ -155,7 +168,7 @@ function ChildManagement({ onRefresh, children }) {
                 </div>
             )}
 
-            {/* Teen Invite Code Notice Modal */}
+            {/* Teen Invite Code Notice Modal (unchanged) */}
             {showTeenNotice && (
                 <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
                     <div className="bg-white dark:bg-slate-900 p-8 rounded-2xl w-full max-w-md text-center shadow-2xl border border-gray-100 dark:border-slate-800">

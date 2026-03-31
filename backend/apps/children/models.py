@@ -10,7 +10,7 @@ class Child(models.Model):
         ('pregnancy', 'Pregnancy'),
         ('early_childhood', 'Early Childhood (0-5)'),
         ('growing_stage', 'Growing (6-12)'),
-        ('teen_age', 'Teen (13-20)'),
+        ('teen_age', 'Teen (13-21)'),                     # updated range
     )
     
     parent = models.ForeignKey(User, on_delete=models.CASCADE, 
@@ -18,7 +18,7 @@ class Child(models.Model):
     name = models.CharField(max_length=100)
     date_of_birth = models.DateField()
     avatar = models.ImageField(upload_to='child_avatars/', null=True, blank=True)
-    stage = models.CharField(max_length=20, choices=STAGE_CHOICES)
+    stage = models.CharField(max_length=20, choices=STAGE_CHOICES, default='early_childhood')  # added default
     invite_code = models.CharField(max_length=10, unique=True, blank=True, null=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -34,12 +34,12 @@ class Child(models.Model):
                 self.stage = 'early_childhood'
             elif age <= 12:
                 self.stage = 'growing_stage'
-            elif age <= 20:
+            elif age <= 21:               # updated to 21
                 self.stage = 'teen_age'
             else:
-                self.stage = 'teen_age'   # fallback for ages > 20 (unlikely)
+                self.stage = 'teen_age'   # fallback for ages > 21
 
-        # Generate invite code for teen children (existing logic)
+        # Generate invite code for teen children
         if not self.invite_code and self.stage == 'teen_age':
             alphabet = string.ascii_uppercase + string.digits
             while True:
