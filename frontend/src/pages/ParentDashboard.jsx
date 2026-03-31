@@ -1,9 +1,12 @@
+// frontend/src/pages/ParentDashboard.jsx
+
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import { useAuth } from '../context/AuthContext';
 import ChildCard from '../components/Parent/ChildCard';
 import ChildManagement from '../components/Parent/ChildManagement';
 import AssessmentView from '../components/Parent/AssessmentView';
+import ChildSelfAssessment from '../components/Child/ChildSelfAssessment';
 import ResultsDisplay from '../components/Assessment/ResultsDisplay';
 
 function ParentDashboard() {
@@ -11,7 +14,7 @@ function ParentDashboard() {
     const [children, setChildren] = useState([]);
     const [loading, setLoading] = useState(true);
     const [takingParentAssessment, setTakingParentAssessment] = useState(false);
-    const [takingChildAssessment, setTakingChildAssessment] = useState(null);
+    const [takingChildSelfAssessment, setTakingChildSelfAssessment] = useState(null); // childId
     const [parentResult, setParentResult] = useState(null);
     const [showParentResult, setShowParentResult] = useState(false);
 
@@ -42,29 +45,28 @@ function ParentDashboard() {
                 { headers: { Authorization: `Bearer ${token}` } }
             );
             const results = response.data.results || response.data;
-            // Filter results where user is the parent (no child)
             const parentOnlyResults = results.filter(r => r.user && !r.child);
             if (parentOnlyResults.length > 0) {
-                setParentResult(parentOnlyResults[0]); // latest
+                setParentResult(parentOnlyResults[0]);
             }
         } catch (error) {
             console.error('Failed to fetch parent results:', error);
         }
     };
 
-    const handleTakeChildAssessment = (childId) => {
-        setTakingChildAssessment(childId);
+    const handleTakeChildSelfAssessment = (childId) => {
+        setTakingChildSelfAssessment(childId);
     };
 
-    const handleAssessmentComplete = (resultData, type) => {
-        if (type === 'parent') {
-            setParentResult(resultData);
-            setTakingParentAssessment(false);
-            setShowParentResult(true);
-        } else {
-            setTakingChildAssessment(null);
-            fetchChildren(); // refresh child list to show updated results
-        }
+    const handleChildAssessmentComplete = (resultData) => {
+        setTakingChildSelfAssessment(null);
+        fetchChildren(); // refresh to show updated results
+    };
+
+    const handleParentAssessmentComplete = (resultData) => {
+        setParentResult(resultData);
+        setTakingParentAssessment(false);
+        setShowParentResult(true);
     };
 
     const handleRetakeParent = () => {
@@ -73,28 +75,22 @@ function ParentDashboard() {
     };
 
     if (loading) {
-        return (
-            <div className="flex flex-col items-center justify-center py-32 space-y-4">
-                <div className="w-12 h-12 border-4 border-blue-600 dark:border-pink-500 border-t-transparent rounded-full animate-spin"></div>
-                <p className="text-gray-500 dark:text-slate-400 font-medium italic">Loading your dashboard...</p>
-            </div>
-        );
+        return <div className="flex justify-center items-center h-64">Loading...</div>;
     }
 
-    // If taking a child assessment
-    if (takingChildAssessment) {
+    // If taking child self‑assessment
+    if (takingChildSelfAssessment) {
         return (
             <div className="max-w-4xl mx-auto px-4 py-8">
                 <button
-                    onClick={() => setTakingChildAssessment(null)}
+                    onClick={() => setTakingChildSelfAssessment(null)}
                     className="mb-6 text-blue-600 dark:text-pink-400 hover:underline flex items-center gap-2"
                 >
                     ← Back to Dashboard
                 </button>
-                <AssessmentView
-                    childId={takingChildAssessment}
-                    assessmentType="child"
-                    onComplete={(result) => handleAssessmentComplete(result, 'child')}
+                <ChildSelfAssessment
+                    childId={takingChildSelfAssessment}
+                    onComplete={handleChildAssessmentComplete}
                 />
             </div>
         );
@@ -112,7 +108,7 @@ function ParentDashboard() {
                 </button>
                 <AssessmentView
                     assessmentType="parent"
-                    onComplete={(result) => handleAssessmentComplete(result, 'parent')}
+                    onComplete={handleParentAssessmentComplete}
                 />
             </div>
         );
@@ -127,7 +123,7 @@ function ParentDashboard() {
                 <ChildManagement onRefresh={fetchChildren} children={children} />
             </div>
 
-            {/* Parent Assessment Section */}
+            {/* Parent Assessment Section (unchanged) */}
             <div className="mb-10">
                 {parentResult && !showParentResult ? (
                     <div className="bg-green-50 dark:bg-green-900/20 p-6 rounded-xl border border-green-200 dark:border-green-800">
@@ -185,7 +181,7 @@ function ParentDashboard() {
                         <ChildCard
                             key={child.id}
                             child={child}
-                            onTakeAssessment={handleTakeChildAssessment}
+                            onTakeAssessment={handleTakeChildSelfAssessment}
                         />
                     ))}
                 </div>

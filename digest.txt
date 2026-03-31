@@ -756,17 +756,24 @@ class Command(BaseCommand):
                 ]
             },
 
-            # ==================== EARLY CHILDHOOD ====================
-            # Parent assessment (parent answering about their own parenting)
+            # ==================== EARLY CHILDHOOD (Parent & Child) ====================
             {
                 "stage": "early_childhood",
                 "assessment_type": "parent",
                 "tier": "free",
                 "title": "Early Childhood Parenting Assessment (Free)",
-                "description": "Assess your parenting approach for your early childhood child.",
+                "description": "Assess your child's growth in early years.",
                 "questions": [
-                    {"text": "How would you describe your parenting style?", "type": "mcq", "options": [{"label": "Authoritative", "score": 4}, {"label": "Authoritarian", "score": 2}, {"label": "Permissive", "score": 3}, {"label": "Neglectful", "score": 1}]},
-                    {"text": "How often do you spend quality time with your child?", "type": "mcq", "options": [{"label": "Daily", "score": 4}, {"label": "3-5 times a week", "score": 3}, {"label": "1-2 times a week", "score": 2}, {"label": "Rarely", "score": 1}]},
+                    {"text": "How many hours does your child sleep daily?", "type": "mcq", "options": [{"label": "<6", "score": 0}, {"label": "6-8", "score": 1}, {"label": "8-10", "score": 2}, {"label": ">10", "score": 3}]},
+                    {"text": "What type of food does your child consume regularly?", "type": "msq", "options": [{"label": "Milk", "value": "milk"}, {"label": "Solid", "value": "solid"}, {"label": "Junk", "value": "junk"}, {"label": "Balanced", "value": "balanced"}]},
+                    {"text": "Has your child achieved milestones like walking or speaking?", "type": "mcq", "options": [{"label": "Yes", "score": 3}, {"label": "No", "score": 0}, {"label": "Not Sure", "score": 1}]},
+                    {"text": "How often does your child play?", "type": "mcq", "options": [{"label": "Rarely", "score": 0}, {"label": "Sometimes", "score": 1}, {"label": "Often", "score": 2}]},
+                    {"text": "What improvements do you want in your childâ€™s routine?", "type": "text"},
+                    {"text": "Does your child follow a daily routine?", "type": "mcq", "options": [{"label": "Yes", "score": 3}, {"label": "No", "score": 0}]},
+                    {"text": "How much screen time does your child have?", "type": "mcq", "options": [{"label": "<1hr", "score": 3}, {"label": "1-2hr", "score": 2}, {"label": ">2hr", "score": 0}]},
+                    {"text": "Which activities does your child enjoy?", "type": "msq", "options": [{"label": "Toys", "value": "toys"}, {"label": "Music", "value": "music"}, {"label": "Drawing", "value": "drawing"}, {"label": "Outdoor", "value": "outdoor"}]},
+                    {"text": "Do you track your childâ€™s growth?", "type": "mcq", "options": [{"label": "Yes", "score": 3}, {"label": "No", "score": 0}]},
+                    {"text": "What concerns do you have about your child?", "type": "text"},
                 ]
             },
             {
@@ -774,19 +781,26 @@ class Command(BaseCommand):
                 "assessment_type": "parent",
                 "tier": "paid",
                 "title": "Early Childhood Parenting Assessment (Paid)",
-                "description": "Advanced parenting insights.",
+                "description": "Advanced insights and personalized activity plans.",
                 "questions": [
-                    {"text": "Do you want personalized parenting advice?", "type": "mcq", "options": [{"label": "Yes", "score": 3}, {"label": "No", "score": 0}]},
-                    {"text": "How confident are you in handling behavioral issues?", "type": "mcq", "options": [{"label": "Low", "score": 0}, {"label": "Medium", "score": 2}, {"label": "High", "score": 4}]},
+                    {"text": "Do you observe any developmental delay?", "type": "mcq", "options": [{"label": "Yes", "score": 0}, {"label": "No", "score": 3}, {"label": "Not Sure", "score": 1}]},
+                    {"text": "Which areas need improvement?", "type": "msq", "options": [{"label": "Speech", "value": "speech"}, {"label": "Motor Skills", "value": "motor"}, {"label": "Behavior", "value": "behavior"}, {"label": "Routine", "value": "routine"}]},
+                    {"text": "Do you want personalized activity plans?", "type": "mcq", "options": [{"label": "Yes", "score": 3}, {"label": "No", "score": 0}]},
+                    {"text": "How consistent is your childâ€™s routine?", "type": "mcq", "options": [{"label": "Poor", "score": 0}, {"label": "Average", "score": 2}, {"label": "Good", "score": 4}]},
+                    {"text": "Do you need expert parenting advice?", "type": "mcq", "options": [{"label": "Yes", "score": 3}, {"label": "No", "score": 0}]},
+                    {"text": "How often does your child show unusual behavior?", "type": "mcq", "options": [{"label": "Never", "score": 3}, {"label": "Sometimes", "score": 1}, {"label": "Often", "score": 0}]},
+                    {"text": "Do you want detailed progress reports?", "type": "mcq", "options": [{"label": "Yes", "score": 3}, {"label": "No", "score": 0}]},
+                    {"text": "Which habits need improvement most?", "type": "text"},
+                    {"text": "Do you want early risk detection?", "type": "mcq", "options": [{"label": "Yes", "score": 3}, {"label": "No", "score": 0}]},
+                    {"text": "What improvement do you expect for your child?", "type": "text"},
                 ]
             },
-            # Child assessment (parent answering on behalf of the child)
             {
                 "stage": "early_childhood",
                 "assessment_type": "child",
                 "tier": "free",
-                "title": "Early Childhood Assessment (Free) â€“ Parent answering for child",
-                "description": "Help your child by answering these questions about their day.",
+                "title": "Early Childhood Assessment (Free) â€“ Parent answering",
+                "description": "Fun questions about your child's day!",
                 "questions": [
                     {"text": "Does your child like playing every day?", "type": "mcq", "options": [{"label": "Yes", "score": 3}, {"label": "No", "score": 0}]},
                     {"text": "What does your child like to play?", "type": "msq", "options": [{"label": "Toys", "value": "toys"}, {"label": "Drawing", "value": "drawing"}, {"label": "Music", "value": "music"}, {"label": "Outdoor", "value": "outdoor"}]},
@@ -804,8 +818,8 @@ class Command(BaseCommand):
                 "stage": "early_childhood",
                 "assessment_type": "child",
                 "tier": "paid",
-                "title": "Early Childhood Assessment (Paid) â€“ Parent answering for child",
-                "description": "Advanced insights for your child's development.",
+                "title": "Early Childhood Assessment (Paid) â€“ Parent answering",
+                "description": "More advanced activities to help your child grow!",
                 "questions": [
                     {"text": "Does your child want more fun learning games?", "type": "mcq", "options": [{"label": "Yes", "score": 3}, {"label": "No", "score": 0}]},
                     {"text": "What type of activities does your child want more?", "type": "msq", "options": [{"label": "Games", "value": "games"}, {"label": "Puzzles", "value": "puzzles"}, {"label": "Drawing", "value": "drawing"}, {"label": "Music", "value": "music"}]},
@@ -820,16 +834,24 @@ class Command(BaseCommand):
                 ]
             },
 
-            # ==================== GROWING STAGE ====================
-            # Parent assessment
+            # ==================== GROWING STAGE (Parent & Child) ====================
             {
                 "stage": "growing_stage",
                 "assessment_type": "parent",
                 "tier": "free",
                 "title": "Growing Stage Parenting Assessment (Free)",
-                "description": "Assess your parenting approach for your growing child.",
+                "description": "Track your child's progress in school and daily life.",
                 "questions": [
-                    {"text": "How often do you help with homework?", "type": "mcq", "options": [{"label": "Daily", "score": 4}, {"label": "Sometimes", "score": 2}, {"label": "Rarely", "score": 0}]},
+                    {"text": "How many hours does your child study daily?", "type": "mcq", "options": [{"label": "<1", "score": 0}, {"label": "1-2", "score": 1}, {"label": ">2", "score": 2}]},
+                    {"text": "How much screen time does your child use?", "type": "mcq", "options": [{"label": "<1", "score": 3}, {"label": "1-3", "score": 1}, {"label": ">3", "score": 0}]},
+                    {"text": "Does your child complete tasks on time?", "type": "mcq", "options": [{"label": "Yes", "score": 3}, {"label": "No", "score": 0}, {"label": "Sometimes", "score": 1}]},
+                    {"text": "Does your child play outdoor games?", "type": "mcq", "options": [{"label": "Yes", "score": 3}, {"label": "No", "score": 0}]},
+                    {"text": "What improvements are needed?", "type": "text"},
+                    {"text": "Does your child follow routine?", "type": "mcq", "options": [{"label": "Yes", "score": 3}, {"label": "No", "score": 0}]},
+                    {"text": "Which habits need improvement?", "type": "msq", "options": [{"label": "Study", "value": "study"}, {"label": "Sleep", "value": "sleep"}, {"label": "Food", "value": "food"}, {"label": "Activity", "value": "activity"}]},
+                    {"text": "Do you track performance?", "type": "mcq", "options": [{"label": "Yes", "score": 3}, {"label": "No", "score": 0}]},
+                    {"text": "Does your child get distracted?", "type": "mcq", "options": [{"label": "Yes", "score": 0}, {"label": "No", "score": 3}]},
+                    {"text": "What is your main concern?", "type": "text"},
                 ]
             },
             {
@@ -837,18 +859,26 @@ class Command(BaseCommand):
                 "assessment_type": "parent",
                 "tier": "paid",
                 "title": "Growing Stage Parenting Assessment (Paid)",
-                "description": "Advanced parenting analytics.",
+                "description": "Advanced analytics and personalized learning plans.",
                 "questions": [
-                    {"text": "Do you want personalized learning plans?", "type": "mcq", "options": [{"label": "Yes", "score": 3}, {"label": "No", "score": 0}]},
+                    {"text": "Do you want detailed performance analysis?", "type": "mcq", "options": [{"label": "Yes", "score": 3}, {"label": "No", "score": 0}]},
+                    {"text": "Which areas need improvement most?", "type": "msq", "options": [{"label": "Focus", "value": "focus"}, {"label": "Discipline", "value": "discipline"}, {"label": "Skills", "value": "skills"}, {"label": "Routine", "value": "routine"}]},
+                    {"text": "Do you need personalized learning plans?", "type": "mcq", "options": [{"label": "Yes", "score": 3}, {"label": "No", "score": 0}]},
+                    {"text": "Do you want behavior insights?", "type": "mcq", "options": [{"label": "Yes", "score": 3}, {"label": "No", "score": 0}]},
+                    {"text": "How serious is screen addiction?", "type": "mcq", "options": [{"label": "Low", "score": 3}, {"label": "Medium", "score": 2}, {"label": "High", "score": 0}]},
+                    {"text": "Do you want expert guidance?", "type": "mcq", "options": [{"label": "Yes", "score": 3}, {"label": "No", "score": 0}]},
+                    {"text": "Do you want progress tracking reports?", "type": "mcq", "options": [{"label": "Yes", "score": 3}, {"label": "No", "score": 0}]},
+                    {"text": "What long-term goals do you have?", "type": "text"},
+                    {"text": "Do you want AI recommendations?", "type": "mcq", "options": [{"label": "Yes", "score": 3}, {"label": "No", "score": 0}]},
+                    {"text": "What improvement do you expect?", "type": "text"},
                 ]
             },
-            # Child assessment (parent answering for child)
             {
                 "stage": "growing_stage",
                 "assessment_type": "child",
                 "tier": "free",
-                "title": "Growing Stage Assessment (Free) â€“ Parent answering for child",
-                "description": "Tell us about your child's daily activities.",
+                "title": "Growing Stage Assessment (Free) â€“ Parent answering",
+                "description": "Tell us about your child's day!",
                 "questions": [
                     {"text": "Does your child complete homework daily?", "type": "mcq", "options": [{"label": "Yes", "score": 3}, {"label": "No", "score": 0}]},
                     {"text": "How many hours does your child study?", "type": "mcq", "options": [{"label": "<1", "score": 0}, {"label": "1-2", "score": 2}, {"label": ">2", "score": 3}]},
@@ -866,8 +896,8 @@ class Command(BaseCommand):
                 "stage": "growing_stage",
                 "assessment_type": "child",
                 "tier": "paid",
-                "title": "Growing Stage Assessment (Paid) â€“ Parent answering for child",
-                "description": "Advanced skill development insights.",
+                "title": "Growing Stage Assessment (Paid) â€“ Parent answering",
+                "description": "Fun challenges and skill development for your child!",
                 "questions": [
                     {"text": "Does your child want personalized learning help?", "type": "mcq", "options": [{"label": "Yes", "score": 3}, {"label": "No", "score": 0}]},
                     {"text": "Which skill does your child want to improve?", "type": "msq", "options": [{"label": "Study", "value": "study"}, {"label": "Sports", "value": "sports"}, {"label": "Creativity", "value": "creativity"}, {"label": "Logic", "value": "logic"}]},
@@ -882,16 +912,24 @@ class Command(BaseCommand):
                 ]
             },
 
-            # ==================== TEEN AGE ====================
-            # Parent assessment (parent self-assessment)
+            # ==================== TEEN (Parent, Child, and Teen) ====================
             {
                 "stage": "teen_age",
                 "assessment_type": "parent",
                 "tier": "free",
                 "title": "Teen Parenting Assessment (Free)",
-                "description": "Assess your parenting style for your teen.",
+                "description": "Understand your teen's well-being and communication.",
                 "questions": [
-                    {"text": "How often do you have open conversations with your teen?", "type": "mcq", "options": [{"label": "Daily", "score": 4}, {"label": "Weekly", "score": 2}, {"label": "Rarely", "score": 0}]},
+                    {"text": "Does your teen share thoughts with you?", "type": "mcq", "options": [{"label": "Yes", "score": 3}, {"label": "No", "score": 0}]},
+                    {"text": "Do you notice mood changes?", "type": "mcq", "options": [{"label": "Yes", "score": 0}, {"label": "No", "score": 3}]},
+                    {"text": "How many hours does your teen sleep?", "type": "mcq", "options": [{"label": "<5", "score": 0}, {"label": "5-7", "score": 1}, {"label": ">7", "score": 3}]},
+                    {"text": "Does your teen have clear goals?", "type": "mcq", "options": [{"label": "Yes", "score": 3}, {"label": "No", "score": 0}]},
+                    {"text": "What concerns you most?", "type": "text"},
+                    {"text": "Does your teen follow a routine?", "type": "mcq", "options": [{"label": "Yes", "score": 3}, {"label": "No", "score": 0}]},
+                    {"text": "Do you know their interests?", "type": "mcq", "options": [{"label": "Yes", "score": 3}, {"label": "No", "score": 0}]},
+                    {"text": "Does your teen feel stressed?", "type": "mcq", "options": [{"label": "Yes", "score": 0}, {"label": "No", "score": 3}]},
+                    {"text": "Do you communicate regularly?", "type": "mcq", "options": [{"label": "Yes", "score": 3}, {"label": "No", "score": 0}]},
+                    {"text": "What improvement do you want?", "type": "text"},
                 ]
             },
             {
@@ -899,17 +937,25 @@ class Command(BaseCommand):
                 "assessment_type": "parent",
                 "tier": "paid",
                 "title": "Teen Parenting Assessment (Paid)",
-                "description": "Advanced parenting insights for teens.",
+                "description": "Advanced mental health insights and career guidance.",
                 "questions": [
-                    {"text": "Do you want mental health insights for your teen?", "type": "mcq", "options": [{"label": "Yes", "score": 3}, {"label": "No", "score": 0}]},
+                    {"text": "Do you want mental health insights?", "type": "mcq", "options": [{"label": "Yes", "score": 3}, {"label": "No", "score": 0}]},
+                    {"text": "Which area needs improvement?", "type": "msq", "options": [{"label": "Mood", "value": "mood"}, {"label": "Career", "value": "career"}, {"label": "Routine", "value": "routine"}, {"label": "Communication", "value": "communication"}]},
+                    {"text": "Do you want career guidance?", "type": "mcq", "options": [{"label": "Yes", "score": 3}, {"label": "No", "score": 0}]},
+                    {"text": "Do you need expert counseling?", "type": "mcq", "options": [{"label": "Yes", "score": 3}, {"label": "No", "score": 0}]},
+                    {"text": "Do you want risk alerts?", "type": "mcq", "options": [{"label": "Yes", "score": 3}, {"label": "No", "score": 0}]},
+                    {"text": "How serious are your concerns?", "type": "mcq", "options": [{"label": "Low", "score": 3}, {"label": "Medium", "score": 2}, {"label": "High", "score": 0}]},
+                    {"text": "Do you want detailed reports?", "type": "mcq", "options": [{"label": "Yes", "score": 3}, {"label": "No", "score": 0}]},
+                    {"text": "Do you want AI insights?", "type": "mcq", "options": [{"label": "Yes", "score": 3}, {"label": "No", "score": 0}]},
+                    {"text": "What long-term goals do you have for your teen?", "type": "text"},
+                    {"text": "What improvement do you expect?", "type": "text"},
                 ]
             },
-            # Child assessment (parent answering on behalf of teen)
             {
                 "stage": "teen_age",
                 "assessment_type": "child",
                 "tier": "free",
-                "title": "Teen Development Assessment (Free) â€“ Parent answering for teen",
+                "title": "Teen Development Assessment (Free) â€“ Parent answering",
                 "description": "Answer these questions about your teen's well-being and habits.",
                 "questions": [
                     {"text": "Does your teen share thoughts with you?", "type": "mcq", "options": [{"label": "Yes", "score": 3}, {"label": "No", "score": 0}]},
@@ -928,7 +974,7 @@ class Command(BaseCommand):
                 "stage": "teen_age",
                 "assessment_type": "child",
                 "tier": "paid",
-                "title": "Teen Development Assessment (Paid) â€“ Parent answering for teen",
+                "title": "Teen Development Assessment (Paid) â€“ Parent answering",
                 "description": "Advanced insights for your teen's mental health and career.",
                 "questions": [
                     {"text": "Do you want mental health insights for your teen?", "type": "mcq", "options": [{"label": "Yes", "score": 3}, {"label": "No", "score": 0}]},
@@ -943,7 +989,6 @@ class Command(BaseCommand):
                     {"text": "What improvement do you expect?", "type": "text"},
                 ]
             },
-            # Teen self-assessment (teen answers directly)
             {
                 "stage": "teen_age",
                 "assessment_type": "teen",
@@ -984,6 +1029,7 @@ class Command(BaseCommand):
             },
         ]
 
+        # Create or update assessments
         for item in assessments_data:
             assessment, created = Assessment.objects.update_or_create(
                 assessment_type=item['assessment_type'],

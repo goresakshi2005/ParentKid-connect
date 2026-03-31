@@ -27,6 +27,19 @@ class Child(models.Model):
         ordering = ['name']
     
     def save(self, *args, **kwargs):
+        # If stage is not 'pregnancy', automatically set it based on age
+        if self.stage != 'pregnancy':
+            age = self.get_age()
+            if age <= 5:
+                self.stage = 'early_childhood'
+            elif age <= 12:
+                self.stage = 'growing_stage'
+            elif age <= 20:
+                self.stage = 'teen_age'
+            else:
+                self.stage = 'teen_age'   # fallback for ages > 20 (unlikely)
+
+        # Generate invite code for teen children (existing logic)
         if not self.invite_code and self.stage == 'teen_age':
             alphabet = string.ascii_uppercase + string.digits
             while True:

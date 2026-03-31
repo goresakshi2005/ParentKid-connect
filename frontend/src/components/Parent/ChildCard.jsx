@@ -1,3 +1,5 @@
+// frontend/src/components/Parent/ChildCard.jsx
+
 import React, { useState } from 'react';
 import ProgressTracking from './ProgressTracking';
 import { FiUser, FiCalendar, FiBarChart2, FiClipboard } from 'react-icons/fi';
