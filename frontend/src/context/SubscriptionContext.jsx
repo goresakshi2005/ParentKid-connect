@@ -14,6 +14,8 @@ export function SubscriptionProvider({ children }) {
     if (token) {
       fetchSubscription();
       fetchPlans();
+    } else {
+      setLoading(false);
     }
   }, [token]);
 
@@ -56,6 +58,13 @@ export function SubscriptionProvider({ children }) {
     return subscription?.plan.detailed_insights || false;
   };
 
+  // New: get user tier as 'free' or 'paid'
+  const getUserTier = () => {
+    if (!subscription) return 'free';
+    const planName = subscription.plan.plan_name;
+    return planName === 'free' ? 'free' : 'paid';
+  };
+
   return (
     <SubscriptionContext.Provider
       value={{
@@ -66,6 +75,7 @@ export function SubscriptionProvider({ children }) {
         canCreateChildren,
         canAccessInsights,
         fetchSubscription,
+        getUserTier,   // <-- added
       }}
     >
       {children}

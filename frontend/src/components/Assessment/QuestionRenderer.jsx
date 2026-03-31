@@ -1,10 +1,10 @@
 import React from 'react';
 
 function QuestionRenderer({ question, answer, onChange }) {
-    const { id, text, type, options } = question;
+    const { text, type, options } = question;
 
     const handleChange = (value) => {
-        onChange(id, value);
+        onChange(value);
     };
 
     if (type === 'mcq') {
@@ -12,12 +12,12 @@ function QuestionRenderer({ question, answer, onChange }) {
             <div className="space-y-3">
                 <label className="block font-bold dark:text-white text-lg">{text}</label>
                 <select
-                    value={answer?.value || ''}
+                    value={answer?.value !== undefined ? answer.value : ''}
                     onChange={(e) => handleChange({ value: parseInt(e.target.value) })}
                     className="w-full p-4 bg-gray-50 dark:bg-slate-800 border-gray-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-blue-500 dark:focus:ring-pink-500 dark:text-white transition-all outline-none appearance-none"
                 >
                     <option value="">Select an option...</option>
-                    {options.map((opt, idx) => (
+                    {options && options.map((opt, idx) => (
                         <option key={idx} value={opt.score}>{opt.label}</option>
                     ))}
                 </select>
@@ -30,8 +30,8 @@ function QuestionRenderer({ question, answer, onChange }) {
             <div className="space-y-4">
                 <label className="block font-bold dark:text-white text-lg">{text}</label>
                 <div className="grid grid-cols-1 gap-3">
-                    {options.map((opt, idx) => (
-                        <label key={idx} className="flex items-center gap-4 p-4 bg-gray-50 dark:bg-slate-800/50 border border-gray-100 dark:border-slate-700/50 rounded-xl hover:bg-white dark:hover:bg-slate-800 transition-all cursor-pointer">
+                    {options && options.map((opt, idx) => (
+                        <label key={idx} className="flex items-center gap-4 p-4 bg-gray-50 dark:bg-slate-800/50 border rounded-xl hover:bg-white dark:hover:bg-slate-800 transition-all cursor-pointer">
                             <input
                                 type="checkbox"
                                 checked={answer?.selected?.includes(opt.value) || false}

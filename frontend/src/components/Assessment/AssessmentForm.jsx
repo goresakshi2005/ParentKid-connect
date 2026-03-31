@@ -23,10 +23,14 @@ function AssessmentForm({ assessmentId, childId, onComplete }) {
                 `${process.env.REACT_APP_API_URL}/assessments/${assessmentId}/`,
                 { headers: { Authorization: `Bearer ${token}` } }
             );
-            setAssessment(response.data);
-            setAnswers(new Array(response.data.questions.length).fill({}));
+            const assessmentData = response.data;
+            setAssessment(assessmentData);
+            // Initialize answers array with empty objects for each question
+            const initialAnswers = assessmentData.questions.map(() => ({}));
+            setAnswers(initialAnswers);
         } catch (error) {
             console.error('Failed to fetch assessment:', error);
+            alert('Could not load assessment');
         }
     };
 
@@ -37,18 +41,26 @@ function AssessmentForm({ assessmentId, childId, onComplete }) {
     };
 
     const handleSubmit = async () => {
+        // Validate all questions answered
+        const unanswered = answers.some(ans => Object.keys(ans).length === 0);
+        if (unanswered) {
+            alert('Please answer all questions before submitting.');
+            return;
+        }
+
         setSubmitting(true);
         try {
             const payload = {
                 assessment_id: assessmentId,
                 answers: answers,
-                child_id: childId
+                child_id: childId || null
             };
             const response = await axios.post(
                 `${process.env.REACT_APP_API_URL}/assessments/submit_assessment/`,
                 payload,
                 { headers: { Authorization: `Bearer ${token}` } }
             );
+            console.log('Assessment result:', response.data);
             setResult(response.data);
             if (onComplete) onComplete(response.data);
         } catch (error) {
@@ -59,30 +71,38 @@ function AssessmentForm({ assessmentId, childId, onComplete }) {
         }
     };
 
+    const handleRetake = () => {
+        setResult(null);
+        setCurrentQuestion(0);
+        // Reset answers
+        if (assessment) {
+            const resetAnswers = assessment.questions.map(() => ({}));
+            setAnswers(resetAnswers);
+        }
+    };
+
     if (!assessment) return <Loading />;
 
+    // Show results if we have a result
     if (result) {
-        return <ResultsDisplay result={result} onRetake={() => setResult(null)} />;
+        return <ResultsDisplay result={result} onRetake={handleRetake} />;
     }
 
     const currentQuestionData = assessment.questions[currentQuestion];
     const isLast = currentQuestion === assessment.questions.length - 1;
 
     return (
-        <div className="max-w-2xl mx-auto card dark:bg-slate-900 border dark:border-slate-800 p-8 shadow-xl transition-all duration-300">
+        <div className="max-w-2xl mx-auto card dark:bg-slate-900 border dark:border-slate-800 p-8 shadow-xl">
             <h2 className="text-3xl font-bold mb-3 dark:text-white">{assessment.title}</h2>
             <p className="text-gray-600 dark:text-slate-400 mb-8 italic">{assessment.description}</p>
 
-            <div className="mb-10 p-5 bg-gray-50 dark:bg-slate-800/50 rounded-2xl border border-gray-100 dark:border-slate-700/50">
+            <div className="mb-10 p-5 bg-gray-50 dark:bg-slate-800/50 rounded-2xl">
                 <div className="flex justify-between text-sm font-bold text-gray-500 dark:text-slate-400 mb-3 uppercase tracking-wider">
-                    <span className="flex items-center gap-2">
-                        <span className="w-2 h-2 bg-blue-600 dark:bg-pink-500 rounded-full animate-pulse"></span>
-                        Question {currentQuestion + 1} of {assessment.questions.length}
-                    </span>
+                    <span>Question {currentQuestion + 1} of {assessment.questions.length}</span>
                     <span className="text-blue-600 dark:text-pink-500">{Math.round(((currentQuestion + 1) / assessment.questions.length) * 100)}%</span>
                 </div>
                 <div className="w-full bg-gray-200 dark:bg-slate-700 rounded-full h-3 overflow-hidden">
-                    <div className="bg-blue-600 dark:bg-pink-600 h-3 rounded-full transition-all duration-500 ease-out" style={{ width: `${((currentQuestion + 1) / assessment.questions.length) * 100}%` }}></div>
+                    <div className="bg-blue-600 dark:bg-pink-600 h-3 rounded-full transition-all duration-500" style={{ width: `${((currentQuestion + 1) / assessment.questions.length) * 100}%` }}></div>
                 </div>
             </div>
 
@@ -104,14 +124,14 @@ function AssessmentForm({ assessmentId, childId, onComplete }) {
                     <button
                         onClick={handleSubmit}
                         disabled={submitting}
-                        className="px-8 py-2.5 bg-blue-600 text-white rounded-xl hover:bg-blue-700 dark:bg-pink-600 dark:hover:bg-pink-700 disabled:opacity-50 font-bold shadow-lg dark:shadow-pink-500/20 transform active:scale-95 transition-all"
+                        className="px-8 py-2.5 bg-blue-600 text-white rounded-xl hover:bg-blue-700 dark:bg-pink-600 dark:hover:bg-pink-700 disabled:opacity-50 font-bold shadow-lg transform active:scale-95 transition-all"
                     >
                         {submitting ? 'Analyzing Results...' : 'Submit Assessment'}
                     </button>
                 ) : (
                     <button
                         onClick={() => setCurrentQuestion(prev => prev + 1)}
-                        className="px-8 py-2.5 bg-blue-600 text-white rounded-xl hover:bg-blue-700 dark:bg-pink-600 dark:hover:bg-pink-700 font-bold shadow-lg dark:shadow-pink-500/20 transform active:scale-95 transition-all"
+                        className="px-8 py-2.5 bg-blue-600 text-white rounded-xl hover:bg-blue-700 dark:bg-pink-600 dark:hover:bg-pink-700 font-bold shadow-lg transform active:scale-95 transition-all"
                     >
                         Next Question
                     </button>

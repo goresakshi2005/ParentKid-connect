@@ -14,7 +14,6 @@ class AssessmentViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated]
     
     def get_queryset(self):
-        user = self.request.user
         stage = self.request.query_params.get('stage', '')
         assessment_type = self.request.query_params.get('type', '')
         
@@ -35,7 +34,10 @@ class AssessmentViewSet(viewsets.ModelViewSet):
             answers = request.data.get('answers', [])
             child_id = request.data.get('child_id')
             
+            print(f"🔍 Submit assessment - ID: {assessment_id}, Child: {child_id}, Answers count: {len(answers)}")
+            
             assessment = Assessment.objects.get(id=assessment_id)
+            print(f"✅ Assessment loaded: {assessment.title}")
             
             if child_id:
                 child = Child.objects.get(id=child_id, parent=request.user)
@@ -68,14 +70,16 @@ class AssessmentViewSet(viewsets.ModelViewSet):
             return Response(serializer.data, status=status.HTTP_201_CREATED)
         
         except Assessment.DoesNotExist:
-            return Response({'error': 'Assessment not found'}, 
-                          status=status.HTTP_404_NOT_FOUND)
+            print("❌ Assessment not found")
+            return Response({'error': 'Assessment not found'}, status=404)
         except Child.DoesNotExist:
-            return Response({'error': 'Child not found'}, 
-                          status=status.HTTP_404_NOT_FOUND)
+            print("❌ Child not found")
+            return Response({'error': 'Child not found'}, status=404)
         except Exception as e:
-            return Response({'error': str(e)}, 
-                          status=status.HTTP_400_BAD_REQUEST)
+            print(f"❌ Error: {str(e)}")
+            import traceback
+            traceback.print_exc()
+            return Response({'error': str(e)}, status=400)
     
     @action(detail=False, methods=['get'])
     def my_results(self, request):
@@ -102,8 +106,7 @@ class AssessmentViewSet(viewsets.ModelViewSet):
                 child = Child.objects.get(id=child_id, parent=user)
                 results = AssessmentResult.objects.filter(child=child).order_by('created_at')
             except Child.DoesNotExist:
-                return Response({'error': 'Child not found'}, 
-                              status=status.HTTP_404_NOT_FOUND)
+                return Response({'error': 'Child not found'}, status=404)
         else:
             results = AssessmentResult.objects.filter(user=user).order_by('created_at')
         
@@ -114,3 +117,54 @@ class AssessmentViewSet(viewsets.ModelViewSet):
         }
         
         return Response(data)
+
+    @action(detail=False, methods=['get'])
+    def recommended(self, request):
+        user = request.user
+        child_id = request.query_params.get('child_id')
+        tier = request.query_params.get('tier', 'free')
+        assessment_type = request.query_params.get('type')
+
+        if not assessment_type:
+            return Response({'error': 'type parameter is required'}, status=400)
+
+        # Determine stage
+        if assessment_type == 'child' and child_id:
+            child = Child.objects.get(id=child_id, parent=user)
+            stage = child.stage
+            print(f"🔍 Child assessment requested: stage={stage}, tier={tier}")
+        elif assessment_type == 'parent':
+            first_child = Child.objects.filter(parent=user).first()
+            stage = first_child.stage if first_child else 'pregnancy'
+            print(f"🔍 Parent assessment requested: stage={stage}, tier={tier}")
+        else:  # teen
+            stage = 'teen_age'
+            print(f"🔍 Teen assessment requested: stage={stage}, tier={tier}")
+
+        # Try to find exact match
+        assessment = Assessment.objects.filter(
+            assessment_type=assessment_type,
+            stage=stage,
+            tier=tier
+        ).order_by('-created_at').first()
+
+        # If not found, try to find any assessment for that type and stage (ignore tier)
+        if not assessment:
+            print(f"⚠️ No {tier} assessment found for {assessment_type} at stage {stage}. Looking for any tier...")
+            assessment = Assessment.objects.filter(
+                assessment_type=assessment_type,
+                stage=stage
+            ).order_by('-created_at').first()
+
+        # If still not found, try to find any assessment for that type (any stage)
+        if not assessment:
+            print(f"⚠️ No assessment found for {assessment_type} at stage {stage}. Using any available.")
+            assessment = Assessment.objects.filter(
+                assessment_type=assessment_type
+            ).order_by('-created_at').first()
+
+        if not assessment:
+            return Response({'error': f'No assessment available for {assessment_type}. Please contact support.'}, status=404)
+
+        serializer = AssessmentSerializer(assessment)
+        return Response(serializer.data)

@@ -10,9 +10,14 @@ class Assessment(models.Model):
         ('child', 'Child Assessment'),
         ('teen', 'Teen Assessment'),
     )
+    TIER_CHOICES = (
+        ('free', 'Free'),
+        ('paid', 'Paid'),
+    )
     
     assessment_type = models.CharField(max_length=20, choices=ASSESSMENT_TYPES)
     stage = models.CharField(max_length=50)
+    tier = models.CharField(max_length=10, choices=TIER_CHOICES, default='free')
     title = models.CharField(max_length=200)
     description = models.TextField()
     questions = models.JSONField(default=list)
@@ -22,7 +27,7 @@ class Assessment(models.Model):
         ordering = ['-created_at']
     
     def __str__(self):
-        return f"{self.get_assessment_type_display()} - {self.stage}"
+        return f"{self.get_assessment_type_display()} - {self.stage} ({self.tier})"
 
 class AssessmentResult(models.Model):
     RISK_LEVELS = (

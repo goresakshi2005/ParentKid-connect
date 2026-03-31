@@ -156,11 +156,13 @@ Keep it brief, practical, and encouraging.
             
             model = genai.GenerativeModel('gemini-pro')
             response = model.generate_content(prompt)
-            return response.text
+            return response.text  # returns a string
         
         except Exception as e:
             print(f"Error generating AI recommendations: {str(e)}")
-            return self.get_default_recommendations(assessment_type, risk_level)
+            # Return a string (joined by newlines) instead of a list
+            default_list = self.get_default_recommendations(assessment_type, risk_level)
+            return "\n".join(default_list)
     
     def get_default_recommendations(self, assessment_type, risk_level):
         if risk_level == 'high':
@@ -187,6 +189,8 @@ Keep it brief, practical, and encouraging.
         weighted_score = self.calculate_weighted_score()
         risk_level = self.detect_risk_level(final_score)
         recommendations_text = self.generate_ai_recommendations(assessment_type, risk_level)
+        # Split the text into lines and take up to 3
+        recommendations = [line.strip() for line in recommendations_text.split('\n') if line.strip()][:3]
         
         return {
             'health_score': self.category_scores.get('health', 0),
@@ -198,5 +202,5 @@ Keep it brief, practical, and encouraging.
             'risk_level': risk_level,
             'strengths': self.get_strengths(),
             'improvements': self.get_improvements(),
-            'recommendations': recommendations_text.split('\n')[:3],
+            'recommendations': recommendations,
         }
