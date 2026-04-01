@@ -50,6 +50,22 @@ Directory structure:
     │   │   │       ├── 0001_initial.py
     │   │   │       ├── 0002_initial.py
     │   │   │       └── __init__.py
+    │   │   ├── reports/
+    │   │   │   ├── __init__.py
+    │   │   │   ├── admin.py
+    │   │   │   ├── models.py
+    │   │   │   ├── serializers.py
+    │   │   │   ├── urls.py
+    │   │   │   ├── views.py
+    │   │   │   ├── migrations/
+    │   │   │   │   ├── 0001_initial.py
+    │   │   │   │   └── __init__.py
+    │   │   │   └── services/
+    │   │   │       ├── __init__.py
+    │   │   │       ├── ai_extractor.py
+    │   │   │       ├── calendar_service.py
+    │   │   │       ├── extractor.py
+    │   │   │       └── orchestrator.py
     │   │   ├── subscriptions/
     │   │   │   ├── __init__.py
     │   │   │   ├── admin.py
@@ -121,6 +137,8 @@ Directory structure:
             │   │   ├── PricingCard.jsx
             │   │   ├── PricingPage.jsx
             │   │   └── UpgradeModal.jsx
+            │   ├── Reports/
+            │   │   └── ReportUploader.jsx
             │   └── Teen/
             │       ├── AssessmentPrompt.jsx
             │       └── Dashboard.jsx
@@ -138,7 +156,8 @@ Directory structure:
             ├── services/
             │   ├── api.js
             │   ├── assessmentService.js
-            │   └── authService.js
+            │   ├── authService.js
+            │   └── reportService.js
             ├── styles/
             │   ├── index.css
             │   └── tailwind.css
@@ -191,6 +210,26 @@ python-decouple>=3.8
 razorpay>=1.5.0
 google-generativeai>=0.3.0
 Pillow>=10.0.0
+
+# Add these to your existing requirements.txt
+
+# PDF text extraction
+PyMuPDF==1.24.5
+
+# OCR for image-based reports
+easyocr==1.7.1
+Pillow==10.4.0
+
+# Gemini AI
+google-generativeai==0.7.2
+
+# Google Calendar API
+google-api-python-client==2.134.0
+google-auth==2.31.0
+google-auth-oauthlib==1.2.1
+
+# Django REST Framework (if not already installed)
+djangorestframework==3.15.2
 
 
 ================================================
@@ -453,13 +492,12 @@ Please provide:
 Keep it brief, practical, and encouraging.
             """
             
-            model = genai.GenerativeModel('gemini-pro')
+            model = genai.GenerativeModel('gemini-2.5-flash')  # âœ… updated model name
             response = model.generate_content(prompt)
-            return response.text  # returns a string
+            return response.text
         
         except Exception as e:
             print(f"Error generating AI recommendations: {str(e)}")
-            # Return a string (joined by newlines) instead of a list
             default_list = self.get_default_recommendations(assessment_type, risk_level)
             return "\n".join(default_list)
     
@@ -488,7 +526,6 @@ Keep it brief, practical, and encouraging.
         weighted_score = self.calculate_weighted_score()
         risk_level = self.detect_risk_level(final_score)
         recommendations_text = self.generate_ai_recommendations(assessment_type, risk_level)
-        # Split the text into lines and take up to 3
         recommendations = [line.strip() for line in recommendations_text.split('\n') if line.strip()][:3]
         
         return {
@@ -1666,6 +1703,605 @@ FILE: backend/apps/insights/migrations/__init__.py
 
 
 ================================================
+FILE: backend/apps/reports/__init__.py
+================================================
+
+
+
+================================================
+FILE: backend/apps/reports/admin.py
+================================================
+
+
+
+================================================
+FILE: backend/apps/reports/models.py
+================================================
+from django.db import models
+from django.contrib.auth import get_user_model
+
+User = get_user_model()
+
+
+class MedicalReport(models.Model):
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='medical_reports')
+    file = models.FileField(upload_to='reports/')
+    uploaded_at = models.DateTimeField(auto_now_add=True)
+    extracted_text = models.TextField(blank=True, null=True)
+    is_processed = models.BooleanField(default=False)
+
+    def __str__(self):
+        return f"Report by {self.user.username} on {self.uploaded_at.date()}"
+
+
+class Appointment(models.Model):
+    SOURCE_CHOICES = [
+        ('report', 'Extracted from Report'),
+        ('manual', 'Manually Added'),
+    ]
+
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='appointments')
+    report = models.ForeignKey(MedicalReport, on_delete=models.SET_NULL, null=True, blank=True)
+    date_time = models.DateTimeField()
+    doctor = models.CharField(max_length=100, blank=True)
+    notes = models.TextField(blank=True)
+    source = models.CharField(max_length=20, choices=SOURCE_CHOICES, default='report')
+    google_event_id = models.CharField(max_length=200, blank=True, null=True)
+    is_scheduled = models.BooleanField(default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return f"Appointment for {self.user.username} on {self.date_time}"
+
+
+================================================
+FILE: backend/apps/reports/serializers.py
+================================================
+from rest_framework import serializers
+from .models import Appointment, MedicalReport
+
+
+class MedicalReportSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = MedicalReport
+        fields = ["id", "file", "uploaded_at", "is_processed"]
+
+
+class AppointmentSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Appointment
+        fields = [
+            "id",
+            "date_time",
+            "doctor",
+            "notes",
+            "source",
+            "google_event_id",
+            "is_scheduled",
+            "created_at",
+        ]
+
+
+================================================
+FILE: backend/apps/reports/urls.py
+================================================
+from django.urls import path
+from .views import UploadReportView, ConfirmAppointmentView, AppointmentListView
+
+urlpatterns = [
+    path("reports/upload/", UploadReportView.as_view(), name="upload-report"),
+    path("reports/confirm/", ConfirmAppointmentView.as_view(), name="confirm-appointment"),
+    path("appointments/", AppointmentListView.as_view(), name="appointment-list"),
+]
+
+
+================================================
+FILE: backend/apps/reports/views.py
+================================================
+import traceback
+import logging
+
+from rest_framework.views import APIView
+from rest_framework.response import Response
+from rest_framework.permissions import IsAuthenticated
+from rest_framework.parsers import MultiPartParser, FormParser
+from rest_framework import status
+
+from .models import MedicalReport, Appointment
+from .services.orchestrator import process_report_and_schedule, confirm_and_schedule
+from .serializers import AppointmentSerializer
+
+logger = logging.getLogger(__name__)
+
+
+class UploadReportView(APIView):
+    permission_classes = [IsAuthenticated]
+    parser_classes = [MultiPartParser, FormParser]
+
+    def post(self, request):
+        try:
+            file = request.FILES.get("file")
+            if not file:
+                return Response({"error": "No file provided."}, status=400)
+
+            allowed_types = ["application/pdf", "image/png", "image/jpeg", "image/tiff"]
+            if file.content_type not in allowed_types:
+                return Response(
+                    {"error": f"Unsupported file type: {file.content_type}. Allowed: PDF, PNG, JPG."},
+                    status=400
+                )
+
+            # Save the report file
+            report = MedicalReport.objects.create(user=request.user, file=file)
+            logger.info(f"Report saved: id={report.id}, file={report.file.name}")
+
+            # Google tokens (used later in confirm step)
+            access_token = getattr(request.user, 'google_access_token', None)
+            refresh_token = getattr(request.user, 'google_refresh_token', None)
+
+            result = process_report_and_schedule(report, access_token, refresh_token)
+            logger.info(f"Orchestrator result: {result}")
+
+            if not result["success"]:
+                return Response({"error": result["error"]}, status=422)
+
+            return Response(result, status=200)
+
+        except AttributeError as e:
+            logger.error(f"AttributeError in upload: {traceback.format_exc()}")
+            return Response({"error": f"User model missing field: {str(e)}"}, status=500)
+
+        except Exception as e:
+            logger.error(f"Unexpected error in upload: {traceback.format_exc()}")
+            return Response({"error": f"Server error: {str(e)}"}, status=500)
+
+
+class ConfirmAppointmentView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        try:
+            report_id = request.data.get("report_id")
+            datetime_iso = request.data.get("datetime_iso")
+            doctor = request.data.get("doctor", "")
+
+            if not report_id or not datetime_iso:
+                return Response({"error": "report_id and datetime_iso are required."}, status=400)
+
+            try:
+                report = MedicalReport.objects.get(id=report_id, user=request.user)
+            except MedicalReport.DoesNotExist:
+                return Response({"error": "Report not found."}, status=404)
+
+            if report.is_processed:
+                return Response({"error": "This report has already been scheduled."}, status=400)
+
+            access_token = getattr(request.user, 'google_access_token', None)
+            refresh_token = getattr(request.user, 'google_refresh_token', None)
+
+            result = confirm_and_schedule(report, datetime_iso, doctor, access_token, refresh_token)
+            logger.info(f"Confirm result: {result}")
+
+            if not result["success"]:
+                return Response({"error": result["error"]}, status=500)
+
+            return Response(result, status=201)
+
+        except Exception as e:
+            logger.error(f"Unexpected error in confirm: {traceback.format_exc()}")
+            return Response({"error": f"Server error: {str(e)}"}, status=500)
+
+
+class AppointmentListView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        appointments = Appointment.objects.filter(
+            user=request.user
+        ).order_by("date_time")
+        serializer = AppointmentSerializer(appointments, many=True)
+        return Response(serializer.data)
+
+
+================================================
+FILE: backend/apps/reports/migrations/0001_initial.py
+================================================
+# Generated by Django 4.2 on 2026-04-01 08:02
+
+from django.conf import settings
+from django.db import migrations, models
+import django.db.models.deletion
+
+
+class Migration(migrations.Migration):
+
+    initial = True
+
+    dependencies = [
+        migrations.swappable_dependency(settings.AUTH_USER_MODEL),
+    ]
+
+    operations = [
+        migrations.CreateModel(
+            name='MedicalReport',
+            fields=[
+                ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
+                ('file', models.FileField(upload_to='reports/')),
+                ('uploaded_at', models.DateTimeField(auto_now_add=True)),
+                ('extracted_text', models.TextField(blank=True, null=True)),
+                ('is_processed', models.BooleanField(default=False)),
+                ('user', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='medical_reports', to=settings.AUTH_USER_MODEL)),
+            ],
+        ),
+        migrations.CreateModel(
+            name='Appointment',
+            fields=[
+                ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
+                ('date_time', models.DateTimeField()),
+                ('doctor', models.CharField(blank=True, max_length=100)),
+                ('notes', models.TextField(blank=True)),
+                ('source', models.CharField(choices=[('report', 'Extracted from Report'), ('manual', 'Manually Added')], default='report', max_length=20)),
+                ('google_event_id', models.CharField(blank=True, max_length=200, null=True)),
+                ('is_scheduled', models.BooleanField(default=False)),
+                ('created_at', models.DateTimeField(auto_now_add=True)),
+                ('report', models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.SET_NULL, to='reports.medicalreport')),
+                ('user', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='appointments', to=settings.AUTH_USER_MODEL)),
+            ],
+        ),
+    ]
+
+
+
+================================================
+FILE: backend/apps/reports/migrations/__init__.py
+================================================
+
+
+
+================================================
+FILE: backend/apps/reports/services/__init__.py
+================================================
+
+
+
+================================================
+FILE: backend/apps/reports/services/ai_extractor.py
+================================================
+import json
+import re
+import google.generativeai as genai
+from django.conf import settings
+
+
+genai.configure(api_key=settings.GEMINI_API_KEY)
+
+
+EXTRACTION_PROMPT = """
+You are a medical assistant AI. Read the following medical report text carefully.
+
+Extract:
+1. The next appointment date
+2. The next appointment time (if available)
+3. The doctor's name (if mentioned)
+
+Return ONLY a valid JSON object in this exact format, with no extra text:
+{{
+  "date": "YYYY-MM-DD or empty string",
+  "time": "HH:MM AM/PM or empty string",
+  "doctor": "Doctor name or empty string"
+}}
+
+Medical Report Text:
+\"\"\"
+{report_text}
+\"\"\"
+"""
+
+
+def extract_appointment_from_text(report_text: str) -> dict:
+    """
+    Sends report text to Gemini and extracts appointment details.
+    Returns a dict: { date, time, doctor }
+    """
+    model = genai.GenerativeModel("gemini-2.5-flash")  # âœ… updated model name
+
+    prompt = EXTRACTION_PROMPT.format(report_text=report_text[:4000])
+
+    response = model.generate_content(prompt)
+    raw_text = response.text.strip()
+
+    # Strip markdown code fences if present
+    raw_text = re.sub(r"^```json\s*", "", raw_text)
+    raw_text = re.sub(r"\s*```$", "", raw_text)
+
+    try:
+        data = json.loads(raw_text)
+    except json.JSONDecodeError:
+        match = re.search(r'\{.*?\}', raw_text, re.DOTALL)
+        if match:
+            data = json.loads(match.group())
+        else:
+            raise ValueError(f"Gemini returned non-JSON response: {raw_text}")
+
+    return {
+        "date": data.get("date", "").strip(),
+        "time": data.get("time", "").strip(),
+        "doctor": data.get("doctor", "").strip(),
+    }
+
+
+================================================
+FILE: backend/apps/reports/services/calendar_service.py
+================================================
+from datetime import datetime, timedelta
+from google.oauth2.credentials import Credentials
+from googleapiclient.discovery import build
+from django.conf import settings
+
+
+def build_calendar_service(access_token: str, refresh_token: str) -> object:
+    """Build and return an authenticated Google Calendar service."""
+    creds = Credentials(
+        token=access_token,
+        refresh_token=refresh_token,
+        token_uri="https://oauth2.googleapis.com/token",
+        client_id=settings.GOOGLE_CLIENT_ID,
+        client_secret=settings.GOOGLE_CLIENT_SECRET,
+    )
+    service = build("calendar", "v3", credentials=creds)
+    return service
+
+
+def create_appointment_event(
+    service,
+    appointment_datetime: datetime,
+    doctor: str,
+    parent_email: str,
+    timezone: str = "Asia/Kolkata",
+) -> str:
+    """
+    Creates a Google Calendar event for the appointment.
+    Returns the created event ID.
+    """
+    end_datetime = appointment_datetime + timedelta(minutes=30)
+
+    description = "Auto-extracted from your uploaded pregnancy checkup report."
+    if doctor:
+        description += f"\nDoctor: {doctor}"
+
+    event = {
+        "summary": "Pregnancy Checkup Appointment",
+        "description": description,
+        "start": {
+            "dateTime": appointment_datetime.isoformat(),
+            "timeZone": timezone,
+        },
+        "end": {
+            "dateTime": end_datetime.isoformat(),
+            "timeZone": timezone,
+        },
+        "attendees": [
+            {"email": parent_email},
+        ],
+        "reminders": {
+            "useDefault": False,
+            "overrides": [
+                {"method": "email", "minutes": 24 * 60},   # 1 day before
+                {"method": "popup", "minutes": 120},        # 2 hours before
+            ],
+        },
+    }
+
+    created_event = service.events().insert(
+        calendarId="primary",
+        body=event,
+        sendUpdates="all",
+    ).execute()
+
+    return created_event.get("id")
+
+
+def delete_calendar_event(service, event_id: str):
+    """Delete a calendar event by ID."""
+    service.events().delete(calendarId="primary", eventId=event_id).execute()
+
+
+================================================
+FILE: backend/apps/reports/services/extractor.py
+================================================
+import fitz  # PyMuPDF
+import easyocr
+from PIL import Image
+import io
+import os
+import numpy as np
+
+# Initialize EasyOCR reader once (heavy to load, so keep at module level)
+# Add more languages if needed e.g. ['en', 'hi'] for Hindi support
+reader = easyocr.Reader(['en'], gpu=False)
+
+
+def extract_text_from_file(file_path: str) -> str:
+    """
+    Extracts text from a PDF or image file using EasyOCR.
+    Supports: .pdf, .png, .jpg, .jpeg, .tiff, .bmp
+    """
+    ext = os.path.splitext(file_path)[1].lower()
+
+    if ext == '.pdf':
+        return _extract_from_pdf(file_path)
+    elif ext in ['.png', '.jpg', '.jpeg', '.tiff', '.bmp']:
+        return _extract_from_image(file_path)
+    else:
+        raise ValueError(f"Unsupported file type: {ext}")
+
+
+def _extract_from_pdf(pdf_path: str) -> str:
+    """
+    Extract text from PDF using PyMuPDF.
+    Falls back to EasyOCR if page has no selectable text (scanned PDF).
+    """
+    doc = fitz.open(pdf_path)
+    text = ""
+
+    for page in doc:
+        page_text = page.get_text()
+        if page_text.strip():
+            # Digital PDF â€” use native text
+            text += page_text
+        else:
+            # Scanned PDF â€” render page as image then OCR
+            pix = page.get_pixmap(dpi=200)
+            img_bytes = pix.tobytes("png")
+            img_array = np.frombuffer(img_bytes, dtype=np.uint8)
+
+            results = reader.readtext(img_array, detail=0, paragraph=True)
+            text += "\n".join(results) + "\n"
+
+    doc.close()
+    return text.strip()
+
+
+def _extract_from_image(image_path: str) -> str:
+    """Extract text from an image file using EasyOCR."""
+    results = reader.readtext(image_path, detail=0, paragraph=True)
+    return "\n".join(results).strip()
+
+
+================================================
+FILE: backend/apps/reports/services/orchestrator.py
+================================================
+from datetime import datetime
+from django.utils import timezone
+from django.utils.timezone import make_aware
+
+from .extractor import extract_text_from_file
+from .ai_extractor import extract_appointment_from_text
+from apps.reports.models import MedicalReport, Appointment
+
+
+def process_report_and_schedule(
+    report: MedicalReport,
+    access_token: str,
+    refresh_token: str,
+) -> dict:
+    """
+    Full pipeline:
+    1. Extract text from uploaded report
+    2. Use Gemini to extract appointment details
+    3. Return extracted details (do NOT schedule yet â€” let user confirm)
+    """
+    # Step 1: Extract text
+    file_path = report.file.path
+    extracted_text = extract_text_from_file(file_path)
+
+    if not extracted_text:
+        return {"success": False, "error": "Could not extract text from the report."}
+
+    # Save extracted text
+    report.extracted_text = extracted_text
+    report.save()
+
+    # Step 2: AI extraction
+    appointment_data = extract_appointment_from_text(extracted_text)
+
+    date_str = appointment_data.get("date")
+    time_str = appointment_data.get("time")
+    doctor = appointment_data.get("doctor", "")
+
+    if not date_str:
+        return {"success": False, "error": "No appointment date found in the report."}
+
+    # Step 3: Parse datetime
+    try:
+        if time_str:
+            dt = datetime.strptime(f"{date_str} {time_str}", "%Y-%m-%d %I:%M %p")
+        else:
+            dt = datetime.strptime(date_str, "%Y-%m-%d")
+            dt = dt.replace(hour=10, minute=0)  # default 10:00 AM if no time
+    except ValueError as e:
+        return {"success": False, "error": f"Could not parse date/time: {str(e)}"}
+
+    # Validate: appointment must be in the future
+    aware_dt = make_aware(dt)
+    if aware_dt <= timezone.now():
+        return {"success": False, "error": "Extracted appointment date is in the past."}
+
+    # Return for user confirmation (not yet scheduled)
+    return {
+        "success": True,
+        "appointment": {
+            "date": date_str,
+            "time": time_str or "10:00 AM (default)",
+            "doctor": doctor,
+            "datetime_iso": aware_dt.isoformat(),
+        },
+        "report_id": report.id,
+    }
+
+
+def confirm_and_schedule(
+    report: MedicalReport,
+    datetime_iso: str,
+    doctor: str,
+    access_token: str,
+    refresh_token: str,
+) -> dict:
+    """
+    After user confirms, save the appointment to DB.
+    Google Calendar scheduling is optional â€” only runs if user has connected Google account.
+    """
+    user = report.user
+    dt = datetime.fromisoformat(datetime_iso)
+
+    google_event_id = None
+
+    # âœ… Only attempt Google Calendar if user has OAuth tokens connected
+    if access_token and refresh_token:
+        try:
+            from .calendar_service import build_calendar_service, create_appointment_event
+            from django.conf import settings
+
+            # Only proceed if Google credentials are configured
+            if getattr(settings, 'GOOGLE_CLIENT_ID', '') and getattr(settings, 'GOOGLE_CLIENT_SECRET', ''):
+                service = build_calendar_service(access_token, refresh_token)
+                google_event_id = create_appointment_event(
+                    service=service,
+                    appointment_datetime=dt,
+                    doctor=doctor,
+                    parent_email=user.email,
+                )
+        except Exception as e:
+            # Don't fail the whole flow â€” just skip Calendar
+            print(f"Google Calendar skipped: {str(e)}")
+
+    # âœ… Always save to DB regardless of Google Calendar result
+    appointment = Appointment.objects.create(
+        user=user,
+        report=report,
+        date_time=dt,
+        doctor=doctor,
+        source="report",
+        google_event_id=google_event_id,
+        is_scheduled=True,
+    )
+
+    report.is_processed = True
+    report.save()
+
+    # Build success message
+    scheduled_time = dt.strftime('%d %b %Y at %I:%M %p')
+    calendar_note = " and added to Google Calendar" if google_event_id else ""
+
+    return {
+        "success": True,
+        "appointment_id": appointment.id,
+        "google_event_id": google_event_id,
+        "message": f"Appointment saved for {scheduled_time}{calendar_note}.",
+    }
+
+
+================================================
 FILE: backend/apps/subscriptions/__init__.py
 ================================================
 
@@ -2436,6 +3072,7 @@ INSTALLED_APPS = [
     'apps.assessments',
     'apps.subscriptions',
     'apps.insights',
+    'apps.reports',
 ]
 
 MIDDLEWARE = [
@@ -2520,9 +3157,14 @@ CORS_ALLOWED_ORIGINS = [
     "http://127.0.0.1:3000",
 ]
 
+# AI & Payment keys
 GEMINI_API_KEY = config('GEMINI_API_KEY', default='')
 RAZORPAY_KEY_ID = config('RAZORPAY_KEY_ID', default='')
 RAZORPAY_KEY_SECRET = config('RAZORPAY_KEY_SECRET', default='')
+
+# âœ… Google OAuth credentials for Calendar API
+GOOGLE_CLIENT_ID = config('GOOGLE_CLIENT_ID', default='')
+GOOGLE_CLIENT_SECRET = config('GOOGLE_CLIENT_SECRET', default='')
 
 
 ================================================
@@ -2548,6 +3190,10 @@ urlpatterns = [
     path('admin/', admin.site.urls),
     path('api/', include(router.urls)),
     path('api-auth/', include('rest_framework.urls')),
+
+    # âœ… Fixed: reports and appointments now under /api/ prefix
+    # so frontend calls http://localhost:8000/api/reports/upload/ correctly
+    path('api/', include('apps.reports.urls')),
 ]
 
 if settings.DEBUG:
@@ -4762,6 +5408,286 @@ FILE: frontend/src/components/Pricing/UpgradeModal.jsx
 
 
 ================================================
+FILE: frontend/src/components/Reports/ReportUploader.jsx
+================================================
+import React, { useState, useRef } from "react";
+import axios from "axios";
+
+export default function ReportUploader({ token }) {
+    const [file, setFile] = useState(null);
+    const [step, setStep] = useState("upload"); // upload | confirm | done | error
+    const [loading, setLoading] = useState(false);
+    const [extracted, setExtracted] = useState(null);
+    const [reportId, setReportId] = useState(null);
+    const [result, setResult] = useState(null);
+    const [errorMsg, setErrorMsg] = useState("");
+
+    const [editDate, setEditDate] = useState("");
+    const [editTime, setEditTime] = useState("");
+    const [editDoctor, setEditDoctor] = useState("");
+
+    const fileInputRef = useRef(null);
+    const authHeaders = { Authorization: `Bearer ${token}` };
+
+    const handleFileChange = (e) => {
+        const selected = e.target.files[0];
+        if (selected) setFile(selected);
+    };
+
+    const handleUpload = async () => {
+        if (!file) return;
+        setLoading(true);
+        setErrorMsg("");
+
+        const formData = new FormData();
+        formData.append("file", file);
+
+        try {
+            const res = await axios.post(
+                `${process.env.REACT_APP_API_URL}/reports/upload/`,
+                formData,
+                { headers: { ...authHeaders, "Content-Type": "multipart/form-data" } }
+            );
+
+            const { appointment, report_id } = res.data;
+            setExtracted(appointment);
+            setReportId(report_id);
+            setEditDate(appointment.date);
+            setEditTime(convertTo24(appointment.time));
+            setEditDoctor(appointment.doctor);
+            setStep("confirm");
+        } catch (err) {
+            setErrorMsg(err.response?.data?.error || "Something went wrong. Please try again.");
+            setStep("error");
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const handleConfirm = async () => {
+        setLoading(true);
+        setErrorMsg("");
+
+        try {
+            const parsed = new Date(`${editDate}T${editTime}`);
+            const datetimeIso = parsed.toISOString();
+
+            const res = await axios.post(
+                `${process.env.REACT_APP_API_URL}/reports/confirm/`,
+                { report_id: reportId, datetime_iso: datetimeIso, doctor: editDoctor },
+                { headers: authHeaders }
+            );
+            setResult(res.data);
+            setStep("done");
+        } catch (err) {
+            setErrorMsg(err.response?.data?.error || "Scheduling failed. Please try again.");
+            setStep("error");
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const reset = () => {
+        setStep("upload");
+        setFile(null);
+        setExtracted(null);
+        setErrorMsg("");
+        if (fileInputRef.current) fileInputRef.current.value = "";
+    };
+
+    return (
+        <div>
+            <h2 className="text-3xl font-extrabold dark:text-white mb-2">
+                📋 Upload Checkup Report
+            </h2>
+            <p className="text-gray-500 dark:text-slate-400 mb-8">
+                Upload your pregnancy checkup report and we'll automatically schedule your next appointment in Google Calendar.
+            </p>
+
+            {/* ── STEP 1: Upload ── */}
+            {step === "upload" && (
+                <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-md border border-gray-100 dark:border-slate-800 p-8 space-y-6">
+
+                    {/* File Picker Area */}
+                    <div>
+                        <p className="text-sm font-semibold text-gray-600 dark:text-slate-400 mb-3">
+                            Step 1 — Choose your report file
+                        </p>
+                        <div className="flex items-center gap-4">
+                            <button
+                                type="button"
+                                onClick={() => fileInputRef.current?.click()}
+                                className="px-5 py-3 bg-gray-100 dark:bg-slate-800 border-2 border-dashed border-pink-400 dark:border-pink-600 rounded-xl text-pink-600 dark:text-pink-400 font-semibold hover:bg-pink-50 dark:hover:bg-pink-900/10 transition-all flex items-center gap-2"
+                            >
+                                📁 Choose File
+                            </button>
+                            <span className="text-sm text-gray-500 dark:text-slate-400 truncate max-w-xs">
+                                {file ? file.name : "No file chosen"}
+                            </span>
+                        </div>
+                        <p className="text-xs text-gray-400 dark:text-slate-500 mt-2">
+                            Supports: PDF, PNG, JPG, JPEG
+                        </p>
+                        {/* Hidden file input */}
+                        <input
+                            ref={fileInputRef}
+                            type="file"
+                            accept=".pdf,.png,.jpg,.jpeg"
+                            className="hidden"
+                            onChange={handleFileChange}
+                        />
+                    </div>
+
+                    {/* Divider */}
+                    <div className="border-t border-gray-100 dark:border-slate-800" />
+
+                    {/* Extract Button */}
+                    <div>
+                        <p className="text-sm font-semibold text-gray-600 dark:text-slate-400 mb-3">
+                            Step 2 — Extract appointment from report
+                        </p>
+                        <button
+                            onClick={handleUpload}
+                            disabled={!file || loading}
+                            className="w-full py-4 bg-pink-600 hover:bg-pink-700 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-xl font-bold text-lg shadow-lg transition-all flex items-center justify-center gap-2"
+                        >
+                            {loading ? (
+                                <>
+                                    <span className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                                    Extracting appointment...
+                                </>
+                            ) : (
+                                "🔍 Extract & Analyse Report"
+                            )}
+                        </button>
+                        {!file && (
+                            <p className="text-xs text-center text-gray-400 dark:text-slate-500 mt-2">
+                                Please choose a file first
+                            </p>
+                        )}
+                    </div>
+                </div>
+            )}
+
+            {/* ── STEP 2: Confirm ── */}
+            {step === "confirm" && extracted && (
+                <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-md border border-gray-100 dark:border-slate-800 p-8">
+                    <div className="flex items-center gap-3 mb-6">
+                        <span className="text-4xl">✅</span>
+                        <div>
+                            <h3 className="text-xl font-bold dark:text-white">Appointment Detected!</h3>
+                            <p className="text-gray-500 dark:text-slate-400 text-sm">Confirm or edit before scheduling</p>
+                        </div>
+                    </div>
+
+                    <div className="space-y-4 mb-6">
+                        <div>
+                            <label className="block text-sm font-semibold text-gray-600 dark:text-slate-400 mb-1">📅 Date</label>
+                            <input
+                                type="date"
+                                value={editDate}
+                                onChange={(e) => setEditDate(e.target.value)}
+                                className="w-full px-4 py-3 border border-gray-200 dark:border-slate-700 rounded-xl bg-white dark:bg-slate-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-pink-400"
+                            />
+                        </div>
+                        <div>
+                            <label className="block text-sm font-semibold text-gray-600 dark:text-slate-400 mb-1">🕐 Time</label>
+                            <input
+                                type="time"
+                                value={editTime}
+                                onChange={(e) => setEditTime(e.target.value)}
+                                className="w-full px-4 py-3 border border-gray-200 dark:border-slate-700 rounded-xl bg-white dark:bg-slate-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-pink-400"
+                            />
+                        </div>
+                        <div>
+                            <label className="block text-sm font-semibold text-gray-600 dark:text-slate-400 mb-1">👨‍⚕️ Doctor (optional)</label>
+                            <input
+                                type="text"
+                                value={editDoctor}
+                                placeholder="e.g. Dr. Sharma"
+                                onChange={(e) => setEditDoctor(e.target.value)}
+                                className="w-full px-4 py-3 border border-gray-200 dark:border-slate-700 rounded-xl bg-white dark:bg-slate-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-pink-400"
+                            />
+                        </div>
+                    </div>
+
+                    <div className="flex gap-3">
+                        <button
+                            onClick={reset}
+                            className="flex-1 py-3 border border-gray-300 dark:border-slate-600 text-gray-600 dark:text-slate-300 rounded-xl font-semibold hover:bg-gray-50 dark:hover:bg-slate-800 transition-all"
+                        >
+                            ← Back
+                        </button>
+                        <button
+                            onClick={handleConfirm}
+                            disabled={loading}
+                            className="flex-1 py-3 bg-pink-600 hover:bg-pink-700 disabled:opacity-50 text-white rounded-xl font-bold shadow-lg transition-all flex items-center justify-center gap-2"
+                        >
+                            {loading ? (
+                                <>
+                                    <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                                    Scheduling...
+                                </>
+                            ) : (
+                                "📅 Schedule in Google Calendar"
+                            )}
+                        </button>
+                    </div>
+                </div>
+            )}
+
+            {/* ── STEP 3: Done ── */}
+            {step === "done" && result && (
+                <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-md border border-gray-100 dark:border-slate-800 p-8 text-center">
+                    <div className="text-6xl mb-4">🎉</div>
+                    <h3 className="text-2xl font-bold dark:text-white mb-2">Appointment Scheduled!</h3>
+                    <p className="text-gray-600 dark:text-slate-400 mb-2">{result.message}</p>
+                    <p className="text-sm text-gray-400 dark:text-slate-500 mb-8">
+                        You'll receive email reminders 1 day and 2 hours before your appointment.
+                    </p>
+                    <button
+                        onClick={reset}
+                        className="px-6 py-3 bg-pink-600 hover:bg-pink-700 text-white rounded-xl font-bold shadow-lg transition-all"
+                    >
+                        Upload Another Report
+                    </button>
+                </div>
+            )}
+
+            {/* ── Error ── */}
+            {step === "error" && (
+                <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-md border border-red-100 dark:border-red-900/50 p-8 text-center">
+                    <div className="text-5xl mb-4">❌</div>
+                    <h3 className="text-xl font-bold text-red-600 dark:text-red-400 mb-2">Something went wrong</h3>
+                    <p className="text-gray-600 dark:text-slate-400 mb-6">{errorMsg}</p>
+                    <button
+                        onClick={reset}
+                        className="px-6 py-3 bg-pink-600 hover:bg-pink-700 text-white rounded-xl font-bold shadow-lg transition-all"
+                    >
+                        Try Again
+                    </button>
+                </div>
+            )}
+        </div>
+    );
+}
+
+// Convert "11:00 AM" → "11:00" for <input type="time">
+function convertTo24(timeStr) {
+    if (!timeStr || timeStr.includes("default")) return "10:00";
+    try {
+        const [time, modifier] = timeStr.split(" ");
+        let [hours, minutes] = time.split(":");
+        if (modifier === "PM" && hours !== "12") hours = String(parseInt(hours) + 12);
+        if (modifier === "AM" && hours === "12") hours = "00";
+        return `${hours.padStart(2, "0")}:${minutes}`;
+    } catch {
+        return "10:00";
+    }
+}
+
+
+================================================
 FILE: frontend/src/components/Teen/AssessmentPrompt.jsx
 ================================================
 import React, { useState } from 'react';
@@ -5354,6 +6280,7 @@ import { useAuth } from '../context/AuthContext';
 import AssessmentView from '../components/Parent/AssessmentView';
 import ResultsDisplay from '../components/Assessment/ResultsDisplay';
 import Loading from '../components/Common/Loading';
+import ReportUploader from '../components/Reports/ReportUploader';
 
 function PregnancyDashboard() {
     const { token, user } = useAuth();
@@ -5362,6 +6289,7 @@ function PregnancyDashboard() {
     const [loading, setLoading] = useState(true);
     const [takingAssessment, setTakingAssessment] = useState(false);
     const [showResult, setShowResult] = useState(false);
+    const [showReportUploader, setShowReportUploader] = useState(false);
 
     useEffect(() => {
         fetchPregnancyChild();
@@ -5416,6 +6344,7 @@ function PregnancyDashboard() {
     const handleBackToDashboard = () => {
         setTakingAssessment(false);
         setShowResult(false);
+        setShowReportUploader(false);
     };
 
     if (loading) return <Loading />;
@@ -5464,23 +6393,49 @@ function PregnancyDashboard() {
         );
     }
 
+    // ── Report Uploader View ──
+    if (showReportUploader) {
+        return (
+            <div className="max-w-4xl mx-auto px-4 py-8">
+                <button
+                    onClick={handleBackToDashboard}
+                    className="mb-6 text-green-600 dark:text-green-400 hover:underline flex items-center gap-2"
+                >
+                    ← Back to Dashboard
+                </button>
+                <ReportUploader token={token} />
+            </div>
+        );
+    }
+
     const latestResult = pregnancyResults.length > 0 ? pregnancyResults[0] : null;
 
     return (
         <div className="max-w-7xl mx-auto px-4 py-8">
-            {/* Header — no "Add New Child" button for pregnancy users */}
+
+            {/* Header */}
             <div className="flex justify-between items-center mb-8">
                 <h1 className="text-4xl font-extrabold dark:text-white tracking-tight">
                     Pregnancy <span className="dark:text-green-500">Journey</span>
                 </h1>
-                <button
-                    onClick={() => setTakingAssessment(true)}
-                    className="px-6 py-3 bg-green-600 text-white rounded-xl hover:bg-green-700 dark:bg-emerald-600 dark:hover:bg-emerald-700 shadow-lg flex items-center gap-2 font-bold transition-all"
-                >
-                    📝 Take Pregnancy Assessment
-                </button>
+                <div className="flex items-center gap-3">
+                    {/* ── NEW: Upload Report Button ── */}
+                    <button
+                        onClick={() => setShowReportUploader(true)}
+                        className="px-5 py-3 bg-pink-600 text-white rounded-xl hover:bg-pink-700 shadow-lg flex items-center gap-2 font-bold transition-all"
+                    >
+                        📋 Upload Report
+                    </button>
+                    <button
+                        onClick={() => setTakingAssessment(true)}
+                        className="px-6 py-3 bg-green-600 text-white rounded-xl hover:bg-green-700 dark:bg-emerald-600 dark:hover:bg-emerald-700 shadow-lg flex items-center gap-2 font-bold transition-all"
+                    >
+                        📝 Take Pregnancy Assessment
+                    </button>
+                </div>
             </div>
 
+            {/* Welcome Banner */}
             <div className="mb-8 p-6 bg-green-50 dark:bg-green-900/20 rounded-xl border-l-4 border-green-600 dark:border-green-500 shadow-sm">
                 <h2 className="text-2xl font-bold text-green-800 dark:text-green-400 mb-2 flex items-center gap-2">
                     <span className="text-3xl">🤰</span> Hello, {user.first_name || 'Parent'}!
@@ -5493,6 +6448,28 @@ function PregnancyDashboard() {
                 </div>
             </div>
 
+            {/* ── NEW: Upload Report Card ── */}
+            <div className="mb-8 p-6 bg-pink-50 dark:bg-pink-900/20 rounded-xl border border-pink-200 dark:border-pink-800/50 flex items-center justify-between gap-4">
+                <div className="flex items-center gap-4">
+                    <span className="text-4xl">📁</span>
+                    <div>
+                        <h3 className="text-lg font-bold text-pink-800 dark:text-pink-300">
+                            Auto-Schedule Your Next Appointment
+                        </h3>
+                        <p className="text-sm text-pink-700 dark:text-pink-400">
+                            Upload your checkup report — we'll extract your next appointment date and add it to Google Calendar automatically.
+                        </p>
+                    </div>
+                </div>
+                <button
+                    onClick={() => setShowReportUploader(true)}
+                    className="shrink-0 px-5 py-3 bg-pink-600 text-white rounded-xl hover:bg-pink-700 font-bold shadow-md transition-all"
+                >
+                    Upload Report →
+                </button>
+            </div>
+
+            {/* Assessment Results */}
             {latestResult ? (
                 <div className="mb-10">
                     <h2 className="text-2xl font-bold mb-6 dark:text-white">Your Latest Pregnancy Assessment</h2>
@@ -5903,6 +6880,12 @@ export const login = (email, password) => {
 export const getMe = () => {
     return api.get('/users/me/');
 };
+
+
+================================================
+FILE: frontend/src/services/reportService.js
+================================================
+
 
 
 ================================================

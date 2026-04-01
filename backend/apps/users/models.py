@@ -14,6 +14,10 @@ class CustomUser(AbstractUser):
     is_expecting = models.BooleanField(default=False)  # True for pregnancy/expecting parents
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
+
+    # ✅ Google OAuth tokens — required for Google Calendar integration
+    google_access_token = models.TextField(blank=True, null=True)
+    google_refresh_token = models.TextField(blank=True, null=True)
     
     class Meta:
         ordering = ['-created_at']
