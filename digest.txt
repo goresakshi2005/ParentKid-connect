@@ -89,6 +89,7 @@ Directory structure:
     │   │       └── migrations/
     │   │           ├── 0001_initial.py
     │   │           ├── 0002_customuser_is_expecting.py
+    │   │           ├── 0003_customuser_google_tokens.py
     │   │           └── __init__.py
     │   └── config/
     │       ├── __init__.py
@@ -147,6 +148,7 @@ Directory structure:
             │   ├── SubscriptionContext.jsx
             │   └── ThemeContext.jsx
             ├── pages/
+            │   ├── GoogleCallback.jsx
             │   ├── HomePage.jsx
             │   ├── NotFound.jsx
             │   ├── ParentDashboard.jsx
@@ -211,8 +213,6 @@ razorpay>=1.5.0
 google-generativeai>=0.3.0
 Pillow>=10.0.0
 
-# Add these to your existing requirements.txt
-
 # PDF text extraction
 PyMuPDF==1.24.5
 
@@ -230,6 +230,9 @@ google-auth-oauthlib==1.2.1
 
 # Django REST Framework (if not already installed)
 djangorestframework==3.15.2
+
+# âœ… NEW: Required for Google OAuth token exchange in users/views.py
+requests>=2.31.0
 
 
 ================================================
@@ -2695,6 +2698,10 @@ class CustomUser(AbstractUser):
     is_expecting = models.BooleanField(default=False)  # True for pregnancy/expecting parents
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
+
+    # âœ… Google OAuth tokens â€” required for Google Calendar integration
+    google_access_token = models.TextField(blank=True, null=True)
+    google_refresh_token = models.TextField(blank=True, null=True)
     
     class Meta:
         ordering = ['-created_at']
@@ -2768,12 +2775,15 @@ FILE: backend/apps/users/views.py
 from rest_framework import viewsets, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
-from rest_framework.permissions import AllowAny
+from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework_simplejwt.tokens import RefreshToken
 from django.contrib.auth import authenticate
+from django.conf import settings
 from .models import CustomUser, ParentTeenLink
 from .serializers import UserSerializer, UserDetailSerializer
 import secrets
+import requests as http_requests
+from urllib.parse import urlencode
 
 class UserViewSet(viewsets.ViewSet):
     permission_classes = [AllowAny]
@@ -2879,7 +2889,80 @@ class UserViewSet(viewsets.ViewSet):
                           status=status.HTTP_401_UNAUTHORIZED)
         
         return Response(UserDetailSerializer(request.user).data)
-    
+
+    # âœ… NEW: Returns Google OAuth URL for the frontend to redirect to
+    @action(detail=False, methods=['get'], permission_classes=[IsAuthenticated])
+    def google_oauth_url(self, request):
+        """Returns the Google OAuth2 authorization URL."""
+        params = {
+            "client_id": settings.GOOGLE_CLIENT_ID,
+            "redirect_uri": settings.GOOGLE_REDIRECT_URI,
+            "response_type": "code",
+            "scope": (
+                "https://www.googleapis.com/auth/calendar.events "
+                "openid email profile"
+            ),
+            "access_type": "offline",
+            "prompt": "consent",
+        }
+        url = "https://accounts.google.com/o/oauth2/v2/auth?" + urlencode(params)
+        return Response({"url": url})
+
+    # âœ… NEW: Exchanges the Google auth code for tokens and saves them on the user
+    @action(detail=False, methods=['post'], permission_classes=[IsAuthenticated])
+    def google_oauth_callback(self, request):
+        """Exchange auth code for tokens and store on user."""
+        code = request.data.get("code")
+        if not code:
+            return Response({"error": "No authorization code provided."}, status=400)
+
+        token_response = http_requests.post(
+            "https://oauth2.googleapis.com/token",
+            data={
+                "code": code,
+                "client_id": settings.GOOGLE_CLIENT_ID,
+                "client_secret": settings.GOOGLE_CLIENT_SECRET,
+                "redirect_uri": settings.GOOGLE_REDIRECT_URI,
+                "grant_type": "authorization_code",
+            }
+        )
+
+        tokens = token_response.json()
+
+        if "error" in tokens:
+            return Response(
+                {"error": f"Google token exchange failed: {tokens['error']}"},
+                status=400
+            )
+
+        access_token = tokens.get("access_token")
+        refresh_token = tokens.get("refresh_token")
+
+        if not access_token:
+            return Response({"error": "No access token returned by Google."}, status=400)
+
+        # Save tokens on the user
+        request.user.google_access_token = access_token
+        if refresh_token:
+            # refresh_token is only returned on first authorization or after consent
+            request.user.google_refresh_token = refresh_token
+        request.user.save()
+
+        return Response({
+            "message": "Google Calendar connected successfully!",
+            "has_refresh_token": bool(refresh_token),
+        })
+
+    # âœ… NEW: Let frontend check whether this user has Google Calendar connected
+    @action(detail=False, methods=['get'], permission_classes=[IsAuthenticated])
+    def google_status(self, request):
+        """Returns whether the user has connected Google Calendar."""
+        has_token = bool(
+            getattr(request.user, 'google_access_token', None) and
+            getattr(request.user, 'google_refresh_token', None)
+        )
+        return Response({"connected": has_token})
+
     @action(detail=False, methods=['post'])
     def generate_invite_code(self, request):
         if request.user.role != 'parent':
@@ -3015,6 +3098,32 @@ class Migration(migrations.Migration):
             model_name='customuser',
             name='is_expecting',
             field=models.BooleanField(default=False),
+        ),
+    ]
+
+
+================================================
+FILE: backend/apps/users/migrations/0003_customuser_google_tokens.py
+================================================
+from django.db import migrations, models
+
+
+class Migration(migrations.Migration):
+
+    dependencies = [
+        ('users', '0002_customuser_is_expecting'),
+    ]
+
+    operations = [
+        migrations.AddField(
+            model_name='customuser',
+            name='google_access_token',
+            field=models.TextField(blank=True, null=True),
+        ),
+        migrations.AddField(
+            model_name='customuser',
+            name='google_refresh_token',
+            field=models.TextField(blank=True, null=True),
         ),
     ]
 
@@ -3165,6 +3274,8 @@ RAZORPAY_KEY_SECRET = config('RAZORPAY_KEY_SECRET', default='')
 # âœ… Google OAuth credentials for Calendar API
 GOOGLE_CLIENT_ID = config('GOOGLE_CLIENT_ID', default='')
 GOOGLE_CLIENT_SECRET = config('GOOGLE_CLIENT_SECRET', default='')
+# âœ… NEW: The frontend URL that Google will redirect back to after OAuth
+GOOGLE_REDIRECT_URI = config('GOOGLE_REDIRECT_URI', default='http://localhost:3000/google-callback')
 
 
 ================================================
@@ -3349,6 +3460,7 @@ import SignupTeen from './components/Auth/SignupTeen';
 import AuthGuard from './components/Auth/AuthGuard';
 import NotFound from './pages/NotFound';
 import ParentRouter from './components/ParentRouter';
+import GoogleCallback from './pages/GoogleCallback'; // âœ… NEW
 import { useAuth } from './context/AuthContext';
 
 function App() {
@@ -3370,6 +3482,9 @@ function App() {
           <Route path="/signup/expecting" element={<SignupExpecting />} />
           <Route path="/login/teen" element={<LoginTeen />} />
           <Route path="/signup/teen" element={<SignupTeen />} />
+
+          {/* âœ… NEW: Google OAuth callback â€” handles redirect from Google after OAuth */}
+          <Route path="/google-callback" element={<GoogleCallback />} />
 
           {/* Regular parent dashboard */}
           <Route
@@ -5410,9 +5525,17 @@ FILE: frontend/src/components/Pricing/UpgradeModal.jsx
 ================================================
 FILE: frontend/src/components/Reports/ReportUploader.jsx
 ================================================
-import React, { useState, useRef } from "react";
+import React, { useState, useRef, useEffect } from "react";
 import axios from "axios";
 
+/**
+ * ReportUploader.jsx
+ *
+ * Changes from original:
+ * - Added Google Calendar connection status check on mount
+ * - Added "Connect Google Calendar" banner when user has not connected
+ * - Shows calendar icon in "done" step indicating whether event was added to calendar
+ */
 export default function ReportUploader({ token }) {
     const [file, setFile] = useState(null);
     const [step, setStep] = useState("upload"); // upload | confirm | done | error
@@ -5426,8 +5549,45 @@ export default function ReportUploader({ token }) {
     const [editTime, setEditTime] = useState("");
     const [editDoctor, setEditDoctor] = useState("");
 
+    // ✅ NEW: Google Calendar connection state
+    const [googleConnected, setGoogleConnected] = useState(null); // null = loading, true/false
+    const [connectingGoogle, setConnectingGoogle] = useState(false);
+
     const fileInputRef = useRef(null);
     const authHeaders = { Authorization: `Bearer ${token}` };
+
+    // ✅ NEW: Check if user has connected Google Calendar on mount
+    useEffect(() => {
+        checkGoogleStatus();
+    }, [token]);
+
+    const checkGoogleStatus = async () => {
+        try {
+            const res = await axios.get(
+                `${process.env.REACT_APP_API_URL}/users/google_status/`,
+                { headers: authHeaders }
+            );
+            setGoogleConnected(res.data.connected);
+        } catch {
+            setGoogleConnected(false);
+        }
+    };
+
+    // ✅ NEW: Redirect user to Google OAuth
+    const handleConnectGoogle = async () => {
+        setConnectingGoogle(true);
+        try {
+            const res = await axios.get(
+                `${process.env.REACT_APP_API_URL}/users/google_oauth_url/`,
+                { headers: authHeaders }
+            );
+            // Redirect to Google consent screen
+            window.location.href = res.data.url;
+        } catch {
+            alert("Could not start Google connection. Please try again.");
+            setConnectingGoogle(false);
+        }
+    };
 
     const handleFileChange = (e) => {
         const selected = e.target.files[0];
@@ -5479,6 +5639,8 @@ export default function ReportUploader({ token }) {
             );
             setResult(res.data);
             setStep("done");
+            // Refresh google status after scheduling
+            checkGoogleStatus();
         } catch (err) {
             setErrorMsg(err.response?.data?.error || "Scheduling failed. Please try again.");
             setStep("error");
@@ -5500,9 +5662,49 @@ export default function ReportUploader({ token }) {
             <h2 className="text-3xl font-extrabold dark:text-white mb-2">
                 📋 Upload Checkup Report
             </h2>
-            <p className="text-gray-500 dark:text-slate-400 mb-8">
+            <p className="text-gray-500 dark:text-slate-400 mb-6">
                 Upload your pregnancy checkup report and we'll automatically schedule your next appointment in Google Calendar.
             </p>
+
+            {/* ✅ NEW: Google Calendar connection banner */}
+            {googleConnected === false && (
+                <div className="mb-6 p-4 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-300 dark:border-yellow-700 rounded-xl flex items-center justify-between gap-4">
+                    <div className="flex items-center gap-3">
+                        <span className="text-2xl">📅</span>
+                        <div>
+                            <p className="font-semibold text-yellow-800 dark:text-yellow-300 text-sm">
+                                Google Calendar not connected
+                            </p>
+                            <p className="text-yellow-700 dark:text-yellow-400 text-xs">
+                                Connect your Google account so appointments are added to your calendar automatically.
+                            </p>
+                        </div>
+                    </div>
+                    <button
+                        onClick={handleConnectGoogle}
+                        disabled={connectingGoogle}
+                        className="shrink-0 px-4 py-2 bg-yellow-500 hover:bg-yellow-600 disabled:opacity-60 text-white text-sm font-bold rounded-xl transition-all flex items-center gap-2"
+                    >
+                        {connectingGoogle ? (
+                            <>
+                                <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                                Connecting...
+                            </>
+                        ) : (
+                            "Connect Google Calendar"
+                        )}
+                    </button>
+                </div>
+            )}
+
+            {googleConnected === true && (
+                <div className="mb-6 p-3 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-xl flex items-center gap-3">
+                    <span className="text-xl">✅</span>
+                    <p className="text-green-700 dark:text-green-400 text-sm font-medium">
+                        Google Calendar connected — appointments will be added automatically.
+                    </p>
+                </div>
+            )}
 
             {/* ── STEP 1: Upload ── */}
             {step === "upload" && (
@@ -5611,6 +5813,19 @@ export default function ReportUploader({ token }) {
                         </div>
                     </div>
 
+                    {/* ✅ NEW: warn if calendar not connected */}
+                    {googleConnected === false && (
+                        <div className="mb-4 p-3 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg text-sm text-yellow-700 dark:text-yellow-400">
+                            ⚠️ Google Calendar not connected — appointment will be saved in the app but <strong>not</strong> added to Google Calendar.{" "}
+                            <button
+                                onClick={handleConnectGoogle}
+                                className="underline font-semibold hover:no-underline"
+                            >
+                                Connect now
+                            </button>
+                        </div>
+                    )}
+
                     <div className="flex gap-3">
                         <button
                             onClick={reset}
@@ -5629,7 +5844,7 @@ export default function ReportUploader({ token }) {
                                     Scheduling...
                                 </>
                             ) : (
-                                "📅 Schedule in Google Calendar"
+                                "📅 Schedule Appointment"
                             )}
                         </button>
                     </div>
@@ -5642,6 +5857,25 @@ export default function ReportUploader({ token }) {
                     <div className="text-6xl mb-4">🎉</div>
                     <h3 className="text-2xl font-bold dark:text-white mb-2">Appointment Scheduled!</h3>
                     <p className="text-gray-600 dark:text-slate-400 mb-2">{result.message}</p>
+
+                    {/* ✅ NEW: show clearly whether Google Calendar was updated */}
+                    {result.google_event_id ? (
+                        <p className="text-sm text-green-600 dark:text-green-400 font-medium mb-4">
+                            ✅ Added to Google Calendar
+                        </p>
+                    ) : (
+                        <div className="mb-4 p-3 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg text-sm text-yellow-700 dark:text-yellow-400">
+                            ⚠️ Saved in app, but <strong>not added to Google Calendar</strong> because your account isn't connected.{" "}
+                            <button
+                                onClick={handleConnectGoogle}
+                                className="underline font-semibold hover:no-underline"
+                            >
+                                Connect Google Calendar
+                            </button>
+                            {" "}to enable this for future uploads.
+                        </div>
+                    )}
+
                     <p className="text-sm text-gray-400 dark:text-slate-500 mb-8">
                         You'll receive email reminders 1 day and 2 hours before your appointment.
                     </p>
@@ -5987,6 +6221,125 @@ export const useTheme = () => {
   return context;
 };
 
+
+
+================================================
+FILE: frontend/src/pages/GoogleCallback.jsx
+================================================
+import React, { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
+import axios from 'axios';
+import { useAuth } from '../context/AuthContext';
+
+/**
+ * GoogleCallback.jsx
+ *
+ * This page handles the redirect from Google OAuth.
+ * Google sends the user here with ?code=... in the URL.
+ * We extract the code, send it to our backend to exchange for tokens,
+ * and then redirect back to the pregnancy dashboard.
+ *
+ * Route: /google-callback  (add this to App.js)
+ */
+function GoogleCallback() {
+    const { token } = useAuth();
+    const navigate = useNavigate();
+    const [status, setStatus] = useState('connecting'); // connecting | success | error
+    const [errorMsg, setErrorMsg] = useState('');
+
+    useEffect(() => {
+        const params = new URLSearchParams(window.location.search);
+        const code = params.get('code');
+        const error = params.get('error');
+
+        if (error) {
+            setStatus('error');
+            setErrorMsg('Google authorization was denied or cancelled.');
+            return;
+        }
+
+        if (!code) {
+            setStatus('error');
+            setErrorMsg('No authorization code received from Google.');
+            return;
+        }
+
+        if (!token) {
+            // Not logged in — redirect to login
+            navigate('/login/parent');
+            return;
+        }
+
+        // Exchange the code for tokens via our backend
+        axios
+            .post(
+                `${process.env.REACT_APP_API_URL}/users/google_oauth_callback/`,
+                { code },
+                { headers: { Authorization: `Bearer ${token}` } }
+            )
+            .then(() => {
+                setStatus('success');
+                // Redirect to pregnancy dashboard after a short delay
+                setTimeout(() => navigate('/dashboard/pregnancy'), 1500);
+            })
+            .catch((err) => {
+                setStatus('error');
+                setErrorMsg(
+                    err.response?.data?.error ||
+                    'Failed to connect Google Calendar. Please try again.'
+                );
+            });
+    }, [token, navigate]);
+
+    return (
+        <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-slate-950">
+            <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-xl p-10 max-w-md w-full text-center border dark:border-slate-800">
+
+                {status === 'connecting' && (
+                    <>
+                        <div className="w-14 h-14 border-4 border-pink-600 border-t-transparent rounded-full animate-spin mx-auto mb-6" />
+                        <h2 className="text-xl font-bold dark:text-white mb-2">Connecting Google Calendar...</h2>
+                        <p className="text-gray-500 dark:text-slate-400 text-sm">
+                            Please wait while we link your Google account.
+                        </p>
+                    </>
+                )}
+
+                {status === 'success' && (
+                    <>
+                        <div className="text-6xl mb-4">🎉</div>
+                        <h2 className="text-xl font-bold text-green-600 dark:text-green-400 mb-2">
+                            Google Calendar Connected!
+                        </h2>
+                        <p className="text-gray-500 dark:text-slate-400 text-sm">
+                            Your appointments will now appear in Google Calendar.
+                            Redirecting you back...
+                        </p>
+                    </>
+                )}
+
+                {status === 'error' && (
+                    <>
+                        <div className="text-6xl mb-4">❌</div>
+                        <h2 className="text-xl font-bold text-red-600 dark:text-red-400 mb-2">
+                            Connection Failed
+                        </h2>
+                        <p className="text-gray-500 dark:text-slate-400 text-sm mb-6">{errorMsg}</p>
+                        <button
+                            onClick={() => navigate('/dashboard/pregnancy')}
+                            className="px-6 py-3 bg-pink-600 hover:bg-pink-700 text-white rounded-xl font-bold shadow-md transition-all"
+                        >
+                            Back to Dashboard
+                        </button>
+                    </>
+                )}
+
+            </div>
+        </div>
+    );
+}
+
+export default GoogleCallback;
 
 
 ================================================

@@ -77,6 +77,10 @@ def confirm_and_schedule(
     """
     After user confirms, save the appointment to DB.
     Google Calendar scheduling is optional — only runs if user has connected Google account.
+
+    ✅ FIX: build_calendar_service() now returns (service, new_access_token).
+    We unpack that tuple and persist the refreshed access token back to the DB
+    so future uploads don't silently fail with a stale token.
     """
     user = report.user
     dt = datetime.fromisoformat(datetime_iso)
@@ -91,7 +95,15 @@ def confirm_and_schedule(
 
             # Only proceed if Google credentials are configured
             if getattr(settings, 'GOOGLE_CLIENT_ID', '') and getattr(settings, 'GOOGLE_CLIENT_SECRET', ''):
-                service = build_calendar_service(access_token, refresh_token)
+
+                # ✅ FIX: unpack (service, refreshed_access_token)
+                service, new_access_token = build_calendar_service(access_token, refresh_token)
+
+                # ✅ FIX: persist the refreshed token so the next upload also works
+                if new_access_token and new_access_token != access_token:
+                    user.google_access_token = new_access_token
+                    user.save(update_fields=["google_access_token"])
+
                 google_event_id = create_appointment_event(
                     service=service,
                     appointment_datetime=dt,
