@@ -1,4 +1,6 @@
 // frontend/src/pages/ParentDashboard.jsx
+// This dashboard is ONLY for regular (non-expecting) parents.
+// Expecting/pregnancy parents are routed to /dashboard/pregnancy directly.
 
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
@@ -8,13 +10,14 @@ import ChildManagement from '../components/Parent/ChildManagement';
 import AssessmentView from '../components/Parent/AssessmentView';
 import ChildSelfAssessment from '../components/Child/ChildSelfAssessment';
 import ResultsDisplay from '../components/Assessment/ResultsDisplay';
+import Loading from '../components/Common/Loading';
 
 function ParentDashboard() {
-    const { token, user } = useAuth();
+    const { token } = useAuth();
     const [children, setChildren] = useState([]);
     const [loading, setLoading] = useState(true);
     const [takingParentAssessment, setTakingParentAssessment] = useState(false);
-    const [takingChildSelfAssessment, setTakingChildSelfAssessment] = useState(null); // childId
+    const [takingChildSelfAssessment, setTakingChildSelfAssessment] = useState(null);
     const [parentResult, setParentResult] = useState(null);
     const [showParentResult, setShowParentResult] = useState(false);
 
@@ -54,18 +57,9 @@ function ParentDashboard() {
         }
     };
 
-    const handleTakeChildSelfAssessment = (childId) => {
-        setTakingChildSelfAssessment(childId);
-    };
-
-    const handleChildAssessmentComplete = (resultData) => {
-        // Optionally refresh children data
-        fetchChildren();
-    };
-
-    const handleCloseChildAssessment = () => {
-        setTakingChildSelfAssessment(null);
-    };
+    const handleTakeChildSelfAssessment = (childId) => setTakingChildSelfAssessment(childId);
+    const handleChildAssessmentComplete = () => fetchChildren();
+    const handleCloseChildAssessment = () => setTakingChildSelfAssessment(null);
 
     const handleParentAssessmentComplete = (resultData) => {
         setParentResult(resultData);
@@ -78,42 +72,40 @@ function ParentDashboard() {
         setTakingParentAssessment(true);
     };
 
-    if (loading) {
-        return <div className="flex justify-center items-center h-64">Loading...</div>;
+    if (loading) return <Loading />;
+
+    if (takingParentAssessment) {
+        return (
+            <div className="max-w-4xl mx-auto px-4 py-8">
+                <button onClick={() => setTakingParentAssessment(false)} className="mb-6 text-blue-600 dark:text-pink-400 hover:underline flex items-center gap-2">
+                    ← Back to Dashboard
+                </button>
+                <AssessmentView assessmentType="parent" onComplete={handleParentAssessmentComplete} />
+            </div>
+        );
     }
 
-    // If taking child self‑assessment
+    if (showParentResult && parentResult) {
+        return (
+            <div className="max-w-4xl mx-auto px-4 py-8">
+                <button onClick={() => setShowParentResult(false)} className="mb-6 text-blue-600 dark:text-pink-400 hover:underline flex items-center gap-2">
+                    ← Back to Dashboard
+                </button>
+                <ResultsDisplay result={parentResult} onRetake={handleRetakeParent} />
+            </div>
+        );
+    }
+
     if (takingChildSelfAssessment) {
         return (
             <div className="max-w-4xl mx-auto px-4 py-8">
-                <button
-                    onClick={handleCloseChildAssessment}
-                    className="mb-6 text-blue-600 dark:text-pink-400 hover:underline flex items-center gap-2"
-                >
+                <button onClick={handleCloseChildAssessment} className="mb-6 text-blue-600 dark:text-pink-400 hover:underline flex items-center gap-2">
                     ← Back to Dashboard
                 </button>
                 <ChildSelfAssessment
                     childId={takingChildSelfAssessment}
                     onComplete={handleChildAssessmentComplete}
                     onClose={handleCloseChildAssessment}
-                />
-            </div>
-        );
-    }
-
-    // If taking parent assessment
-    if (takingParentAssessment) {
-        return (
-            <div className="max-w-4xl mx-auto px-4 py-8">
-                <button
-                    onClick={() => setTakingParentAssessment(false)}
-                    className="mb-6 text-blue-600 dark:text-pink-400 hover:underline flex items-center gap-2"
-                >
-                    ← Back to Dashboard
-                </button>
-                <AssessmentView
-                    assessmentType="parent"
-                    onComplete={handleParentAssessmentComplete}
                 />
             </div>
         );
@@ -128,7 +120,7 @@ function ParentDashboard() {
                 <ChildManagement onRefresh={fetchChildren} children={children} />
             </div>
 
-            {/* Parent Assessment Section (unchanged) */}
+            {/* Parent Assessment Section */}
             <div className="mb-10">
                 {parentResult && !showParentResult ? (
                     <div className="bg-green-50 dark:bg-green-900/20 p-6 rounded-xl border border-green-200 dark:border-green-800">
@@ -139,16 +131,10 @@ function ParentDashboard() {
                                 <p className="text-sm text-gray-600 dark:text-gray-400">Completed on {new Date(parentResult.created_at).toLocaleDateString()}</p>
                             </div>
                             <div className="flex gap-3">
-                                <button
-                                    onClick={() => setShowParentResult(true)}
-                                    className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700"
-                                >
+                                <button onClick={() => setShowParentResult(true)} className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700">
                                     View Full Results
                                 </button>
-                                <button
-                                    onClick={() => setTakingParentAssessment(true)}
-                                    className="px-4 py-2 border border-blue-600 text-blue-600 rounded-lg hover:bg-blue-50 dark:border-pink-500 dark:text-pink-400"
-                                >
+                                <button onClick={() => setTakingParentAssessment(true)} className="px-4 py-2 border border-blue-600 text-blue-600 rounded-lg hover:bg-blue-50 dark:border-pink-500 dark:text-pink-400">
                                     Retake Assessment
                                 </button>
                             </div>
@@ -183,11 +169,7 @@ function ParentDashboard() {
             ) : (
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                     {children.map((child) => (
-                        <ChildCard
-                            key={child.id}
-                            child={child}
-                            onTakeAssessment={handleTakeChildSelfAssessment}
-                        />
+                        <ChildCard key={child.id} child={child} onTakeAssessment={handleTakeChildSelfAssessment} />
                     ))}
                 </div>
             )}

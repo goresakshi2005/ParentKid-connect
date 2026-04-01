@@ -19,22 +19,23 @@ class UserViewSet(viewsets.ViewSet):
         last_name = request.data.get('last_name', '')
         role = request.data.get('role', 'parent')
         invite_code = request.data.get('invite_code')
-        
+        expecting = request.data.get('expecting', False)
+
         if CustomUser.objects.filter(email=email).exists():
             return Response({'error': 'Email already exists'}, 
                           status=status.HTTP_400_BAD_REQUEST)
-        
-        # Verify invite code for teens before account creation
+
+        # Verify invite code for teens
         child_profile = None
         if role == 'teen':
             if not invite_code:
                 return Response({'error': 'Invite code is required for Teen signup'}, status=400)
-            
             from apps.children.models import Child
             child_profile = Child.objects.filter(invite_code=invite_code, stage='teen_age').first()
             if not child_profile:
                 return Response({'error': 'Invalid invite code. Ask your parent for the code.'}, status=400)
 
+        # Create user with standard fields only
         user = CustomUser.objects.create_user(
             email=email,
             password=password,
@@ -43,8 +44,13 @@ class UserViewSet(viewsets.ViewSet):
             role=role,
             username=email,
         )
-        
-        # If Teen, link to parent immediately
+
+        # Set is_expecting separately to avoid create_user() kwarg rejection
+        if role == 'parent' and expecting:
+            user.is_expecting = True
+            user.save()
+
+        # If Teen, link to parent
         if role == 'teen' and child_profile:
             ParentTeenLink.objects.create(
                 parent=child_profile.parent,
@@ -60,9 +66,20 @@ class UserViewSet(viewsets.ViewSet):
                 Subscription.objects.create(user=user, plan=free_plan)
             except SubscriptionPlan.DoesNotExist:
                 pass
-        
+
+        # If expecting parent, create a pregnancy child
+        if role == 'parent' and expecting:
+            from apps.children.models import Child
+            from datetime import date
+            Child.objects.create(
+                parent=user,
+                name='Pregnancy Journey',
+                date_of_birth=date.today(),
+                stage='pregnancy'
+            )
+
         refresh = RefreshToken.for_user(user)
-        
+
         return Response({
             'user': UserDetailSerializer(user).data,
             'access': str(refresh.access_token),

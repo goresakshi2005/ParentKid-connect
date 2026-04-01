@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import axios from 'axios';
 import { useAuth } from '../../context/AuthContext';
-import { FiPlus, FiEdit, FiTrash2, FiUser, FiX } from 'react-icons/fi';
+import { FiPlus, FiEdit, FiTrash2, FiX } from 'react-icons/fi';
 
 function ChildManagement({ onRefresh, children }) {
     const { token } = useAuth();
@@ -16,7 +16,6 @@ function ChildManagement({ onRefresh, children }) {
         try {
             let savedChild = null;
             if (editingId) {
-                // For editing, we only send name and date_of_birth
                 const res = await axios.put(
                     `${process.env.REACT_APP_API_URL}/children/${editingId}/`,
                     { name: formData.name, date_of_birth: formData.date_of_birth },
@@ -24,7 +23,6 @@ function ChildManagement({ onRefresh, children }) {
                 );
                 savedChild = res.data;
             } else {
-                // For new child, only send name and date_of_birth
                 const res = await axios.post(
                     `${process.env.REACT_APP_API_URL}/children/`,
                     { name: formData.name, date_of_birth: formData.date_of_birth },
@@ -66,20 +64,19 @@ function ChildManagement({ onRefresh, children }) {
         setShowModal(true);
     };
 
-    // Helper to format the stage label for display in the edit modal
     const getStageLabel = (stage) => {
         const stages = {
             pregnancy: 'Pregnancy',
             early_childhood: 'Early Childhood (0-5)',
             growing_stage: 'Growing (6-12)',
-            teen_age: 'Teen (13-21)'   // updated range
+            teen_age: 'Teen (13-21)',
         };
         return stages[stage] || stage;
     };
 
     return (
         <>
-            {/* Add Child Button */}
+            {/* Add New Child button — only shown in ParentDashboard for regular parents */}
             <button
                 onClick={() => { setShowModal(true); setEditingId(null); setFormData({ name: '', date_of_birth: '' }); }}
                 className="mb-6 px-6 py-3 bg-blue-600 text-white rounded-xl hover:bg-blue-700 dark:bg-pink-600 dark:hover:bg-pink-700 shadow-lg flex items-center gap-2 font-bold transition-all"
@@ -91,10 +88,7 @@ function ChildManagement({ onRefresh, children }) {
             {showModal && (
                 <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
                     <div className="bg-white dark:bg-slate-900 p-8 rounded-2xl w-full max-w-md shadow-2xl border border-gray-100 dark:border-slate-800 relative">
-                        <button
-                            onClick={() => setShowModal(false)}
-                            className="absolute top-4 right-4 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-white"
-                        >
+                        <button onClick={() => setShowModal(false)} className="absolute top-4 right-4 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-white">
                             <FiX size={24} />
                         </button>
                         <h3 className="text-2xl font-bold mb-6 dark:text-white">{editingId ? 'Edit Child' : 'Add Child'}</h3>
@@ -121,16 +115,13 @@ function ChildManagement({ onRefresh, children }) {
                                 />
                             </div>
 
-                            {/* Stage is now read-only and displayed only when editing */}
                             {editingId && (
                                 <div>
                                     <label className="block text-sm font-semibold mb-2 dark:text-slate-300">Stage (auto-calculated)</label>
                                     <div className="px-4 py-2.5 bg-gray-100 dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-xl text-gray-700 dark:text-slate-300">
                                         {getStageLabel(children.find(c => c.id === editingId)?.stage)}
                                     </div>
-                                    <p className="text-xs text-gray-500 dark:text-slate-400 mt-1">
-                                        Based on date of birth
-                                    </p>
+                                    <p className="text-xs text-gray-500 dark:text-slate-400 mt-1">Based on date of birth</p>
                                 </div>
                             )}
 
@@ -142,12 +133,8 @@ function ChildManagement({ onRefresh, children }) {
                                             <div key={child.id} className="flex justify-between items-center p-2 bg-gray-50 dark:bg-slate-800 rounded-lg">
                                                 <span className="dark:text-white">{child.name}</span>
                                                 <div className="flex gap-2">
-                                                    <button type="button" onClick={() => editChild(child)} className="text-blue-600 hover:text-blue-800 dark:text-pink-400">
-                                                        <FiEdit />
-                                                    </button>
-                                                    <button type="button" onClick={() => handleDelete(child.id)} className="text-red-600 hover:text-red-800">
-                                                        <FiTrash2 />
-                                                    </button>
+                                                    <button type="button" onClick={() => editChild(child)} className="text-blue-600 hover:text-blue-800 dark:text-pink-400"><FiEdit /></button>
+                                                    <button type="button" onClick={() => handleDelete(child.id)} className="text-red-600 hover:text-red-800"><FiTrash2 /></button>
                                                 </div>
                                             </div>
                                         ))}
@@ -168,24 +155,17 @@ function ChildManagement({ onRefresh, children }) {
                 </div>
             )}
 
-            {/* Teen Invite Code Notice Modal (unchanged) */}
+            {/* Teen Invite Code Notice Modal */}
             {showTeenNotice && (
                 <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
                     <div className="bg-white dark:bg-slate-900 p-8 rounded-2xl w-full max-w-md text-center shadow-2xl border border-gray-100 dark:border-slate-800">
-                        <div className="w-20 h-20 bg-blue-100 dark:bg-pink-500/20 rounded-full flex items-center justify-center mx-auto mb-6 text-blue-600 dark:text-pink-500 text-3xl">
-                            📱
-                        </div>
+                        <div className="w-20 h-20 bg-blue-100 dark:bg-pink-500/20 rounded-full flex items-center justify-center mx-auto mb-6 text-blue-600 dark:text-pink-500 text-3xl">📱</div>
                         <h3 className="text-2xl font-bold mb-3 dark:text-white">Connect with your Teen</h3>
-                        <p className="text-gray-600 dark:text-slate-400 mb-6">
-                            Ask your teen to sign up as "Teen" and enter this Invite Code:
-                        </p>
+                        <p className="text-gray-600 dark:text-slate-400 mb-6">Ask your teen to sign up as "Teen" and enter this Invite Code:</p>
                         <div className="bg-gray-100 dark:bg-slate-800 p-5 rounded-2xl font-mono text-3xl font-bold tracking-widest mb-8 select-all text-blue-700 dark:text-pink-400 border-2 border-dashed border-blue-200 dark:border-pink-500/30">
                             {teenCode}
                         </div>
-                        <button
-                            onClick={() => setShowTeenNotice(false)}
-                            className="w-full py-3.5 bg-blue-600 text-white rounded-xl font-bold hover:bg-blue-700 dark:bg-pink-600 dark:hover:bg-pink-700 shadow-lg transition-all"
-                        >
+                        <button onClick={() => setShowTeenNotice(false)} className="w-full py-3.5 bg-blue-600 text-white rounded-xl font-bold hover:bg-blue-700 dark:bg-pink-600 dark:hover:bg-pink-700 shadow-lg transition-all">
                             Got it
                         </button>
                     </div>

@@ -22,7 +22,15 @@ export function AuthProvider({ children }) {
         `${process.env.REACT_APP_API_URL}/users/me/`,
         { headers: { Authorization: `Bearer ${token}` } }
       );
-      setUser(response.data);
+      const userData = response.data;
+
+      // Always merge is_expecting from localStorage
+      // This covers: existing users before DB migration, and page refreshes
+      if (!userData.is_expecting) {
+        userData.is_expecting = localStorage.getItem('is_expecting') === 'true';
+      }
+
+      setUser(userData);
     } catch (error) {
       console.error('Failed to fetch user:', error);
       setToken(null);
@@ -40,6 +48,12 @@ export function AuthProvider({ children }) {
       );
       const { access, user } = response.data;
       localStorage.setItem('access_token', access);
+
+      // Merge is_expecting from localStorage on login too
+      if (!user.is_expecting) {
+        user.is_expecting = localStorage.getItem('is_expecting') === 'true';
+      }
+
       setToken(access);
       setUser(user);
       return user;
@@ -48,13 +62,23 @@ export function AuthProvider({ children }) {
     }
   };
 
-  const signup = async (email, password, firstName, lastName, role, inviteCode = null) => {
+  const signup = async (email, password, firstName, lastName, role, inviteCode = null, expecting = false) => {
     try {
       const response = await axios.post(
         `${process.env.REACT_APP_API_URL}/users/signup/`,
-        { email, password, first_name: firstName, last_name: lastName, role, invite_code: inviteCode }
+        { email, password, first_name: firstName, last_name: lastName, role, invite_code: inviteCode, expecting }
       );
       const { access, user } = response.data;
+
+      // Store expecting flag in localStorage immediately on signup
+      // This is the source of truth for routing — no DB dependency
+      if (role === 'parent' && expecting) {
+        localStorage.setItem('is_expecting', 'true');
+        user.is_expecting = true;
+      } else {
+        localStorage.removeItem('is_expecting');
+      }
+
       localStorage.setItem('access_token', access);
       setToken(access);
       setUser(user);
@@ -68,6 +92,7 @@ export function AuthProvider({ children }) {
     setUser(null);
     setToken(null);
     localStorage.removeItem('access_token');
+    localStorage.removeItem('is_expecting');
   };
 
   return (

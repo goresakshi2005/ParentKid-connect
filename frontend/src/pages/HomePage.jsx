@@ -1,5 +1,3 @@
-// frontend/src/pages/HomePage.jsx
-
 import React from 'react';
 import { Link } from 'react-router-dom';
 import { FiArrowRight } from 'react-icons/fi';
@@ -34,9 +32,8 @@ function HomePage() {
           >
             I'm a Teen
           </Link>
-          {/* New button for expecting parents */}
           <Link
-            to="/signup/parent"
+            to="/signup/expecting"
             className="px-8 py-4 bg-green-600 text-white rounded-lg hover:bg-green-700 dark:bg-emerald-600 dark:hover:bg-emerald-700 font-semibold flex items-center justify-center gap-2 transition-all shadow-lg dark:shadow-emerald-500/20"
           >
             I'm Expecting <FiArrowRight />

@@ -3,14 +3,16 @@ import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-d
 import Navbar from './components/Navbar/Navbar';
 import HomePage from './pages/HomePage';
 import PricingPage from './pages/PricingPage';
-import ParentDashboard from './pages/ParentDashboard';
 import TeenDashboard from './pages/TeenDashboard';
+import PregnancyDashboard from './pages/PregnancyDashboard';
 import LoginParent from './components/Auth/LoginParent';
 import SignupParent from './components/Auth/SignupParent';
+import SignupExpecting from './components/Auth/SignupExpecting';
 import LoginTeen from './components/Auth/LoginTeen';
 import SignupTeen from './components/Auth/SignupTeen';
 import AuthGuard from './components/Auth/AuthGuard';
 import NotFound from './pages/NotFound';
+import ParentRouter from './components/ParentRouter';
 import { useAuth } from './context/AuthContext';
 
 function App() {
@@ -29,17 +31,30 @@ function App() {
           <Route path="/pricing" element={<PricingPage />} />
           <Route path="/login/parent" element={<LoginParent />} />
           <Route path="/signup/parent" element={<SignupParent />} />
+          <Route path="/signup/expecting" element={<SignupExpecting />} />
           <Route path="/login/teen" element={<LoginTeen />} />
           <Route path="/signup/teen" element={<SignupTeen />} />
 
+          {/* Regular parent dashboard */}
           <Route
             path="/dashboard/parent"
             element={
               <AuthGuard role="parent">
-                <ParentDashboard />
+                <ParentRouter />
               </AuthGuard>
             }
           />
+
+          {/* Dedicated pregnancy dashboard route — expecting parents land here directly */}
+          <Route
+            path="/dashboard/pregnancy"
+            element={
+              <AuthGuard role="parent">
+                <PregnancyDashboard />
+              </AuthGuard>
+            }
+          />
+
           <Route
             path="/dashboard/teen"
             element={

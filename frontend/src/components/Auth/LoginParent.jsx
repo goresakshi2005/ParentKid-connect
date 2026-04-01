@@ -20,7 +20,12 @@ function LoginParent() {
       try {
         const user = await login(values.email, values.password);
         if (user.role === 'parent') {
-          navigate('/dashboard/parent');
+          // Route expecting/pregnant parents to pregnancy dashboard
+          if (user.is_expecting) {
+            navigate('/dashboard/pregnancy');
+          } else {
+            navigate('/dashboard/parent');
+          }
         } else {
           alert('Please use the teen login page.');
         }

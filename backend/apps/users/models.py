@@ -11,6 +11,7 @@ class CustomUser(AbstractUser):
     phone = models.CharField(max_length=20, blank=True)
     avatar = models.ImageField(upload_to='avatars/', null=True, blank=True)
     bio = models.TextField(blank=True)
+    is_expecting = models.BooleanField(default=False)  # True for pregnancy/expecting parents
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
     
