@@ -101,3 +101,73 @@ class AppointmentListView(APIView):
         ).order_by("date_time")
         serializer = AppointmentSerializer(appointments, many=True)
         return Response(serializer.data)
+
+
+class NextAppointmentView(APIView):
+    """
+    GET /appointments/next/
+    Returns the single soonest upcoming appointment for the logged-in user.
+    Used by the dashboard to show the "Next Appointment" card.
+    """
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        from django.utils import timezone as tz
+        appointment = (
+            Appointment.objects
+            .filter(user=request.user, date_time__gte=tz.now())
+            .order_by("date_time")
+            .first()
+        )
+        if not appointment:
+            return Response({"appointment": None}, status=200)
+        serializer = AppointmentSerializer(appointment)
+        return Response({"appointment": serializer.data}, status=200)
+
+
+class AppointmentDeleteView(APIView):
+    """
+    DELETE /appointments/<id>/delete/
+    Deletes the appointment from the DB and, if a Google Calendar event ID is
+    stored, also removes the event from Google Calendar so the user's calendar
+    stays in sync.
+    """
+    permission_classes = [IsAuthenticated]
+
+    def delete(self, request, pk):
+        try:
+            appointment = Appointment.objects.get(id=pk, user=request.user)
+        except Appointment.DoesNotExist:
+            return Response({"error": "Appointment not found."}, status=404)
+
+        # ✅ If a Google Calendar event was created, delete it there too
+        google_event_id = appointment.google_event_id
+        if google_event_id:
+            try:
+                from .services.calendar_service import build_calendar_service, delete_calendar_event
+                from django.conf import settings
+
+                access_token = getattr(request.user, 'google_access_token', None)
+                refresh_token = getattr(request.user, 'google_refresh_token', None)
+
+                if (
+                    access_token and refresh_token
+                    and getattr(settings, 'GOOGLE_CLIENT_ID', '')
+                    and getattr(settings, 'GOOGLE_CLIENT_SECRET', '')
+                ):
+                    service, new_token = build_calendar_service(access_token, refresh_token)
+
+                    # Persist refreshed token
+                    if new_token and new_token != access_token:
+                        request.user.google_access_token = new_token
+                        request.user.save(update_fields=["google_access_token"])
+
+                    delete_calendar_event(service, google_event_id)
+                    logger.info(f"Google Calendar event {google_event_id} deleted.")
+
+            except Exception as e:
+                # Don't block the DB delete if Google fails
+                logger.warning(f"Could not delete Google Calendar event: {str(e)}")
+
+        appointment.delete()
+        return Response({"message": "Appointment deleted successfully."}, status=200)
