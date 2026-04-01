@@ -4,6 +4,7 @@ import { useAuth } from '../context/AuthContext';
 import AssessmentView from '../components/Parent/AssessmentView';
 import ResultsDisplay from '../components/Assessment/ResultsDisplay';
 import Loading from '../components/Common/Loading';
+import ReportUploader from '../components/Reports/ReportUploader';
 
 function PregnancyDashboard() {
     const { token, user } = useAuth();
@@ -12,6 +13,7 @@ function PregnancyDashboard() {
     const [loading, setLoading] = useState(true);
     const [takingAssessment, setTakingAssessment] = useState(false);
     const [showResult, setShowResult] = useState(false);
+    const [showReportUploader, setShowReportUploader] = useState(false);
 
     useEffect(() => {
         fetchPregnancyChild();
@@ -66,6 +68,7 @@ function PregnancyDashboard() {
     const handleBackToDashboard = () => {
         setTakingAssessment(false);
         setShowResult(false);
+        setShowReportUploader(false);
     };
 
     if (loading) return <Loading />;
@@ -114,23 +117,49 @@ function PregnancyDashboard() {
         );
     }
 
+    // ── Report Uploader View ──
+    if (showReportUploader) {
+        return (
+            <div className="max-w-4xl mx-auto px-4 py-8">
+                <button
+                    onClick={handleBackToDashboard}
+                    className="mb-6 text-green-600 dark:text-green-400 hover:underline flex items-center gap-2"
+                >
+                    ← Back to Dashboard
+                </button>
+                <ReportUploader token={token} />
+            </div>
+        );
+    }
+
     const latestResult = pregnancyResults.length > 0 ? pregnancyResults[0] : null;
 
     return (
         <div className="max-w-7xl mx-auto px-4 py-8">
-            {/* Header — no "Add New Child" button for pregnancy users */}
+
+            {/* Header */}
             <div className="flex justify-between items-center mb-8">
                 <h1 className="text-4xl font-extrabold dark:text-white tracking-tight">
                     Pregnancy <span className="dark:text-green-500">Journey</span>
                 </h1>
-                <button
-                    onClick={() => setTakingAssessment(true)}
-                    className="px-6 py-3 bg-green-600 text-white rounded-xl hover:bg-green-700 dark:bg-emerald-600 dark:hover:bg-emerald-700 shadow-lg flex items-center gap-2 font-bold transition-all"
-                >
-                    📝 Take Pregnancy Assessment
-                </button>
+                <div className="flex items-center gap-3">
+                    {/* ── NEW: Upload Report Button ── */}
+                    <button
+                        onClick={() => setShowReportUploader(true)}
+                        className="px-5 py-3 bg-pink-600 text-white rounded-xl hover:bg-pink-700 shadow-lg flex items-center gap-2 font-bold transition-all"
+                    >
+                        📋 Upload Report
+                    </button>
+                    <button
+                        onClick={() => setTakingAssessment(true)}
+                        className="px-6 py-3 bg-green-600 text-white rounded-xl hover:bg-green-700 dark:bg-emerald-600 dark:hover:bg-emerald-700 shadow-lg flex items-center gap-2 font-bold transition-all"
+                    >
+                        📝 Take Pregnancy Assessment
+                    </button>
+                </div>
             </div>
 
+            {/* Welcome Banner */}
             <div className="mb-8 p-6 bg-green-50 dark:bg-green-900/20 rounded-xl border-l-4 border-green-600 dark:border-green-500 shadow-sm">
                 <h2 className="text-2xl font-bold text-green-800 dark:text-green-400 mb-2 flex items-center gap-2">
                     <span className="text-3xl">🤰</span> Hello, {user.first_name || 'Parent'}!
@@ -143,6 +172,28 @@ function PregnancyDashboard() {
                 </div>
             </div>
 
+            {/* ── NEW: Upload Report Card ── */}
+            <div className="mb-8 p-6 bg-pink-50 dark:bg-pink-900/20 rounded-xl border border-pink-200 dark:border-pink-800/50 flex items-center justify-between gap-4">
+                <div className="flex items-center gap-4">
+                    <span className="text-4xl">📁</span>
+                    <div>
+                        <h3 className="text-lg font-bold text-pink-800 dark:text-pink-300">
+                            Auto-Schedule Your Next Appointment
+                        </h3>
+                        <p className="text-sm text-pink-700 dark:text-pink-400">
+                            Upload your checkup report — we'll extract your next appointment date and add it to Google Calendar automatically.
+                        </p>
+                    </div>
+                </div>
+                <button
+                    onClick={() => setShowReportUploader(true)}
+                    className="shrink-0 px-5 py-3 bg-pink-600 text-white rounded-xl hover:bg-pink-700 font-bold shadow-md transition-all"
+                >
+                    Upload Report →
+                </button>
+            </div>
+
+            {/* Assessment Results */}
             {latestResult ? (
                 <div className="mb-10">
                     <h2 className="text-2xl font-bold mb-6 dark:text-white">Your Latest Pregnancy Assessment</h2>
