@@ -1,3 +1,6 @@
+import traceback
+import logging
+
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
@@ -8,87 +11,88 @@ from .models import MedicalReport, Appointment
 from .services.orchestrator import process_report_and_schedule, confirm_and_schedule
 from .serializers import AppointmentSerializer
 
+logger = logging.getLogger(__name__)
+
 
 class UploadReportView(APIView):
-    """
-    POST /api/reports/upload/
-    Upload a medical report (PDF or image).
-    Extracts text + uses Gemini to detect appointment.
-    Returns extracted appointment for user confirmation.
-    """
     permission_classes = [IsAuthenticated]
     parser_classes = [MultiPartParser, FormParser]
 
     def post(self, request):
-        file = request.FILES.get("file")
-        if not file:
-            return Response({"error": "No file provided."}, status=status.HTTP_400_BAD_REQUEST)
+        try:
+            file = request.FILES.get("file")
+            if not file:
+                return Response({"error": "No file provided."}, status=400)
 
-        allowed_types = ["application/pdf", "image/png", "image/jpeg", "image/tiff"]
-        if file.content_type not in allowed_types:
-            return Response({"error": "Unsupported file type."}, status=status.HTTP_400_BAD_REQUEST)
+            allowed_types = ["application/pdf", "image/png", "image/jpeg", "image/tiff"]
+            if file.content_type not in allowed_types:
+                return Response(
+                    {"error": f"Unsupported file type: {file.content_type}. Allowed: PDF, PNG, JPG."},
+                    status=400
+                )
 
-        # Save the report
-        report = MedicalReport.objects.create(user=request.user, file=file)
+            # Save the report file
+            report = MedicalReport.objects.create(user=request.user, file=file)
+            logger.info(f"Report saved: id={report.id}, file={report.file.name}")
 
-        # Get Google tokens stored on the user model
-        access_token = request.user.google_access_token
-        refresh_token = request.user.google_refresh_token
+            # Google tokens (used later in confirm step)
+            access_token = getattr(request.user, 'google_access_token', None)
+            refresh_token = getattr(request.user, 'google_refresh_token', None)
 
-        result = process_report_and_schedule(report, access_token, refresh_token)
+            result = process_report_and_schedule(report, access_token, refresh_token)
+            logger.info(f"Orchestrator result: {result}")
 
-        if not result["success"]:
-            return Response({"error": result["error"]}, status=status.HTTP_422_UNPROCESSABLE_ENTITY)
+            if not result["success"]:
+                return Response({"error": result["error"]}, status=422)
 
-        return Response(result, status=status.HTTP_200_OK)
+            return Response(result, status=200)
+
+        except AttributeError as e:
+            logger.error(f"AttributeError in upload: {traceback.format_exc()}")
+            return Response({"error": f"User model missing field: {str(e)}"}, status=500)
+
+        except Exception as e:
+            logger.error(f"Unexpected error in upload: {traceback.format_exc()}")
+            return Response({"error": f"Server error: {str(e)}"}, status=500)
 
 
 class ConfirmAppointmentView(APIView):
-    """
-    POST /api/reports/confirm/
-    User confirms the extracted appointment — schedules it in Google Calendar.
-
-    Body:
-    {
-      "report_id": 5,
-      "datetime_iso": "2026-04-10T11:00:00+05:30",
-      "doctor": "Dr. Sharma"
-    }
-    """
     permission_classes = [IsAuthenticated]
 
     def post(self, request):
-        report_id = request.data.get("report_id")
-        datetime_iso = request.data.get("datetime_iso")
-        doctor = request.data.get("doctor", "")
-
-        if not report_id or not datetime_iso:
-            return Response({"error": "report_id and datetime_iso are required."}, status=400)
-
         try:
-            report = MedicalReport.objects.get(id=report_id, user=request.user)
-        except MedicalReport.DoesNotExist:
-            return Response({"error": "Report not found."}, status=404)
+            report_id = request.data.get("report_id")
+            datetime_iso = request.data.get("datetime_iso")
+            doctor = request.data.get("doctor", "")
 
-        if report.is_processed:
-            return Response({"error": "This report has already been scheduled."}, status=400)
+            if not report_id or not datetime_iso:
+                return Response({"error": "report_id and datetime_iso are required."}, status=400)
 
-        access_token = request.user.google_access_token
-        refresh_token = request.user.google_refresh_token
+            try:
+                report = MedicalReport.objects.get(id=report_id, user=request.user)
+            except MedicalReport.DoesNotExist:
+                return Response({"error": "Report not found."}, status=404)
 
-        result = confirm_and_schedule(report, datetime_iso, doctor, access_token, refresh_token)
+            if report.is_processed:
+                return Response({"error": "This report has already been scheduled."}, status=400)
 
-        if not result["success"]:
-            return Response({"error": result["error"]}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            access_token = getattr(request.user, 'google_access_token', None)
+            refresh_token = getattr(request.user, 'google_refresh_token', None)
 
-        return Response(result, status=status.HTTP_201_CREATED)
+            result = confirm_and_schedule(report, datetime_iso, doctor, access_token, refresh_token)
+            logger.info(f"Confirm result: {result}")
+
+            if not result["success"]:
+                return Response({"error": result["error"]}, status=500)
+
+            return Response(result, status=201)
+
+        except Exception as e:
+            logger.error(f"Unexpected error in confirm: {traceback.format_exc()}")
+            return Response({"error": f"Server error: {str(e)}"}, status=500)
 
 
 class AppointmentListView(APIView):
-    """
-    GET /api/appointments/
-    List all scheduled appointments for the logged-in user.
-    """
     permission_classes = [IsAuthenticated]
 
     def get(self, request):

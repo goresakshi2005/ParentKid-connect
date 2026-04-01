@@ -34,9 +34,9 @@ def extract_appointment_from_text(report_text: str) -> dict:
     Sends report text to Gemini and extracts appointment details.
     Returns a dict: { date, time, doctor }
     """
-    model = genai.GenerativeModel("gemini-1.5-flash")
+    model = genai.GenerativeModel("gemini-2.5-flash")  # ✅ updated model name
 
-    prompt = EXTRACTION_PROMPT.format(report_text=report_text[:4000])  # Limit tokens
+    prompt = EXTRACTION_PROMPT.format(report_text=report_text[:4000])
 
     response = model.generate_content(prompt)
     raw_text = response.text.strip()
@@ -48,7 +48,6 @@ def extract_appointment_from_text(report_text: str) -> dict:
     try:
         data = json.loads(raw_text)
     except json.JSONDecodeError:
-        # Attempt to extract JSON from mixed response
         match = re.search(r'\{.*?\}', raw_text, re.DOTALL)
         if match:
             data = json.loads(match.group())

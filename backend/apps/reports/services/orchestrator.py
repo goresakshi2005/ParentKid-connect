@@ -4,7 +4,6 @@ from django.utils.timezone import make_aware
 
 from .extractor import extract_text_from_file
 from .ai_extractor import extract_appointment_from_text
-from .calendar_service import build_calendar_service, create_appointment_event
 from apps.reports.models import MedicalReport, Appointment
 
 
@@ -76,40 +75,54 @@ def confirm_and_schedule(
     refresh_token: str,
 ) -> dict:
     """
-    After user confirms, actually create the Google Calendar event and save Appointment.
+    After user confirms, save the appointment to DB.
+    Google Calendar scheduling is optional — only runs if user has connected Google account.
     """
     user = report.user
     dt = datetime.fromisoformat(datetime_iso)
 
-    # Create Google Calendar event
-    try:
-        service = build_calendar_service(access_token, refresh_token)
-        event_id = create_appointment_event(
-            service=service,
-            appointment_datetime=dt,
-            doctor=doctor,
-            parent_email=user.email,
-        )
-    except Exception as e:
-        return {"success": False, "error": f"Google Calendar error: {str(e)}"}
+    google_event_id = None
 
-    # Save to DB
+    # ✅ Only attempt Google Calendar if user has OAuth tokens connected
+    if access_token and refresh_token:
+        try:
+            from .calendar_service import build_calendar_service, create_appointment_event
+            from django.conf import settings
+
+            # Only proceed if Google credentials are configured
+            if getattr(settings, 'GOOGLE_CLIENT_ID', '') and getattr(settings, 'GOOGLE_CLIENT_SECRET', ''):
+                service = build_calendar_service(access_token, refresh_token)
+                google_event_id = create_appointment_event(
+                    service=service,
+                    appointment_datetime=dt,
+                    doctor=doctor,
+                    parent_email=user.email,
+                )
+        except Exception as e:
+            # Don't fail the whole flow — just skip Calendar
+            print(f"Google Calendar skipped: {str(e)}")
+
+    # ✅ Always save to DB regardless of Google Calendar result
     appointment = Appointment.objects.create(
         user=user,
         report=report,
         date_time=dt,
         doctor=doctor,
         source="report",
-        google_event_id=event_id,
+        google_event_id=google_event_id,
         is_scheduled=True,
     )
 
     report.is_processed = True
     report.save()
 
+    # Build success message
+    scheduled_time = dt.strftime('%d %b %Y at %I:%M %p')
+    calendar_note = " and added to Google Calendar" if google_event_id else ""
+
     return {
         "success": True,
         "appointment_id": appointment.id,
-        "google_event_id": event_id,
-        "message": f"Appointment scheduled on {dt.strftime('%d %b %Y at %I:%M %p')}",
+        "google_event_id": google_event_id,
+        "message": f"Appointment saved for {scheduled_time}{calendar_note}.",
     }

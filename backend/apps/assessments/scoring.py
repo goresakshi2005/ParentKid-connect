@@ -154,13 +154,12 @@ Please provide:
 Keep it brief, practical, and encouraging.
             """
             
-            model = genai.GenerativeModel('gemini-pro')
+            model = genai.GenerativeModel('gemini-2.5-flash')  # ✅ updated model name
             response = model.generate_content(prompt)
-            return response.text  # returns a string
+            return response.text
         
         except Exception as e:
             print(f"Error generating AI recommendations: {str(e)}")
-            # Return a string (joined by newlines) instead of a list
             default_list = self.get_default_recommendations(assessment_type, risk_level)
             return "\n".join(default_list)
     
@@ -189,7 +188,6 @@ Keep it brief, practical, and encouraging.
         weighted_score = self.calculate_weighted_score()
         risk_level = self.detect_risk_level(final_score)
         recommendations_text = self.generate_ai_recommendations(assessment_type, risk_level)
-        # Split the text into lines and take up to 3
         recommendations = [line.strip() for line in recommendations_text.split('\n') if line.strip()][:3]
         
         return {

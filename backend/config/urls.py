@@ -18,8 +18,10 @@ urlpatterns = [
     path('admin/', admin.site.urls),
     path('api/', include(router.urls)),
     path('api-auth/', include('rest_framework.urls')),
-    path('reports/', include('apps.reports.urls')),
-    path('appointments/', include('apps.reports.urls')),
+
+    # ✅ Fixed: reports and appointments now under /api/ prefix
+    # so frontend calls http://localhost:8000/api/reports/upload/ correctly
+    path('api/', include('apps.reports.urls')),
 ]
 
 if settings.DEBUG:
