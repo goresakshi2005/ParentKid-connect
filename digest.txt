@@ -2035,14 +2035,14 @@ class AppointmentDeleteView(APIView):
         return Response({"message": "Appointment deleted successfully."}, status=200)
 
 
-# â”€â”€ NEW â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# â”€â”€ NEW â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 class MaternalHealthGuideView(APIView):
     """
     POST /reports/health-guide/
     Body (multipart/form-data):
-        file      â€” PDF / image of the medical report
-        trimester â€” (optional) e.g. "First Trimester", "7th month", etc.
+        file      â€“ PDF / image of the medical report
+        trimester â€“ (optional) e.g. "First Trimester", "7th month", etc.
 
     Flow:
     1. Save the MedicalReport (reuses existing model).
@@ -2454,6 +2454,8 @@ def delete_calendar_event(service, event_id: str):
 ================================================
 FILE: backend/apps/reports/services/extractor.py
 ================================================
+# backend/apps/reports/services/extractor.py
+
 import fitz  # PyMuPDF
 import easyocr
 from PIL import Image
@@ -2492,10 +2494,10 @@ def _extract_from_pdf(pdf_path: str) -> str:
     for page in doc:
         page_text = page.get_text()
         if page_text.strip():
-            # Digital PDF â€” use native text
+            # Digital PDF â€“ use native text
             text += page_text
         else:
-            # Scanned PDF â€” render page as image then OCR
+            # Scanned PDF â€“ render page as image then OCR
             pix = page.get_pixmap(dpi=200)
             img_bytes = pix.tobytes("png")
             img_array = np.frombuffer(img_bytes, dtype=np.uint8)
@@ -2511,6 +2513,15 @@ def _extract_from_image(image_path: str) -> str:
     """Extract text from an image file using EasyOCR."""
     results = reader.readtext(image_path, detail=0, paragraph=True)
     return "\n".join(results).strip()
+
+
+# â”€â”€ NEW â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+def extract_text_from_report(report) -> str:
+    """
+    Convenience wrapper that accepts a MedicalReport model instance
+    and delegates to extract_text_from_file using the file's path.
+    """
+    return extract_text_from_file(report.file.path)
 
 
 ================================================
@@ -6003,15 +6014,6 @@ FILE: frontend/src/components/Pricing/UpgradeModal.jsx
 ================================================
 FILE: frontend/src/components/Reports/MaternalHealthGuide.jsx
 ================================================
-// frontend/src/components/Reports/MaternalHealthGuide.jsx
-//
-// Drop-in component for the PregnancyDashboard.
-// Handles:
-//   1. File upload + optional trimester selection
-//   2. Loading / progress feedback
-//   3. Beautiful, mobile-friendly guide display
-//   4. Past guides history panel
-
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import {
     uploadReportForHealthGuide,
@@ -6051,6 +6053,13 @@ function formatDate(iso) {
     });
 }
 
+// ── FIX: normalize anything → array of strings ────────────────────────────────
+function toArray(value) {
+    if (Array.isArray(value)) return value;
+    if (typeof value === 'string' && value.trim()) return [value];
+    return [];
+}
+
 // ── sub-components ─────────────────────────────────────────────────────────────
 
 function SectionCard({ emoji, title, children, accent = 'blue' }) {
@@ -6085,11 +6094,13 @@ function Chip({ text, color = 'blue' }) {
     );
 }
 
-function BulletList({ items = [] }) {
-    if (!items.length) return null;
+// ── FIX: BulletList now uses toArray() so it never crashes on non-arrays ───────
+function BulletList({ items }) {
+    const safeItems = toArray(items);
+    if (!safeItems.length) return null;
     return (
         <ul className="space-y-1">
-            {items.map((item, i) => (
+            {safeItems.map((item, i) => (
                 <li key={i} className="text-sm text-gray-700 dark:text-slate-300 flex items-start gap-2">
                     <span className="mt-1 text-pink-500 dark:text-pink-400">•</span>
                     <span>{item}</span>
@@ -6102,8 +6113,25 @@ function BulletList({ items = [] }) {
 // ── main guide display ─────────────────────────────────────────────────────────
 
 function GuideDisplay({ guide }) {
-    const { overall_status, positives = [], issues = [], recommendations = {},
-        care_goals = [], alerts } = guide;
+    const {
+        overall_status,
+        alerts,
+    } = guide;
+
+    // ── FIX: normalize every field so Gemini inconsistencies never crash the UI ──
+    const positives     = toArray(guide.positives);
+    const issues        = toArray(guide.issues);
+    const care_goals    = toArray(guide.care_goals);
+
+    const rawRec        = guide.recommendations || {};
+    const recommendations = {
+        food:          toArray(rawRec.food),
+        water:         typeof rawRec.water === 'string' ? rawRec.water : '',
+        exercise:      toArray(rawRec.exercise),
+        sleep:         typeof rawRec.sleep === 'string' ? rawRec.sleep : '',
+        mental_health: toArray(rawRec.mental_health),
+        avoid:         toArray(rawRec.avoid),
+    };
 
     return (
         <div className="space-y-4 fade-in">
@@ -6155,7 +6183,7 @@ function GuideDisplay({ guide }) {
             {/* Recommendations */}
             <SectionCard emoji="🍽️" title="Daily Health Guide" accent="pink">
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    {recommendations.food?.length > 0 && (
+                    {recommendations.food.length > 0 && (
                         <div>
                             <p className="text-xs font-bold text-pink-600 dark:text-pink-400 mb-1 uppercase tracking-wide">🥗 Food</p>
                             <BulletList items={recommendations.food} />
@@ -6167,7 +6195,7 @@ function GuideDisplay({ guide }) {
                             <p className="text-sm text-gray-700 dark:text-slate-300">{recommendations.water}</p>
                         </div>
                     )}
-                    {recommendations.exercise?.length > 0 && (
+                    {recommendations.exercise.length > 0 && (
                         <div>
                             <p className="text-xs font-bold text-green-600 dark:text-green-400 mb-1 uppercase tracking-wide">🚶 Exercise</p>
                             <BulletList items={recommendations.exercise} />
@@ -6179,13 +6207,13 @@ function GuideDisplay({ guide }) {
                             <p className="text-sm text-gray-700 dark:text-slate-300">{recommendations.sleep}</p>
                         </div>
                     )}
-                    {recommendations.mental_health?.length > 0 && (
+                    {recommendations.mental_health.length > 0 && (
                         <div>
                             <p className="text-xs font-bold text-yellow-600 dark:text-yellow-400 mb-1 uppercase tracking-wide">🧘 Mental Well-being</p>
                             <BulletList items={recommendations.mental_health} />
                         </div>
                     )}
-                    {recommendations.avoid?.length > 0 && (
+                    {recommendations.avoid.length > 0 && (
                         <div>
                             <p className="text-xs font-bold text-red-600 dark:text-red-400 mb-1 uppercase tracking-wide">🚫 Avoid</p>
                             <BulletList items={recommendations.avoid} />
@@ -6201,6 +6229,7 @@ function GuideDisplay({ guide }) {
                         {care_goals.map((cg, i) => (
                             <div key={i} className="p-3 bg-purple-50 dark:bg-purple-900/20 rounded-xl border border-purple-100 dark:border-purple-800">
                                 <p className="text-sm font-bold text-purple-700 dark:text-purple-300 mb-2">🎯 {cg.goal}</p>
+                                {/* FIX: cg.steps also normalized via BulletList → toArray */}
                                 <BulletList items={cg.steps} />
                             </div>
                         ))}

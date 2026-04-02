@@ -1,12 +1,3 @@
-// frontend/src/components/Reports/MaternalHealthGuide.jsx
-//
-// Drop-in component for the PregnancyDashboard.
-// Handles:
-//   1. File upload + optional trimester selection
-//   2. Loading / progress feedback
-//   3. Beautiful, mobile-friendly guide display
-//   4. Past guides history panel
-
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import {
     uploadReportForHealthGuide,
