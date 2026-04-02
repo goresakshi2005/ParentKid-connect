@@ -1,5 +1,5 @@
 // frontend/src/pages/PregnancyDashboard.jsx
-// Updated: Added "Health Guide" tab alongside the existing Report Uploader.
+// Updated: Added "Scheduled Appointments" section showing all upcoming appointments.
 
 import React, { useState, useEffect, useCallback } from 'react';
 import axios from 'axios';
@@ -8,7 +8,7 @@ import AssessmentView from '../components/Parent/AssessmentView';
 import ResultsDisplay from '../components/Assessment/ResultsDisplay';
 import Loading from '../components/Common/Loading';
 import ReportUploader from '../components/Reports/ReportUploader';
-import MaternalHealthGuide from '../components/Reports/MaternalHealthGuide'; // ← NEW
+import MaternalHealthGuide from '../components/Reports/MaternalHealthGuide';
 
 function PregnancyDashboard() {
     const { token, user } = useAuth();
@@ -18,7 +18,7 @@ function PregnancyDashboard() {
     const [takingAssessment, setTakingAssessment] = useState(false);
     const [showResult, setShowResult] = useState(false);
     const [showReportUploader, setShowReportUploader] = useState(false);
-    const [showHealthGuide, setShowHealthGuide] = useState(false); // ← NEW
+    const [showHealthGuide, setShowHealthGuide] = useState(false);
 
     // Next appointment state
     const [nextAppointment, setNextAppointment] = useState(null);
@@ -26,11 +26,18 @@ function PregnancyDashboard() {
     const [deletingAppt, setDeletingAppt] = useState(false);
     const [deleteConfirm, setDeleteConfirm] = useState(false);
 
+    // ── NEW: All scheduled appointments ────────────────────────────────────────
+    const [allAppointments, setAllAppointments] = useState([]);
+    const [allApptLoading, setAllApptLoading] = useState(false);
+    const [deletingId, setDeletingId] = useState(null);        // id of the appt being deleted
+    const [confirmDeleteId, setConfirmDeleteId] = useState(null); // id awaiting confirm
+
     const authHeaders = { Authorization: `Bearer ${token}` };
 
     useEffect(() => {
         fetchPregnancyChild();
         fetchNextAppointment();
+        fetchAllAppointments(); // ← NEW
     }, [token]);
 
     const fetchPregnancyChild = async () => {
@@ -73,11 +80,27 @@ function PregnancyDashboard() {
                 `${process.env.REACT_APP_API_URL}/appointments/next/`,
                 { headers: authHeaders }
             );
-            setNextAppointment(res.data.appointment);
+            setNextAppointment(res.data.next_appointment);
         } catch (err) {
             console.error('Failed to fetch next appointment:', err);
         } finally {
             setApptLoading(false);
+        }
+    };
+
+    // ── NEW: fetch all appointments ────────────────────────────────────────────
+    const fetchAllAppointments = async () => {
+        setAllApptLoading(true);
+        try {
+            const res = await axios.get(
+                `${process.env.REACT_APP_API_URL}/appointments/`,
+                { headers: authHeaders }
+            );
+            setAllAppointments(res.data);
+        } catch (err) {
+            console.error('Failed to fetch appointments:', err);
+        } finally {
+            setAllApptLoading(false);
         }
     };
 
@@ -91,11 +114,35 @@ function PregnancyDashboard() {
             );
             setNextAppointment(null);
             setDeleteConfirm(false);
+            fetchAllAppointments(); // ← refresh full list too
         } catch (err) {
             console.error('Failed to delete appointment:', err);
             alert('Could not delete appointment. Please try again.');
         } finally {
             setDeletingAppt(false);
+        }
+    };
+
+    // ── NEW: delete any appointment from the full list ─────────────────────────
+    const handleDeleteById = async (id) => {
+        setDeletingId(id);
+        try {
+            await axios.delete(
+                `${process.env.REACT_APP_API_URL}/appointments/${id}/delete/`,
+                { headers: authHeaders }
+            );
+            setAllAppointments(prev => prev.filter(a => a.id !== id));
+            setConfirmDeleteId(null);
+            // If this was also the "next" appointment, clear it
+            if (nextAppointment && nextAppointment.id === id) {
+                setNextAppointment(null);
+                fetchNextAppointment();
+            }
+        } catch (err) {
+            console.error('Failed to delete appointment:', err);
+            alert('Could not delete appointment. Please try again.');
+        } finally {
+            setDeletingId(null);
         }
     };
 
@@ -116,8 +163,9 @@ function PregnancyDashboard() {
         setTakingAssessment(false);
         setShowResult(false);
         setShowReportUploader(false);
-        setShowHealthGuide(false); // ← NEW
+        setShowHealthGuide(false);
         fetchNextAppointment();
+        fetchAllAppointments(); // ← refresh on back
     };
 
     const formatApptDate = (isoString) => {
@@ -136,10 +184,13 @@ function PregnancyDashboard() {
         const now = new Date();
         const appt = new Date(isoString);
         const diff = Math.ceil((appt - now) / (1000 * 60 * 60 * 24));
+        if (diff < 0) return 'Past';
         if (diff === 0) return 'Today';
         if (diff === 1) return 'Tomorrow';
         return `In ${diff} days`;
     };
+
+    const isPast = (isoString) => new Date(isoString) < new Date();
 
     if (loading) return <Loading />;
 
@@ -196,7 +247,7 @@ function PregnancyDashboard() {
         );
     }
 
-    // ── NEW: Maternal Health Guide View ────────────────────────────────────────
+    // ── Maternal Health Guide View ─────────────────────────────────────────────
     if (showHealthGuide) {
         return (
             <div className="max-w-4xl mx-auto px-4 py-8">
@@ -211,6 +262,10 @@ function PregnancyDashboard() {
     // ── Main Dashboard ─────────────────────────────────────────────────────────
     const latestResult = pregnancyResults.length > 0 ? pregnancyResults[0] : null;
 
+    // Split appointments into upcoming and past for the scheduled list
+    const upcomingAppointments = allAppointments.filter(a => !isPast(a.date_time));
+    const pastAppointments = allAppointments.filter(a => isPast(a.date_time));
+
     return (
         <div className="max-w-7xl mx-auto px-4 py-8">
 
@@ -220,7 +275,6 @@ function PregnancyDashboard() {
                     Pregnancy <span className="dark:text-green-500">Journey</span>
                 </h1>
                 <div className="flex items-center gap-2 flex-wrap">
-                    {/* NEW: Health Guide button */}
                     <button
                         onClick={() => setShowHealthGuide(true)}
                         className="px-5 py-3 bg-rose-500 hover:bg-rose-600 text-white rounded-xl shadow-lg flex items-center gap-2 font-bold transition-all"
@@ -255,7 +309,7 @@ function PregnancyDashboard() {
                 </div>
             </div>
 
-            {/* NEW: Quick Action Cards for new features */}
+            {/* Quick Action Cards */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-8">
                 <button
                     onClick={() => setShowHealthGuide(true)}
@@ -382,6 +436,202 @@ function PregnancyDashboard() {
                     </div>
                 )}
             </div>
+
+            {/* ── NEW: Scheduled Appointments Section ──────────────────────────────── */}
+            <div className="mb-8 bg-white dark:bg-slate-800 rounded-2xl shadow-sm border border-gray-100 dark:border-slate-700 overflow-hidden">
+                {/* Section Header */}
+                <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100 dark:border-slate-700">
+                    <div className="flex items-center gap-3">
+                        <span className="text-2xl">🗓️</span>
+                        <div>
+                            <h2 className="text-xl font-bold dark:text-white">Scheduled Appointments</h2>
+                            <p className="text-xs text-gray-400 dark:text-slate-500 mt-0.5">
+                                All your pregnancy checkup appointments
+                            </p>
+                        </div>
+                    </div>
+                    <button
+                        onClick={fetchAllAppointments}
+                        disabled={allApptLoading}
+                        className="p-2 text-gray-400 hover:text-blue-500 dark:hover:text-blue-400 rounded-lg hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-all"
+                        title="Refresh appointments"
+                    >
+                        <svg className={`w-5 h-5 ${allApptLoading ? 'animate-spin' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                        </svg>
+                    </button>
+                </div>
+
+                {/* Loading state */}
+                {allApptLoading && (
+                    <div className="flex items-center justify-center gap-3 py-10">
+                        <div className="w-5 h-5 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
+                        <span className="text-sm text-gray-500 dark:text-slate-400">Loading appointments…</span>
+                    </div>
+                )}
+
+                {/* Upcoming Appointments */}
+                {!allApptLoading && (
+                    <>
+                        {upcomingAppointments.length > 0 ? (
+                            <div>
+                                <div className="px-6 pt-4 pb-1">
+                                    <span className="text-xs font-bold uppercase tracking-widest text-blue-500 dark:text-blue-400">
+                                        Upcoming · {upcomingAppointments.length}
+                                    </span>
+                                </div>
+                                <ul className="divide-y divide-gray-50 dark:divide-slate-700/50">
+                                    {upcomingAppointments.map((appt) => (
+                                        <li key={appt.id} className="px-6 py-4 flex items-center justify-between gap-4 hover:bg-blue-50/40 dark:hover:bg-blue-900/10 transition-all">
+                                            {/* Date badge */}
+                                            <div className="shrink-0 w-12 h-12 bg-blue-600 dark:bg-blue-700 rounded-xl flex flex-col items-center justify-center shadow">
+                                                <span className="text-white text-[10px] font-bold uppercase leading-none">
+                                                    {new Date(appt.date_time).toLocaleString('en-IN', { month: 'short' })}
+                                                </span>
+                                                <span className="text-white text-lg font-black leading-none">
+                                                    {new Date(appt.date_time).getDate()}
+                                                </span>
+                                            </div>
+
+                                            {/* Info */}
+                                            <div className="flex-1 min-w-0">
+                                                <div className="flex items-center gap-2 flex-wrap">
+                                                    <p className="text-sm font-bold text-gray-900 dark:text-white truncate">
+                                                        🤰 Pregnancy Checkup
+                                                        {appt.doctor && (
+                                                            <span className="text-gray-500 dark:text-slate-400 font-normal ml-1">
+                                                                · {appt.doctor}
+                                                            </span>
+                                                        )}
+                                                    </p>
+                                                    {/* Days-until badge */}
+                                                    <span className={`shrink-0 text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                                                        daysUntil(appt.date_time) === 'Today'
+                                                            ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400'
+                                                            : daysUntil(appt.date_time) === 'Tomorrow'
+                                                            ? 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400'
+                                                            : 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400'
+                                                    }`}>
+                                                        {daysUntil(appt.date_time)}
+                                                    </span>
+                                                </div>
+                                                <p className="text-xs text-gray-500 dark:text-slate-400 mt-0.5">
+                                                    {formatApptDate(appt.date_time)} &nbsp;·&nbsp; {formatApptTime(appt.date_time)}
+                                                </p>
+                                                {appt.notes && (
+                                                    <p className="text-xs text-gray-400 dark:text-slate-500 mt-0.5 italic truncate">
+                                                        {appt.notes}
+                                                    </p>
+                                                )}
+                                                <div className="flex items-center gap-2 mt-1 flex-wrap">
+                                                    {appt.google_event_id && (
+                                                        <span className="text-[10px] font-semibold text-green-600 dark:text-green-400">
+                                                            ✅ Google Calendar
+                                                        </span>
+                                                    )}
+                                                    <span className="text-[10px] text-gray-400 dark:text-slate-500 capitalize">
+                                                        via {appt.source}
+                                                    </span>
+                                                </div>
+                                            </div>
+
+                                            {/* Delete control */}
+                                            <div className="shrink-0">
+                                                {confirmDeleteId === appt.id ? (
+                                                    <div className="flex flex-col gap-1.5 items-end">
+                                                        <p className="text-[10px] text-gray-500 dark:text-slate-400 text-right max-w-[130px]">
+                                                            Remove?{appt.google_event_id ? ' Also deletes from Google Calendar.' : ''}
+                                                        </p>
+                                                        <div className="flex gap-1.5">
+                                                            <button
+                                                                onClick={() => setConfirmDeleteId(null)}
+                                                                disabled={deletingId === appt.id}
+                                                                className="px-2.5 py-1 text-[10px] font-semibold border border-gray-300 dark:border-slate-600 text-gray-600 dark:text-slate-300 rounded-lg hover:bg-gray-50 dark:hover:bg-slate-700 transition-all"
+                                                            >
+                                                                Cancel
+                                                            </button>
+                                                            <button
+                                                                onClick={() => handleDeleteById(appt.id)}
+                                                                disabled={deletingId === appt.id}
+                                                                className="px-2.5 py-1 text-[10px] font-semibold bg-red-600 hover:bg-red-700 disabled:opacity-60 text-white rounded-lg transition-all flex items-center gap-1"
+                                                            >
+                                                                {deletingId === appt.id ? (
+                                                                    <><span className="w-2.5 h-2.5 border-2 border-white border-t-transparent rounded-full animate-spin" /> Deleting…</>
+                                                                ) : 'Yes, Remove'}
+                                                            </button>
+                                                        </div>
+                                                    </div>
+                                                ) : (
+                                                    <button
+                                                        onClick={() => setConfirmDeleteId(appt.id)}
+                                                        className="p-2 text-gray-300 hover:text-red-500 dark:text-slate-600 dark:hover:text-red-400 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20 transition-all"
+                                                        title="Mark as done / delete"
+                                                    >
+                                                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                                                        </svg>
+                                                    </button>
+                                                )}
+                                            </div>
+                                        </li>
+                                    ))}
+                                </ul>
+                            </div>
+                        ) : (
+                            <div className="flex flex-col items-center justify-center py-10 px-6 text-center">
+                                <span className="text-4xl mb-3">📅</span>
+                                <p className="text-gray-500 dark:text-slate-400 font-medium">No upcoming appointments</p>
+                                <p className="text-xs text-gray-400 dark:text-slate-500 mt-1">Upload a report to auto-schedule your next checkup.</p>
+                                <button
+                                    onClick={() => setShowReportUploader(true)}
+                                    className="mt-4 px-5 py-2 bg-pink-600 hover:bg-pink-700 text-white rounded-xl font-bold text-sm shadow transition-all"
+                                >
+                                    Upload Report
+                                </button>
+                            </div>
+                        )}
+
+                        {/* Past Appointments (collapsible-style, dimmed) */}
+                        {pastAppointments.length > 0 && (
+                            <details className="group">
+                                <summary className="flex items-center gap-2 px-6 py-3 cursor-pointer border-t border-gray-100 dark:border-slate-700 text-xs font-bold uppercase tracking-widest text-gray-400 dark:text-slate-500 hover:text-gray-600 dark:hover:text-slate-300 select-none list-none">
+                                    <svg className="w-4 h-4 transition-transform group-open:rotate-90" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                                    </svg>
+                                    Past Appointments · {pastAppointments.length}
+                                </summary>
+                                <ul className="divide-y divide-gray-50 dark:divide-slate-700/50 opacity-60">
+                                    {pastAppointments.map((appt) => (
+                                        <li key={appt.id} className="px-6 py-3 flex items-center gap-4">
+                                            <div className="shrink-0 w-10 h-10 bg-gray-300 dark:bg-slate-600 rounded-xl flex flex-col items-center justify-center">
+                                                <span className="text-gray-600 dark:text-slate-300 text-[9px] font-bold uppercase leading-none">
+                                                    {new Date(appt.date_time).toLocaleString('en-IN', { month: 'short' })}
+                                                </span>
+                                                <span className="text-gray-600 dark:text-slate-300 text-sm font-black leading-none">
+                                                    {new Date(appt.date_time).getDate()}
+                                                </span>
+                                            </div>
+                                            <div className="flex-1 min-w-0">
+                                                <p className="text-sm font-semibold text-gray-500 dark:text-slate-400 truncate line-through">
+                                                    Pregnancy Checkup
+                                                    {appt.doctor && ` · ${appt.doctor}`}
+                                                </p>
+                                                <p className="text-xs text-gray-400 dark:text-slate-500">
+                                                    {formatApptDate(appt.date_time)} · {formatApptTime(appt.date_time)}
+                                                </p>
+                                            </div>
+                                            <span className="shrink-0 text-[10px] font-bold px-2 py-0.5 rounded-full bg-gray-100 dark:bg-slate-700 text-gray-500 dark:text-slate-400">
+                                                Done
+                                            </span>
+                                        </li>
+                                    ))}
+                                </ul>
+                            </details>
+                        )}
+                    </>
+                )}
+            </div>
+            {/* ── END: Scheduled Appointments Section ──────────────────────────────── */}
 
             {/* Assessment result summary */}
             {latestResult && (
