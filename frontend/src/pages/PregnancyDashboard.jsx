@@ -1,9 +1,10 @@
 // frontend/src/pages/PregnancyDashboard.jsx
-// Updated: Added "Scheduled Appointments" section showing all upcoming appointments.
+// Updated: Added "Scheduled Appointments" section and Voice Wellness Check button.
 
 import React, { useState, useEffect, useCallback } from 'react';
 import axios from 'axios';
 import { useAuth } from '../context/AuthContext';
+import { useNavigate } from 'react-router-dom';
 import AssessmentView from '../components/Parent/AssessmentView';
 import ResultsDisplay from '../components/Assessment/ResultsDisplay';
 import Loading from '../components/Common/Loading';
@@ -12,6 +13,7 @@ import MaternalHealthGuide from '../components/Reports/MaternalHealthGuide';
 
 function PregnancyDashboard() {
     const { token, user } = useAuth();
+    const navigate = useNavigate();
     const [pregnancyChild, setPregnancyChild] = useState(null);
     const [pregnancyResults, setPregnancyResults] = useState([]);
     const [loading, setLoading] = useState(true);
@@ -26,18 +28,18 @@ function PregnancyDashboard() {
     const [deletingAppt, setDeletingAppt] = useState(false);
     const [deleteConfirm, setDeleteConfirm] = useState(false);
 
-    // ── NEW: All scheduled appointments ────────────────────────────────────────
+    // All scheduled appointments
     const [allAppointments, setAllAppointments] = useState([]);
     const [allApptLoading, setAllApptLoading] = useState(false);
-    const [deletingId, setDeletingId] = useState(null);        // id of the appt being deleted
-    const [confirmDeleteId, setConfirmDeleteId] = useState(null); // id awaiting confirm
+    const [deletingId, setDeletingId] = useState(null);
+    const [confirmDeleteId, setConfirmDeleteId] = useState(null);
 
     const authHeaders = { Authorization: `Bearer ${token}` };
 
     useEffect(() => {
         fetchPregnancyChild();
         fetchNextAppointment();
-        fetchAllAppointments(); // ← NEW
+        fetchAllAppointments();
     }, [token]);
 
     const fetchPregnancyChild = async () => {
@@ -88,7 +90,6 @@ function PregnancyDashboard() {
         }
     };
 
-    // ── NEW: fetch all appointments ────────────────────────────────────────────
     const fetchAllAppointments = async () => {
         setAllApptLoading(true);
         try {
@@ -114,7 +115,7 @@ function PregnancyDashboard() {
             );
             setNextAppointment(null);
             setDeleteConfirm(false);
-            fetchAllAppointments(); // ← refresh full list too
+            fetchAllAppointments();
         } catch (err) {
             console.error('Failed to delete appointment:', err);
             alert('Could not delete appointment. Please try again.');
@@ -123,7 +124,6 @@ function PregnancyDashboard() {
         }
     };
 
-    // ── NEW: delete any appointment from the full list ─────────────────────────
     const handleDeleteById = async (id) => {
         setDeletingId(id);
         try {
@@ -133,7 +133,6 @@ function PregnancyDashboard() {
             );
             setAllAppointments(prev => prev.filter(a => a.id !== id));
             setConfirmDeleteId(null);
-            // If this was also the "next" appointment, clear it
             if (nextAppointment && nextAppointment.id === id) {
                 setNextAppointment(null);
                 fetchNextAppointment();
@@ -165,7 +164,7 @@ function PregnancyDashboard() {
         setShowReportUploader(false);
         setShowHealthGuide(false);
         fetchNextAppointment();
-        fetchAllAppointments(); // ← refresh on back
+        fetchAllAppointments();
     };
 
     const formatApptDate = (isoString) => {
@@ -205,7 +204,6 @@ function PregnancyDashboard() {
         );
     }
 
-    // ── Assessment Taking View ──────────────────────────────────────────────────
     if (takingAssessment) {
         return (
             <div className="max-w-4xl mx-auto px-4 py-8">
@@ -222,7 +220,6 @@ function PregnancyDashboard() {
         );
     }
 
-    // ── Assessment Result View ─────────────────────────────────────────────────
     const latest = pregnancyResults.length > 0 ? pregnancyResults[0] : null;
     if (showResult && latest) {
         return (
@@ -235,7 +232,6 @@ function PregnancyDashboard() {
         );
     }
 
-    // ── Report Uploader View ───────────────────────────────────────────────────
     if (showReportUploader) {
         return (
             <div className="max-w-4xl mx-auto px-4 py-8">
@@ -247,7 +243,6 @@ function PregnancyDashboard() {
         );
     }
 
-    // ── Maternal Health Guide View ─────────────────────────────────────────────
     if (showHealthGuide) {
         return (
             <div className="max-w-4xl mx-auto px-4 py-8">
@@ -259,17 +254,13 @@ function PregnancyDashboard() {
         );
     }
 
-    // ── Main Dashboard ─────────────────────────────────────────────────────────
     const latestResult = pregnancyResults.length > 0 ? pregnancyResults[0] : null;
-
-    // Split appointments into upcoming and past for the scheduled list
     const upcomingAppointments = allAppointments.filter(a => !isPast(a.date_time));
     const pastAppointments = allAppointments.filter(a => isPast(a.date_time));
 
     return (
         <div className="max-w-7xl mx-auto px-4 py-8">
 
-            {/* Header */}
             <div className="flex flex-wrap justify-between items-center mb-8 gap-3">
                 <h1 className="text-4xl font-extrabold dark:text-white tracking-tight">
                     Pregnancy <span className="dark:text-green-500">Journey</span>
@@ -293,10 +284,16 @@ function PregnancyDashboard() {
                     >
                         📝 Take Assessment
                     </button>
+                    {/* NEW: Voice Wellness Check button */}
+                    <button
+                        onClick={() => navigate('/voice-assessment')}
+                        className="px-5 py-3 bg-purple-600 text-white rounded-xl hover:bg-purple-700 shadow-lg flex items-center gap-2 font-bold transition-all"
+                    >
+                        🎙️ Voice Wellness Check
+                    </button>
                 </div>
             </div>
 
-            {/* Welcome Banner */}
             <div className="mb-8 p-6 bg-green-50 dark:bg-green-900/20 rounded-xl border-l-4 border-green-600 dark:border-green-500 shadow-sm">
                 <h2 className="text-2xl font-bold text-green-800 dark:text-green-400 mb-2 flex items-center gap-2">
                     <span className="text-3xl">🤰</span> Hello, {user.first_name || 'Parent'}!
@@ -309,7 +306,6 @@ function PregnancyDashboard() {
                 </div>
             </div>
 
-            {/* Quick Action Cards */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-8">
                 <button
                     onClick={() => setShowHealthGuide(true)}
@@ -340,7 +336,6 @@ function PregnancyDashboard() {
                 </button>
             </div>
 
-            {/* Next Appointment Card */}
             <div className="mb-8">
                 {apptLoading ? (
                     <div className="p-6 bg-blue-50 dark:bg-blue-900/20 rounded-xl border border-blue-200 dark:border-blue-800/50 flex items-center gap-3">
@@ -437,9 +432,7 @@ function PregnancyDashboard() {
                 )}
             </div>
 
-            {/* ── NEW: Scheduled Appointments Section ──────────────────────────────── */}
             <div className="mb-8 bg-white dark:bg-slate-800 rounded-2xl shadow-sm border border-gray-100 dark:border-slate-700 overflow-hidden">
-                {/* Section Header */}
                 <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100 dark:border-slate-700">
                     <div className="flex items-center gap-3">
                         <span className="text-2xl">🗓️</span>
@@ -462,7 +455,6 @@ function PregnancyDashboard() {
                     </button>
                 </div>
 
-                {/* Loading state */}
                 {allApptLoading && (
                     <div className="flex items-center justify-center gap-3 py-10">
                         <div className="w-5 h-5 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
@@ -470,7 +462,6 @@ function PregnancyDashboard() {
                     </div>
                 )}
 
-                {/* Upcoming Appointments */}
                 {!allApptLoading && (
                     <>
                         {upcomingAppointments.length > 0 ? (
@@ -483,7 +474,6 @@ function PregnancyDashboard() {
                                 <ul className="divide-y divide-gray-50 dark:divide-slate-700/50">
                                     {upcomingAppointments.map((appt) => (
                                         <li key={appt.id} className="px-6 py-4 flex items-center justify-between gap-4 hover:bg-blue-50/40 dark:hover:bg-blue-900/10 transition-all">
-                                            {/* Date badge */}
                                             <div className="shrink-0 w-12 h-12 bg-blue-600 dark:bg-blue-700 rounded-xl flex flex-col items-center justify-center shadow">
                                                 <span className="text-white text-[10px] font-bold uppercase leading-none">
                                                     {new Date(appt.date_time).toLocaleString('en-IN', { month: 'short' })}
@@ -492,8 +482,6 @@ function PregnancyDashboard() {
                                                     {new Date(appt.date_time).getDate()}
                                                 </span>
                                             </div>
-
-                                            {/* Info */}
                                             <div className="flex-1 min-w-0">
                                                 <div className="flex items-center gap-2 flex-wrap">
                                                     <p className="text-sm font-bold text-gray-900 dark:text-white truncate">
@@ -504,7 +492,6 @@ function PregnancyDashboard() {
                                                             </span>
                                                         )}
                                                     </p>
-                                                    {/* Days-until badge */}
                                                     <span className={`shrink-0 text-[10px] font-bold px-2 py-0.5 rounded-full ${
                                                         daysUntil(appt.date_time) === 'Today'
                                                             ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400'
@@ -534,8 +521,6 @@ function PregnancyDashboard() {
                                                     </span>
                                                 </div>
                                             </div>
-
-                                            {/* Delete control */}
                                             <div className="shrink-0">
                                                 {confirmDeleteId === appt.id ? (
                                                     <div className="flex flex-col gap-1.5 items-end">
@@ -591,7 +576,6 @@ function PregnancyDashboard() {
                             </div>
                         )}
 
-                        {/* Past Appointments (collapsible-style, dimmed) */}
                         {pastAppointments.length > 0 && (
                             <details className="group">
                                 <summary className="flex items-center gap-2 px-6 py-3 cursor-pointer border-t border-gray-100 dark:border-slate-700 text-xs font-bold uppercase tracking-widest text-gray-400 dark:text-slate-500 hover:text-gray-600 dark:hover:text-slate-300 select-none list-none">
@@ -631,9 +615,7 @@ function PregnancyDashboard() {
                     </>
                 )}
             </div>
-            {/* ── END: Scheduled Appointments Section ──────────────────────────────── */}
 
-            {/* Assessment result summary */}
             {latestResult && (
                 <div className="mb-8 bg-white dark:bg-slate-800 rounded-2xl shadow-sm border border-gray-100 dark:border-slate-700 p-6">
                     <div className="flex items-center justify-between mb-4">
@@ -661,7 +643,6 @@ function PregnancyDashboard() {
                 </div>
             )}
 
-            {/* Empty state */}
             {!latestResult && (
                 <div className="text-center py-16 bg-white dark:bg-slate-800 rounded-2xl border border-gray-100 dark:border-slate-700">
                     <div className="text-6xl mb-4">📋</div>

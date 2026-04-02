@@ -22,6 +22,7 @@ urlpatterns = [
     # ✅ Fixed: reports and appointments now under /api/ prefix
     # so frontend calls http://localhost:8000/api/reports/upload/ correctly
     path('api/', include('apps.reports.urls')),
+    path('api/voice-assessments/', include('apps.voice_assessments.urls')),
 ]
 
 if settings.DEBUG:

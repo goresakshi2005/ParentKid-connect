@@ -13,7 +13,8 @@ import SignupTeen from './components/Auth/SignupTeen';
 import AuthGuard from './components/Auth/AuthGuard';
 import NotFound from './pages/NotFound';
 import ParentRouter from './components/ParentRouter';
-import GoogleCallback from './pages/GoogleCallback'; // ✅ NEW
+import GoogleCallback from './pages/GoogleCallback';
+import VoiceAssessmentPage from './pages/VoiceAssessmentPage';
 import { useAuth } from './context/AuthContext';
 
 function App() {
@@ -35,11 +36,18 @@ function App() {
           <Route path="/signup/expecting" element={<SignupExpecting />} />
           <Route path="/login/teen" element={<LoginTeen />} />
           <Route path="/signup/teen" element={<SignupTeen />} />
-
-          {/* ✅ NEW: Google OAuth callback — handles redirect from Google after OAuth */}
           <Route path="/google-callback" element={<GoogleCallback />} />
 
-          {/* Regular parent dashboard */}
+          {/* NEW: Voice Assessment page */}
+          <Route
+            path="/voice-assessment"
+            element={
+              <AuthGuard role="parent">
+                <VoiceAssessmentPage />
+              </AuthGuard>
+            }
+          />
+
           <Route
             path="/dashboard/parent"
             element={
@@ -49,7 +57,6 @@ function App() {
             }
           />
 
-          {/* Dedicated pregnancy dashboard route — expecting parents land here directly */}
           <Route
             path="/dashboard/pregnancy"
             element={
