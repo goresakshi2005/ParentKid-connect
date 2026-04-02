@@ -1,3 +1,5 @@
+# backend/apps/reports/models.py
+
 from django.db import models
 from django.contrib.auth import get_user_model
 
@@ -33,3 +35,40 @@ class Appointment(models.Model):
 
     def __str__(self):
         return f"Appointment for {self.user.username} on {self.date_time}"
+
+
+# ── NEW ────────────────────────────────────────────────────────────────────────
+class MaternalHealthGuide(models.Model):
+    """
+    Stores the AI-generated maternal health guide for a specific MedicalReport.
+    One-to-one with MedicalReport so we never duplicate guides for the same upload.
+    """
+    report = models.OneToOneField(
+        MedicalReport,
+        on_delete=models.CASCADE,
+        related_name='health_guide',
+    )
+    user = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name='health_guides',
+    )
+
+    # Optional trimester context supplied by user at upload time
+    trimester = models.CharField(max_length=50, blank=True)
+
+    # Full plain-text guide (shown directly in the UI)
+    guide_text = models.TextField()
+
+    # Structured breakdown (used to render cards / sections in the UI)
+    overall_status = models.TextField(blank=True)
+    positives = models.JSONField(default=list)
+    issues = models.JSONField(default=list)
+    recommendations = models.JSONField(default=dict)
+    care_goals = models.JSONField(default=list)
+    alerts = models.TextField(blank=True)
+
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return f"HealthGuide for {self.user.email} – report #{self.report_id}"

@@ -1,3 +1,5 @@
+# backend/apps/reports/services/extractor.py
+
 import fitz  # PyMuPDF
 import easyocr
 from PIL import Image
@@ -36,10 +38,10 @@ def _extract_from_pdf(pdf_path: str) -> str:
     for page in doc:
         page_text = page.get_text()
         if page_text.strip():
-            # Digital PDF — use native text
+            # Digital PDF – use native text
             text += page_text
         else:
-            # Scanned PDF — render page as image then OCR
+            # Scanned PDF – render page as image then OCR
             pix = page.get_pixmap(dpi=200)
             img_bytes = pix.tobytes("png")
             img_array = np.frombuffer(img_bytes, dtype=np.uint8)
@@ -55,3 +57,12 @@ def _extract_from_image(image_path: str) -> str:
     """Extract text from an image file using EasyOCR."""
     results = reader.readtext(image_path, detail=0, paragraph=True)
     return "\n".join(results).strip()
+
+
+# ── NEW ──────────────────────────────────────────────────────────────────────
+def extract_text_from_report(report) -> str:
+    """
+    Convenience wrapper that accepts a MedicalReport model instance
+    and delegates to extract_text_from_file using the file's path.
+    """
+    return extract_text_from_file(report.file.path)

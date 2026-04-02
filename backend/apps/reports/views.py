@@ -1,3 +1,5 @@
+# backend/apps/reports/views.py
+
 import traceback
 import logging
 
@@ -7,9 +9,10 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.parsers import MultiPartParser, FormParser
 from rest_framework import status
 
-from .models import MedicalReport, Appointment
+from .models import MedicalReport, Appointment, MaternalHealthGuide
 from .services.orchestrator import process_report_and_schedule, confirm_and_schedule
-from .serializers import AppointmentSerializer
+from .services.maternal_health_service import generate_maternal_health_guide
+from .serializers import AppointmentSerializer, MaternalHealthGuideSerializer
 
 logger = logging.getLogger(__name__)
 
@@ -31,11 +34,9 @@ class UploadReportView(APIView):
                     status=400
                 )
 
-            # Save the report file
             report = MedicalReport.objects.create(user=request.user, file=file)
             logger.info(f"Report saved: id={report.id}, file={report.file.name}")
 
-            # Google tokens (used later in confirm step)
             access_token = getattr(request.user, 'google_access_token', None)
             refresh_token = getattr(request.user, 'google_refresh_token', None)
 
@@ -104,70 +105,152 @@ class AppointmentListView(APIView):
 
 
 class NextAppointmentView(APIView):
-    """
-    GET /appointments/next/
-    Returns the single soonest upcoming appointment for the logged-in user.
-    Used by the dashboard to show the "Next Appointment" card.
-    """
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
-        from django.utils import timezone as tz
-        appointment = (
-            Appointment.objects
-            .filter(user=request.user, date_time__gte=tz.now())
-            .order_by("date_time")
-            .first()
-        )
+        from django.utils import timezone
+        appointment = Appointment.objects.filter(
+            user=request.user,
+            date_time__gte=timezone.now()
+        ).order_by("date_time").first()
+
         if not appointment:
-            return Response({"appointment": None}, status=200)
+            return Response({"next_appointment": None})
+
         serializer = AppointmentSerializer(appointment)
-        return Response({"appointment": serializer.data}, status=200)
+        return Response({"next_appointment": serializer.data})
 
 
 class AppointmentDeleteView(APIView):
-    """
-    DELETE /appointments/<id>/delete/
-    Deletes the appointment from the DB and, if a Google Calendar event ID is
-    stored, also removes the event from Google Calendar so the user's calendar
-    stays in sync.
-    """
     permission_classes = [IsAuthenticated]
 
     def delete(self, request, pk):
         try:
-            appointment = Appointment.objects.get(id=pk, user=request.user)
+            appointment = Appointment.objects.get(pk=pk, user=request.user)
         except Appointment.DoesNotExist:
             return Response({"error": "Appointment not found."}, status=404)
 
-        # ✅ If a Google Calendar event was created, delete it there too
         google_event_id = appointment.google_event_id
         if google_event_id:
             try:
                 from .services.calendar_service import build_calendar_service, delete_calendar_event
-                from django.conf import settings
-
                 access_token = getattr(request.user, 'google_access_token', None)
                 refresh_token = getattr(request.user, 'google_refresh_token', None)
-
-                if (
-                    access_token and refresh_token
-                    and getattr(settings, 'GOOGLE_CLIENT_ID', '')
-                    and getattr(settings, 'GOOGLE_CLIENT_SECRET', '')
-                ):
-                    service, new_token = build_calendar_service(access_token, refresh_token)
-
-                    # Persist refreshed token
-                    if new_token and new_token != access_token:
-                        request.user.google_access_token = new_token
-                        request.user.save(update_fields=["google_access_token"])
-
+                if access_token and refresh_token:
+                    service, _ = build_calendar_service(access_token, refresh_token)
                     delete_calendar_event(service, google_event_id)
                     logger.info(f"Google Calendar event {google_event_id} deleted.")
-
             except Exception as e:
-                # Don't block the DB delete if Google fails
                 logger.warning(f"Could not delete Google Calendar event: {str(e)}")
 
         appointment.delete()
         return Response({"message": "Appointment deleted successfully."}, status=200)
+
+
+# ── NEW ──────────────────────────────────────────────────────────────────────
+
+class MaternalHealthGuideView(APIView):
+    """
+    POST /reports/health-guide/
+    Body (multipart/form-data):
+        file      – PDF / image of the medical report
+        trimester – (optional) e.g. "First Trimester", "7th month", etc.
+
+    Flow:
+    1. Save the MedicalReport (reuses existing model).
+    2. Extract text via the existing extractor pipeline.
+    3. Call Gemini to generate the maternal health guide JSON.
+    4. Save the guide in MaternalHealthGuide.
+    5. Return the full guide payload to the frontend.
+    """
+    permission_classes = [IsAuthenticated]
+    parser_classes = [MultiPartParser, FormParser]
+
+    def post(self, request):
+        try:
+            file = request.FILES.get("file")
+            if not file:
+                return Response({"error": "No file provided."}, status=400)
+
+            allowed_types = ["application/pdf", "image/png", "image/jpeg", "image/tiff"]
+            if file.content_type not in allowed_types:
+                return Response(
+                    {"error": f"Unsupported file type: {file.content_type}."},
+                    status=400,
+                )
+
+            trimester = request.data.get("trimester", "").strip()
+
+            # 1. Save the file
+            report = MedicalReport.objects.create(user=request.user, file=file)
+            logger.info(f"[HealthGuide] Report saved: id={report.id}")
+
+            # 2. Extract text using the existing extractor
+            from .services.extractor import extract_text_from_report
+            report_text = extract_text_from_report(report)
+
+            if not report_text or len(report_text.strip()) < 30:
+                return Response(
+                    {"error": "Could not extract readable text from the report. Please upload a clearer file."},
+                    status=422,
+                )
+
+            # Save extracted text back to the report
+            report.extracted_text = report_text
+            report.save(update_fields=["extracted_text"])
+
+            # 3. Generate guide via Gemini
+            guide_data = generate_maternal_health_guide(report_text, trimester)
+
+            # 4. Persist the guide
+            guide = MaternalHealthGuide.objects.create(
+                report=report,
+                user=request.user,
+                trimester=trimester,
+                guide_text=guide_data.get("guide_text", ""),
+                overall_status=guide_data.get("overall_status", ""),
+                positives=guide_data.get("positives", []),
+                issues=guide_data.get("issues", []),
+                recommendations=guide_data.get("recommendations", {}),
+                care_goals=guide_data.get("care_goals", []),
+                alerts=guide_data.get("alerts", ""),
+            )
+
+            serializer = MaternalHealthGuideSerializer(guide)
+            return Response({"success": True, "guide": serializer.data}, status=201)
+
+        except Exception as e:
+            logger.error(f"[HealthGuide] Error: {traceback.format_exc()}")
+            return Response({"error": f"Server error: {str(e)}"}, status=500)
+
+
+class MaternalHealthGuideListView(APIView):
+    """
+    GET /reports/health-guide/history/
+    Returns all health guides for the authenticated user, newest first.
+    """
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        guides = MaternalHealthGuide.objects.filter(
+            user=request.user
+        ).order_by("-created_at")
+        serializer = MaternalHealthGuideSerializer(guides, many=True)
+        return Response(serializer.data)
+
+
+class MaternalHealthGuideDetailView(APIView):
+    """
+    GET /reports/health-guide/<int:pk>/
+    Returns a single guide by ID (must belong to the authenticated user).
+    """
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, pk):
+        try:
+            guide = MaternalHealthGuide.objects.get(pk=pk, user=request.user)
+        except MaternalHealthGuide.DoesNotExist:
+            return Response({"error": "Guide not found."}, status=404)
+
+        serializer = MaternalHealthGuideSerializer(guide)
+        return Response(serializer.data)
