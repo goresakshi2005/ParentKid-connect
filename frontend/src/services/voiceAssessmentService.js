@@ -19,3 +19,17 @@ export const getVoiceResult = async (sessionId) => {
     const response = await api.get(`/voice-assessments/result/${sessionId}/`);
     return response.data;
 };
+
+/**
+ * Fetches the most recent completed voice assessment for the logged-in user.
+ * Returns null (not an error) when the user has never completed one.
+ */
+export const getLatestVoiceResult = async () => {
+    try {
+        const response = await api.get('/voice-assessments/latest/');
+        return response.data;
+    } catch (err) {
+        if (err.response?.status === 404) return null;
+        throw err;
+    }
+};

@@ -12,6 +12,8 @@ class VoiceResultSerializer(serializers.ModelSerializer):
     class Meta:
         model = VoiceAssessmentSession
         fields = [
-            'session_id', 'status', 'stress_score', 'confidence_score',
-            'fatigue_score', 'stress_level', 'insights', 'recommendations'
+            'session_id', 'status',
+            'stress_score', 'confidence_score', 'fatigue_score',
+            'stress_level', 'insights', 'recommendations',
+            'updated_at',   # ← used by the dashboard card to show "Last checked on …"
         ]

@@ -23,7 +23,6 @@ class StartSessionView(APIView):
     permission_classes = [IsAuthenticated]
 
     def post(self, request):
-        # Create new session
         session = VoiceAssessmentSession.objects.create(user=request.user)
         first_question = get_initial_question()
         return Response({
@@ -50,21 +49,17 @@ class RespondView(APIView):
         except VoiceAssessmentSession.DoesNotExist:
             return Response({'error': 'Session not found'}, status=404)
 
-        # Save audio temporarily
         with tempfile.NamedTemporaryFile(suffix='.webm', delete=False) as tmp:
             for chunk in audio_file.chunks():
                 tmp.write(chunk)
             tmp_path = tmp.name
 
         try:
-            # Analyze audio features
             vocal_features = analyze_audio(tmp_path)
             logger.info(f"Vocal features: {vocal_features}")
 
-            # Get conversation history
             history = session.conversation_history
 
-            # Process response: transcribe, decide next question, compute scores if done
             result = process_response_and_get_next(
                 audio_path=tmp_path,
                 vocal_features=vocal_features,
@@ -72,7 +67,6 @@ class RespondView(APIView):
                 current_turn=len(history)
             )
 
-            # Append this turn to history
             new_entry = {
                 'question': result['current_question'],
                 'answer_text': result['transcript'],
@@ -81,9 +75,7 @@ class RespondView(APIView):
             session.conversation_history.append(new_entry)
             session.save()
 
-            # If conversation is complete, compute final scores
             if result.get('is_complete', False):
-                # Compute final scores based on all history + vocal features
                 final_report = compute_final_report(session.conversation_history)
                 session.stress_score = final_report['stress_score']
                 session.confidence_score = final_report['confidence_score']
@@ -98,7 +90,6 @@ class RespondView(APIView):
                     'result': VoiceResultSerializer(session).data
                 })
 
-            # Otherwise return next question
             return Response({
                 'is_complete': False,
                 'question': result['next_question'],
@@ -124,5 +115,25 @@ class ResultView(APIView):
         if session.status != 'completed':
             return Response({'error': 'Assessment not completed yet'}, status=400)
 
-        serializer = VoiceResultSerializer(session)
-        return Response(serializer.data)
+        return Response(VoiceResultSerializer(session).data)
+
+
+class LatestResultView(APIView):
+    """
+    GET /voice-assessments/latest/
+    Returns the most recent completed voice assessment session for the
+    logged-in user, or 404 if the user has never completed one.
+    """
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        session = (
+            VoiceAssessmentSession.objects
+            .filter(user=request.user, status='completed')
+            .order_by('-updated_at')
+            .first()
+        )
+        if not session:
+            return Response({'detail': 'No completed session found.'}, status=status.HTTP_404_NOT_FOUND)
+
+        return Response(VoiceResultSerializer(session).data)
