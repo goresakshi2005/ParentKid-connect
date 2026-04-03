@@ -80,19 +80,32 @@ Directory structure:
     │   │   │       ├── 0002_initial.py
     │   │   │       ├── 0003_seed_plans.py
     │   │   │       └── __init__.py
-    │   │   └── users/
+    │   │   ├── users/
+    │   │   │   ├── __init__.py
+    │   │   │   ├── admin.py
+    │   │   │   ├── models.py
+    │   │   │   ├── permissions.py
+    │   │   │   ├── serializers.py
+    │   │   │   ├── urls.py
+    │   │   │   ├── views.py
+    │   │   │   └── migrations/
+    │   │   │       ├── 0001_initial.py
+    │   │   │       ├── 0002_customuser_is_expecting.py
+    │   │   │       ├── 0003_customuser_google_tokens.py
+    │   │   │       └── __init__.py
+    │   │   └── voice_assessments/
     │   │       ├── __init__.py
-    │   │       ├── admin.py
     │   │       ├── models.py
-    │   │       ├── permissions.py
     │   │       ├── serializers.py
     │   │       ├── urls.py
     │   │       ├── views.py
-    │   │       └── migrations/
-    │   │           ├── 0001_initial.py
-    │   │           ├── 0002_customuser_is_expecting.py
-    │   │           ├── 0003_customuser_google_tokens.py
-    │   │           └── __init__.py
+    │   │       ├── migrations/
+    │   │       │   ├── 0001_initial.py
+    │   │       │   └── __init__.py
+    │   │       └── services/
+    │   │           ├── __init__.py
+    │   │           ├── audio_analyzer.py
+    │   │           └── conversation_manager.py
     │   └── config/
     │       ├── __init__.py
     │       ├── asgi.py
@@ -143,9 +156,12 @@ Directory structure:
             │   ├── Reports/
             │   │   ├── MaternalHealthGuide.jsx
             │   │   └── ReportUploader.jsx
-            │   └── Teen/
-            │       ├── AssessmentPrompt.jsx
-            │       └── Dashboard.jsx
+            │   ├── Teen/
+            │   │   ├── AssessmentPrompt.jsx
+            │   │   └── Dashboard.jsx
+            │   └── VoiceAssessment/
+            │       ├── VoiceAssessmentFlow.jsx
+            │       └── VoiceRecorder.jsx
             ├── context/
             │   ├── AuthContext.jsx
             │   ├── SubscriptionContext.jsx
@@ -157,13 +173,15 @@ Directory structure:
             │   ├── ParentDashboard.jsx
             │   ├── PregnancyDashboard.jsx
             │   ├── PricingPage.jsx
-            │   └── TeenDashboard.jsx
+            │   ├── TeenDashboard.jsx
+            │   └── VoiceAssessmentPage.jsx
             ├── services/
             │   ├── api.js
             │   ├── assessmentService.js
             │   ├── authService.js
             │   ├── maternalHealthService.js
-            │   └── reportService.js
+            │   ├── reportService.js
+            │   └── voiceAssessmentService.js
             ├── styles/
             │   ├── index.css
             │   └── tailwind.css
@@ -237,6 +255,11 @@ djangorestframework==3.15.2
 
 # âœ… NEW: Required for Google OAuth token exchange in users/views.py
 requests>=2.31.0
+
+librosa>=0.10.0
+soundfile>=0.12.0
+scipy>=1.10.0
+numpy>=1.24.0
 
 
 ================================================
@@ -3624,6 +3647,479 @@ FILE: backend/apps/users/migrations/__init__.py
 
 
 ================================================
+FILE: backend/apps/voice_assessments/__init__.py
+================================================
+
+
+
+================================================
+FILE: backend/apps/voice_assessments/models.py
+================================================
+from django.db import models
+from django.contrib.auth import get_user_model
+import uuid
+
+User = get_user_model()
+
+class VoiceAssessmentSession(models.Model):
+    STATUS_CHOICES = (
+        ('in_progress', 'In Progress'),
+        ('completed', 'Completed'),
+    )
+    session_id = models.UUIDField(default=uuid.uuid4, unique=True, editable=False)
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='voice_sessions')
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='in_progress')
+    conversation_history = models.JSONField(default=list)  # list of {question, answer_text, answer_audio_path, vocal_features}
+    stress_score = models.IntegerField(null=True, blank=True)
+    confidence_score = models.IntegerField(null=True, blank=True)
+    fatigue_score = models.IntegerField(null=True, blank=True)
+    stress_level = models.CharField(max_length=10, blank=True)
+    insights = models.JSONField(default=list)
+    recommendations = models.JSONField(default=list)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return f"Session {self.session_id} - {self.user.email}"
+
+
+================================================
+FILE: backend/apps/voice_assessments/serializers.py
+================================================
+from rest_framework import serializers
+from .models import VoiceAssessmentSession
+
+class StartSessionSerializer(serializers.Serializer):
+    pass  # no fields needed
+
+class RespondSerializer(serializers.Serializer):
+    session_id = serializers.UUIDField()
+    audio = serializers.FileField()
+
+class VoiceResultSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = VoiceAssessmentSession
+        fields = [
+            'session_id', 'status', 'stress_score', 'confidence_score',
+            'fatigue_score', 'stress_level', 'insights', 'recommendations'
+        ]
+
+
+================================================
+FILE: backend/apps/voice_assessments/urls.py
+================================================
+from django.urls import path
+from .views import StartSessionView, RespondView, ResultView
+
+urlpatterns = [
+    path('start/', StartSessionView.as_view(), name='voice-start'),
+    path('respond/', RespondView.as_view(), name='voice-respond'),
+    path('result/<uuid:session_id>/', ResultView.as_view(), name='voice-result'),
+]
+
+
+================================================
+FILE: backend/apps/voice_assessments/views.py
+================================================
+import os
+import tempfile
+from rest_framework.views import APIView
+from rest_framework.response import Response
+from rest_framework.permissions import IsAuthenticated
+from rest_framework.parsers import MultiPartParser, FormParser
+from rest_framework import status
+from django.conf import settings
+from .models import VoiceAssessmentSession
+from .serializers import StartSessionSerializer, RespondSerializer, VoiceResultSerializer
+from .services.audio_analyzer import analyze_audio
+from .services.conversation_manager import (
+    get_initial_question,
+    process_response_and_get_next,
+    is_conversation_complete,
+    compute_final_report
+)
+import logging
+
+logger = logging.getLogger(__name__)
+
+class StartSessionView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        # Create new session
+        session = VoiceAssessmentSession.objects.create(user=request.user)
+        first_question = get_initial_question()
+        return Response({
+            'session_id': session.session_id,
+            'question': first_question,
+            'question_number': 1,
+            'max_questions': 5
+        })
+
+class RespondView(APIView):
+    permission_classes = [IsAuthenticated]
+    parser_classes = [MultiPartParser, FormParser]
+
+    def post(self, request):
+        serializer = RespondSerializer(data=request.data)
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=400)
+
+        session_id = serializer.validated_data['session_id']
+        audio_file = serializer.validated_data['audio']
+
+        try:
+            session = VoiceAssessmentSession.objects.get(session_id=session_id, user=request.user)
+        except VoiceAssessmentSession.DoesNotExist:
+            return Response({'error': 'Session not found'}, status=404)
+
+        # Save audio temporarily
+        with tempfile.NamedTemporaryFile(suffix='.webm', delete=False) as tmp:
+            for chunk in audio_file.chunks():
+                tmp.write(chunk)
+            tmp_path = tmp.name
+
+        try:
+            # Analyze audio features
+            vocal_features = analyze_audio(tmp_path)
+            logger.info(f"Vocal features: {vocal_features}")
+
+            # Get conversation history
+            history = session.conversation_history
+
+            # Process response: transcribe, decide next question, compute scores if done
+            result = process_response_and_get_next(
+                audio_path=tmp_path,
+                vocal_features=vocal_features,
+                history=history,
+                current_turn=len(history)
+            )
+
+            # Append this turn to history
+            new_entry = {
+                'question': result['current_question'],
+                'answer_text': result['transcript'],
+                'vocal_features': vocal_features
+            }
+            session.conversation_history.append(new_entry)
+            session.save()
+
+            # If conversation is complete, compute final scores
+            if result.get('is_complete', False):
+                # Compute final scores based on all history + vocal features
+                final_report = compute_final_report(session.conversation_history)
+                session.stress_score = final_report['stress_score']
+                session.confidence_score = final_report['confidence_score']
+                session.fatigue_score = final_report['fatigue_score']
+                session.stress_level = final_report['stress_level']
+                session.insights = final_report['insights']
+                session.recommendations = final_report['recommendations']
+                session.status = 'completed'
+                session.save()
+                return Response({
+                    'is_complete': True,
+                    'result': VoiceResultSerializer(session).data
+                })
+
+            # Otherwise return next question
+            return Response({
+                'is_complete': False,
+                'question': result['next_question'],
+                'question_number': len(session.conversation_history) + 1,
+                'max_questions': 5
+            })
+
+        except Exception as e:
+            logger.exception("Error processing voice response")
+            return Response({'error': str(e)}, status=500)
+        finally:
+            os.unlink(tmp_path)
+
+class ResultView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, session_id):
+        try:
+            session = VoiceAssessmentSession.objects.get(session_id=session_id, user=request.user)
+        except VoiceAssessmentSession.DoesNotExist:
+            return Response({'error': 'Session not found'}, status=404)
+
+        if session.status != 'completed':
+            return Response({'error': 'Assessment not completed yet'}, status=400)
+
+        serializer = VoiceResultSerializer(session)
+        return Response(serializer.data)
+
+
+================================================
+FILE: backend/apps/voice_assessments/migrations/0001_initial.py
+================================================
+# Generated by Django 4.2 on 2026-04-02 18:11
+
+from django.conf import settings
+from django.db import migrations, models
+import django.db.models.deletion
+import uuid
+
+
+class Migration(migrations.Migration):
+
+    initial = True
+
+    dependencies = [
+        migrations.swappable_dependency(settings.AUTH_USER_MODEL),
+    ]
+
+    operations = [
+        migrations.CreateModel(
+            name='VoiceAssessmentSession',
+            fields=[
+                ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
+                ('session_id', models.UUIDField(default=uuid.uuid4, editable=False, unique=True)),
+                ('status', models.CharField(choices=[('in_progress', 'In Progress'), ('completed', 'Completed')], default='in_progress', max_length=20)),
+                ('conversation_history', models.JSONField(default=list)),
+                ('stress_score', models.IntegerField(blank=True, null=True)),
+                ('confidence_score', models.IntegerField(blank=True, null=True)),
+                ('fatigue_score', models.IntegerField(blank=True, null=True)),
+                ('stress_level', models.CharField(blank=True, max_length=10)),
+                ('insights', models.JSONField(default=list)),
+                ('recommendations', models.JSONField(default=list)),
+                ('created_at', models.DateTimeField(auto_now_add=True)),
+                ('updated_at', models.DateTimeField(auto_now=True)),
+                ('user', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='voice_sessions', to=settings.AUTH_USER_MODEL)),
+            ],
+        ),
+    ]
+
+
+
+================================================
+FILE: backend/apps/voice_assessments/migrations/__init__.py
+================================================
+
+
+
+================================================
+FILE: backend/apps/voice_assessments/services/__init__.py
+================================================
+
+
+
+================================================
+FILE: backend/apps/voice_assessments/services/audio_analyzer.py
+================================================
+import librosa
+import numpy as np
+import soundfile as sf
+
+def analyze_audio(audio_path):
+    """
+    Extract vocal features from an audio file.
+    Returns dict with:
+        - pitch_mean: average fundamental frequency (Hz)
+        - speaking_rate: estimated words per second
+        - energy_mean: average RMS amplitude
+        - hesitation_ratio: proportion of silent pauses >0.3s
+    """
+    try:
+        # Load audio
+        y, sr = librosa.load(audio_path, sr=None)
+
+        # Pitch (f0) using pyin
+        f0, voiced_flag, voiced_probs = librosa.pyin(y, fmin=50, fmax=300, sr=sr)
+        pitch_mean = np.nanmean(f0) if not np.all(np.isnan(f0)) else 0.0
+
+        # Energy (RMS)
+        rms = librosa.feature.rms(y=y)[0]
+        energy_mean = float(np.mean(rms))
+
+        # Speaking rate: estimate from onset detection (rough proxy)
+        onset_frames = librosa.onset.onset_detect(y=y, sr=sr, backtrack=True)
+        num_syllables = max(len(onset_frames), 1)
+        duration = len(y) / sr
+        speaking_rate = num_syllables / duration if duration > 0 else 0.0
+
+        # Hesitation ratio: silence detection
+        # Use librosa.effects.split to get non-silent intervals
+        intervals = librosa.effects.split(y, top_db=20)
+        silent_duration = 0.0
+        start = 0
+        for interval in intervals:
+            silent_duration += interval[0] - start
+            start = interval[1]
+        silent_duration += duration - start
+        hesitation_ratio = silent_duration / duration if duration > 0 else 0.0
+
+        return {
+            'pitch_mean': round(pitch_mean, 2),
+            'speaking_rate': round(speaking_rate, 2),
+            'energy_mean': round(energy_mean, 2),
+            'hesitation_ratio': round(hesitation_ratio, 2),
+            'duration': round(duration, 2)
+        }
+    except Exception as e:
+        # Fallback defaults
+        return {
+            'pitch_mean': 0.0,
+            'speaking_rate': 0.0,
+            'energy_mean': 0.0,
+            'hesitation_ratio': 0.0,
+            'duration': 0.0
+        }
+
+
+================================================
+FILE: backend/apps/voice_assessments/services/conversation_manager.py
+================================================
+import google.generativeai as genai
+from django.conf import settings
+import json
+import re
+
+genai.configure(api_key=settings.GEMINI_API_KEY)
+
+INITIAL_QUESTION = "How are you feeling today emotionally and physically?"
+
+QUESTION_GENERATION_PROMPT = """
+You are a gentle, supportive assistant for expecting mothers. Based on the conversation history and the user's latest answer (transcript) and vocal features, decide the next question.
+
+Previous conversation:
+{history}
+
+Latest answer: "{answer_text}"
+Vocal features: pitch={pitch_mean}Hz, speaking rate={speaking_rate} words/sec, energy={energy_mean}, hesitation={hesitation_ratio}
+
+Current turn number: {turn} (max 5 total turns)
+
+Rules:
+- If stress detected (high pitch >200Hz, fast speaking rate >3, negative words, high energy), ask about worries.
+- If fatigue detected (slow speaking rate <2, low energy <0.02, hesitation >0.3), ask about sleep or tiredness.
+- If low confidence detected (hesitation >0.4, broken speech), ask about emotional support.
+- If calm/positive, ask about daily routine.
+- Ensure at least one question about sleep, one about emotional stress, one about energy level across the conversation.
+- Keep questions short, simple, and emotionally supportive.
+
+Return a JSON object with:
+{{
+    "next_question": "string",
+    "is_complete": false  // set true if turn >= 5 or enough info collected
+}}
+"""
+
+FINAL_SCORING_PROMPT = """
+You are analyzing a voice-based wellness check for an expecting mother. Based on the full conversation history (questions and transcribed answers) and the vocal features from each turn, compute scores.
+
+Conversation history:
+{history}
+
+Output a JSON object exactly as:
+{{
+    "stress_score": integer 0-100,
+    "confidence_score": integer 0-100,
+    "fatigue_score": integer 0-100,
+    "stress_level": "Low" or "Moderate" or "High",
+    "insights": ["observation1", "observation2", "observation3"],
+    "recommendations": ["recommendation1", "recommendation2", "recommendation3"]
+}}
+
+Guidelines:
+- Stress: high if fast speech, high pitch, high energy, negative words.
+- Confidence: high if clear, steady, low hesitation.
+- Fatigue: high if slow speech, low pitch, low energy.
+- Insights: combine vocal and textual cues.
+- Recommendations: gentle, actionable suggestions for relaxation, sleep, social support, prenatal care.
+"""
+
+def get_initial_question():
+    return INITIAL_QUESTION
+
+def process_response_and_get_next(audio_path, vocal_features, history, current_turn):
+    # Transcribe using Gemini
+    model = genai.GenerativeModel('gemini-2.5-flash')
+    # For transcription, we can use a simple prompt
+    audio_file = genai.upload_file(audio_path, mime_type="audio/webm")
+    transcript_response = model.generate_content(
+        ["Transcribe the following audio response from an expecting mother:", audio_file]
+    )
+    transcript = transcript_response.text.strip()
+
+    # Build history string
+    history_str = ""
+    for idx, entry in enumerate(history, 1):
+        history_str += f"Q{idx}: {entry['question']}\nA{idx}: {entry['answer_text']}\n"
+
+    # Decide next question
+    prompt = QUESTION_GENERATION_PROMPT.format(
+        history=history_str,
+        answer_text=transcript,
+        pitch_mean=vocal_features.get('pitch_mean', 0),
+        speaking_rate=vocal_features.get('speaking_rate', 0),
+        energy_mean=vocal_features.get('energy_mean', 0),
+        hesitation_ratio=vocal_features.get('hesitation_ratio', 0),
+        turn=current_turn + 1
+    )
+
+    response = model.generate_content(prompt)
+    raw = response.text.strip()
+    raw = re.sub(r'^```json\s*', '', raw)
+    raw = re.sub(r'\s*```$', '', raw)
+    try:
+        data = json.loads(raw)
+    except:
+        # Fallback
+        if current_turn + 1 >= 5:
+            data = {'next_question': "Thank you for sharing. Let me analyze your responses.", 'is_complete': True}
+        else:
+            data = {'next_question': "How has your sleep been recently?", 'is_complete': False}
+
+    return {
+        'transcript': transcript,
+        'next_question': data.get('next_question', "Can you tell me more about how you're feeling?"),
+        'is_complete': data.get('is_complete', False) or (current_turn + 1 >= 5),
+        'current_question': history[-1]['question'] if history else INITIAL_QUESTION
+    }
+
+
+def is_conversation_complete(history):
+    """Return True if the conversation has reached the max number of turns.
+
+    We consider a conversation complete when there are 5 or more turns recorded.
+    This mirrors the logic used elsewhere (max 5 turns).
+    """
+    try:
+        return len(history) >= 5
+    except Exception:
+        return False
+
+def compute_final_report(conversation_history):
+    # Build detailed history for scoring
+    history_str = ""
+    for idx, entry in enumerate(conversation_history, 1):
+        vf = entry.get('vocal_features', {})
+        history_str += f"Turn {idx}:\nQuestion: {entry['question']}\nAnswer: {entry['answer_text']}\nVocal features: pitch={vf.get('pitch_mean',0)}Hz, rate={vf.get('speaking_rate',0)} wps, energy={vf.get('energy_mean',0)}, hesitation={vf.get('hesitation_ratio',0)}\n\n"
+
+    model = genai.GenerativeModel('gemini-2.5-flash')
+    prompt = FINAL_SCORING_PROMPT.format(history=history_str)
+    response = model.generate_content(prompt)
+    raw = response.text.strip()
+    raw = re.sub(r'^```json\s*', '', raw)
+    raw = re.sub(r'\s*```$', '', raw)
+    try:
+        data = json.loads(raw)
+    except:
+        # Fallback defaults
+        data = {
+            'stress_score': 50,
+            'confidence_score': 50,
+            'fatigue_score': 50,
+            'stress_level': 'Moderate',
+            'insights': ['Unable to fully analyze. Please consult a healthcare provider.'],
+            'recommendations': ['Rest when needed', 'Talk to someone you trust', 'Stay hydrated']
+        }
+    return data
+
+
+================================================
 FILE: backend/config/__init__.py
 ================================================
 
@@ -3660,17 +4156,18 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
-    
+
     'rest_framework',
     'corsheaders',
     'rest_framework_simplejwt',
-    
+
     'apps.users',
     'apps.children',
     'apps.assessments',
     'apps.subscriptions',
     'apps.insights',
     'apps.reports',
+    'apps.voice_assessments',
 ]
 
 MIDDLEWARE = [
@@ -3794,6 +4291,7 @@ urlpatterns = [
     # âœ… Fixed: reports and appointments now under /api/ prefix
     # so frontend calls http://localhost:8000/api/reports/upload/ correctly
     path('api/', include('apps.reports.urls')),
+    path('api/voice-assessments/', include('apps.voice_assessments.urls')),
 ]
 
 if settings.DEBUG:
@@ -3949,7 +4447,8 @@ import SignupTeen from './components/Auth/SignupTeen';
 import AuthGuard from './components/Auth/AuthGuard';
 import NotFound from './pages/NotFound';
 import ParentRouter from './components/ParentRouter';
-import GoogleCallback from './pages/GoogleCallback'; // âœ… NEW
+import GoogleCallback from './pages/GoogleCallback';
+import VoiceAssessmentPage from './pages/VoiceAssessmentPage';
 import { useAuth } from './context/AuthContext';
 
 function App() {
@@ -3971,11 +4470,18 @@ function App() {
           <Route path="/signup/expecting" element={<SignupExpecting />} />
           <Route path="/login/teen" element={<LoginTeen />} />
           <Route path="/signup/teen" element={<SignupTeen />} />
-
-          {/* âœ… NEW: Google OAuth callback â€” handles redirect from Google after OAuth */}
           <Route path="/google-callback" element={<GoogleCallback />} />
 
-          {/* Regular parent dashboard */}
+          {/* NEW: Voice Assessment page */}
+          <Route
+            path="/voice-assessment"
+            element={
+              <AuthGuard role="parent">
+                <VoiceAssessmentPage />
+              </AuthGuard>
+            }
+          />
+
           <Route
             path="/dashboard/parent"
             element={
@@ -3985,7 +4491,6 @@ function App() {
             }
           />
 
-          {/* Dedicated pregnancy dashboard route â€” expecting parents land here directly */}
           <Route
             path="/dashboard/pregnancy"
             element={
@@ -6961,6 +7466,242 @@ FILE: frontend/src/components/Teen/Dashboard.jsx
 
 
 ================================================
+FILE: frontend/src/components/VoiceAssessment/VoiceAssessmentFlow.jsx
+================================================
+import React, { useState, useEffect, useCallback } from 'react';
+import { startVoiceSession, sendVoiceResponse, getVoiceResult } from '../../services/voiceAssessmentService';
+import VoiceRecorder from './VoiceRecorder';
+import Loading from '../Common/Loading';
+
+const VoiceAssessmentFlow = ({ onComplete, onClose }) => {
+    const [sessionId, setSessionId] = useState(null);
+    const [currentQuestion, setCurrentQuestion] = useState('');
+    const [questionNumber, setQuestionNumber] = useState(0);
+    const [maxQuestions, setMaxQuestions] = useState(5);
+    const [isLoading, setIsLoading] = useState(false);
+    const [isRecordingDisabled, setIsRecordingDisabled] = useState(false);
+    const [result, setResult] = useState(null);
+    const [error, setError] = useState(null);
+
+    useEffect(() => {
+        initializeSession();
+    }, []);
+
+    const initializeSession = async () => {
+        setIsLoading(true);
+        try {
+            const data = await startVoiceSession();
+            setSessionId(data.session_id);
+            setCurrentQuestion(data.question);
+            setQuestionNumber(data.question_number);
+            setMaxQuestions(data.max_questions);
+        } catch (err) {
+            setError('Failed to start voice assessment. Please try again.');
+        } finally {
+            setIsLoading(false);
+        }
+    };
+
+    const handleRecordingComplete = useCallback(async (audioBlob) => {
+        if (!sessionId) return;
+        setIsRecordingDisabled(true);
+        setIsLoading(true);
+        try {
+            const response = await sendVoiceResponse(sessionId, audioBlob);
+            if (response.is_complete) {
+                setResult(response.result);
+                if (onComplete) onComplete(response.result);
+            } else {
+                setCurrentQuestion(response.question);
+                setQuestionNumber(response.question_number);
+                setIsRecordingDisabled(false);
+            }
+        } catch (err) {
+            setError(err.response?.data?.error || 'Error processing your voice. Please try again.');
+            setIsRecordingDisabled(false);
+        } finally {
+            setIsLoading(false);
+        }
+    }, [sessionId, onComplete]);
+
+    if (error) {
+        return (
+            <div className="text-center p-8">
+                <div className="text-4xl mb-4">😔</div>
+                <p className="text-red-600 dark:text-red-400 mb-4">{error}</p>
+                <button onClick={onClose} className="px-4 py-2 bg-gray-500 text-white rounded-lg">Close</button>
+            </div>
+        );
+    }
+
+    if (result) {
+        const { stress_score, confidence_score, fatigue_score, stress_level, insights, recommendations } = result;
+        return (
+            <div className="max-w-2xl mx-auto p-6 bg-white dark:bg-slate-900 rounded-2xl shadow-xl">
+                <h2 className="text-2xl font-bold mb-4 dark:text-white text-center">✨ Your Wellness Check Results</h2>
+                <div className="grid grid-cols-3 gap-4 mb-6">
+                    <div className="text-center p-3 bg-red-50 dark:bg-red-900/20 rounded-xl">
+                        <p className="text-sm text-gray-500">Stress</p>
+                        <p className="text-2xl font-bold text-red-600">{stress_score}%</p>
+                        <span className="text-xs">{stress_level}</span>
+                    </div>
+                    <div className="text-center p-3 bg-green-50 dark:bg-green-900/20 rounded-xl">
+                        <p className="text-sm text-gray-500">Confidence</p>
+                        <p className="text-2xl font-bold text-green-600">{confidence_score}%</p>
+                    </div>
+                    <div className="text-center p-3 bg-yellow-50 dark:bg-yellow-900/20 rounded-xl">
+                        <p className="text-sm text-gray-500">Fatigue</p>
+                        <p className="text-2xl font-bold text-yellow-600">{fatigue_score}%</p>
+                    </div>
+                </div>
+                <div className="mb-4">
+                    <h3 className="font-semibold text-gray-700 dark:text-gray-300 mb-2">📝 Insights</h3>
+                    <ul className="list-disc pl-5 space-y-1 text-sm text-gray-600 dark:text-gray-400">
+                        {insights.map((insight, idx) => <li key={idx}>{insight}</li>)}
+                    </ul>
+                </div>
+                <div className="mb-6">
+                    <h3 className="font-semibold text-gray-700 dark:text-gray-300 mb-2">💡 Recommendations</h3>
+                    <ul className="list-disc pl-5 space-y-1 text-sm text-gray-600 dark:text-gray-400">
+                        {recommendations.map((rec, idx) => <li key={idx}>{rec}</li>)}
+                    </ul>
+                </div>
+                <div className="flex justify-center gap-4">
+                    <button onClick={onClose} className="px-6 py-2 bg-gray-500 text-white rounded-xl">Close</button>
+                    <button onClick={() => window.location.reload()} className="px-6 py-2 bg-pink-600 text-white rounded-xl">Take Again</button>
+                </div>
+            </div>
+        );
+    }
+
+    if (isLoading) {
+        return <div className="flex justify-center py-12"><Loading /></div>;
+    }
+
+    return (
+        <div className="max-w-2xl mx-auto p-6 bg-white dark:bg-slate-900 rounded-2xl shadow-xl">
+            <div className="flex justify-between items-center mb-4">
+                <h2 className="text-xl font-bold dark:text-white">Voice Wellness Check</h2>
+                <span className="text-sm text-gray-500">Question {questionNumber} of {maxQuestions}</span>
+            </div>
+            <div className="mb-6 p-4 bg-pink-50 dark:bg-pink-900/20 rounded-xl">
+                <p className="text-lg font-medium text-gray-800 dark:text-white">{currentQuestion}</p>
+            </div>
+            <VoiceRecorder onRecordingComplete={handleRecordingComplete} disabled={isRecordingDisabled} />
+            <p className="text-xs text-center text-gray-400 mt-6">Your voice is analyzed for tone and rhythm to better understand how you're feeling. All data is private.</p>
+        </div>
+    );
+};
+
+export default VoiceAssessmentFlow;
+
+
+================================================
+FILE: frontend/src/components/VoiceAssessment/VoiceRecorder.jsx
+================================================
+import React, { useState, useRef, useEffect } from 'react';
+import { FiMic, FiSquare, FiLoader } from 'react-icons/fi';
+
+const VoiceRecorder = ({ onRecordingComplete, disabled = false }) => {
+    const [isRecording, setIsRecording] = useState(false);
+    const [recordingTime, setRecordingTime] = useState(0);
+    const [permissionDenied, setPermissionDenied] = useState(false);
+    const mediaRecorderRef = useRef(null);
+    const audioChunksRef = useRef([]);
+    const timerRef = useRef(null);
+
+    useEffect(() => {
+        return () => {
+            if (timerRef.current) clearInterval(timerRef.current);
+            if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
+                mediaRecorderRef.current.stop();
+            }
+        };
+    }, []);
+
+    const startRecording = async () => {
+        try {
+            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            const mediaRecorder = new MediaRecorder(stream);
+            mediaRecorderRef.current = mediaRecorder;
+            audioChunksRef.current = [];
+
+            mediaRecorder.ondataavailable = (event) => {
+                if (event.data.size > 0) {
+                    audioChunksRef.current.push(event.data);
+                }
+            };
+
+            mediaRecorder.onstop = () => {
+                const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
+                onRecordingComplete(audioBlob);
+                stream.getTracks().forEach(track => track.stop());
+                setRecordingTime(0);
+                if (timerRef.current) clearInterval(timerRef.current);
+            };
+
+            mediaRecorder.start(1000);
+            setIsRecording(true);
+            setRecordingTime(0);
+            timerRef.current = setInterval(() => {
+                setRecordingTime(prev => prev + 1);
+            }, 1000);
+        } catch (err) {
+            console.error('Microphone permission error:', err);
+            setPermissionDenied(true);
+        }
+    };
+
+    const stopRecording = () => {
+        if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
+            mediaRecorderRef.current.stop();
+            setIsRecording(false);
+        }
+    };
+
+    const formatTime = (sec) => {
+        const mins = Math.floor(sec / 60);
+        const secs = sec % 60;
+        return `${mins}:${secs.toString().padStart(2, '0')}`;
+    };
+
+    return (
+        <div className="flex flex-col items-center gap-3">
+            {permissionDenied && (
+                <p className="text-red-500 text-sm">Microphone access denied. Please allow microphone and refresh.</p>
+            )}
+            <div className="flex gap-4">
+                {!isRecording ? (
+                    <button
+                        onClick={startRecording}
+                        disabled={disabled}
+                        className="flex items-center gap-2 px-6 py-3 bg-pink-600 hover:bg-pink-700 disabled:opacity-50 text-white rounded-full font-bold shadow-lg transition-all"
+                    >
+                        <FiMic className="text-xl" /> Start Recording
+                    </button>
+                ) : (
+                    <button
+                        onClick={stopRecording}
+                        className="flex items-center gap-2 px-6 py-3 bg-red-600 hover:bg-red-700 text-white rounded-full font-bold shadow-lg transition-all animate-pulse"
+                    >
+                        <FiSquare className="text-xl" /> Stop Recording ({formatTime(recordingTime)})
+                    </button>
+                )}
+            </div>
+            {isRecording && (
+                <div className="flex items-center gap-2 text-pink-500">
+                    <FiLoader className="animate-spin" />
+                    <span className="text-sm">Recording... speak clearly</span>
+                </div>
+            )}
+        </div>
+    );
+};
+
+export default VoiceRecorder;
+
+
+================================================
 FILE: frontend/src/context/AuthContext.jsx
 ================================================
 import React, { createContext, useContext, useState, useEffect } from 'react';
@@ -7620,11 +8361,12 @@ export default ParentDashboard;
 FILE: frontend/src/pages/PregnancyDashboard.jsx
 ================================================
 // frontend/src/pages/PregnancyDashboard.jsx
-// Updated: Added "Scheduled Appointments" section showing all upcoming appointments.
+// Updated: Added "Scheduled Appointments" section and Voice Wellness Check button.
 
 import React, { useState, useEffect, useCallback } from 'react';
 import axios from 'axios';
 import { useAuth } from '../context/AuthContext';
+import { useNavigate } from 'react-router-dom';
 import AssessmentView from '../components/Parent/AssessmentView';
 import ResultsDisplay from '../components/Assessment/ResultsDisplay';
 import Loading from '../components/Common/Loading';
@@ -7633,6 +8375,7 @@ import MaternalHealthGuide from '../components/Reports/MaternalHealthGuide';
 
 function PregnancyDashboard() {
     const { token, user } = useAuth();
+    const navigate = useNavigate();
     const [pregnancyChild, setPregnancyChild] = useState(null);
     const [pregnancyResults, setPregnancyResults] = useState([]);
     const [loading, setLoading] = useState(true);
@@ -7647,18 +8390,18 @@ function PregnancyDashboard() {
     const [deletingAppt, setDeletingAppt] = useState(false);
     const [deleteConfirm, setDeleteConfirm] = useState(false);
 
-    // ── NEW: All scheduled appointments ────────────────────────────────────────
+    // All scheduled appointments
     const [allAppointments, setAllAppointments] = useState([]);
     const [allApptLoading, setAllApptLoading] = useState(false);
-    const [deletingId, setDeletingId] = useState(null);        // id of the appt being deleted
-    const [confirmDeleteId, setConfirmDeleteId] = useState(null); // id awaiting confirm
+    const [deletingId, setDeletingId] = useState(null);
+    const [confirmDeleteId, setConfirmDeleteId] = useState(null);
 
     const authHeaders = { Authorization: `Bearer ${token}` };
 
     useEffect(() => {
         fetchPregnancyChild();
         fetchNextAppointment();
-        fetchAllAppointments(); // ← NEW
+        fetchAllAppointments();
     }, [token]);
 
     const fetchPregnancyChild = async () => {
@@ -7709,7 +8452,6 @@ function PregnancyDashboard() {
         }
     };
 
-    // ── NEW: fetch all appointments ────────────────────────────────────────────
     const fetchAllAppointments = async () => {
         setAllApptLoading(true);
         try {
@@ -7735,7 +8477,7 @@ function PregnancyDashboard() {
             );
             setNextAppointment(null);
             setDeleteConfirm(false);
-            fetchAllAppointments(); // ← refresh full list too
+            fetchAllAppointments();
         } catch (err) {
             console.error('Failed to delete appointment:', err);
             alert('Could not delete appointment. Please try again.');
@@ -7744,7 +8486,6 @@ function PregnancyDashboard() {
         }
     };
 
-    // ── NEW: delete any appointment from the full list ─────────────────────────
     const handleDeleteById = async (id) => {
         setDeletingId(id);
         try {
@@ -7754,7 +8495,6 @@ function PregnancyDashboard() {
             );
             setAllAppointments(prev => prev.filter(a => a.id !== id));
             setConfirmDeleteId(null);
-            // If this was also the "next" appointment, clear it
             if (nextAppointment && nextAppointment.id === id) {
                 setNextAppointment(null);
                 fetchNextAppointment();
@@ -7786,7 +8526,7 @@ function PregnancyDashboard() {
         setShowReportUploader(false);
         setShowHealthGuide(false);
         fetchNextAppointment();
-        fetchAllAppointments(); // ← refresh on back
+        fetchAllAppointments();
     };
 
     const formatApptDate = (isoString) => {
@@ -7826,7 +8566,6 @@ function PregnancyDashboard() {
         );
     }
 
-    // ── Assessment Taking View ──────────────────────────────────────────────────
     if (takingAssessment) {
         return (
             <div className="max-w-4xl mx-auto px-4 py-8">
@@ -7843,7 +8582,6 @@ function PregnancyDashboard() {
         );
     }
 
-    // ── Assessment Result View ─────────────────────────────────────────────────
     const latest = pregnancyResults.length > 0 ? pregnancyResults[0] : null;
     if (showResult && latest) {
         return (
@@ -7856,7 +8594,6 @@ function PregnancyDashboard() {
         );
     }
 
-    // ── Report Uploader View ───────────────────────────────────────────────────
     if (showReportUploader) {
         return (
             <div className="max-w-4xl mx-auto px-4 py-8">
@@ -7868,7 +8605,6 @@ function PregnancyDashboard() {
         );
     }
 
-    // ── Maternal Health Guide View ─────────────────────────────────────────────
     if (showHealthGuide) {
         return (
             <div className="max-w-4xl mx-auto px-4 py-8">
@@ -7880,17 +8616,13 @@ function PregnancyDashboard() {
         );
     }
 
-    // ── Main Dashboard ─────────────────────────────────────────────────────────
     const latestResult = pregnancyResults.length > 0 ? pregnancyResults[0] : null;
-
-    // Split appointments into upcoming and past for the scheduled list
     const upcomingAppointments = allAppointments.filter(a => !isPast(a.date_time));
     const pastAppointments = allAppointments.filter(a => isPast(a.date_time));
 
     return (
         <div className="max-w-7xl mx-auto px-4 py-8">
 
-            {/* Header */}
             <div className="flex flex-wrap justify-between items-center mb-8 gap-3">
                 <h1 className="text-4xl font-extrabold dark:text-white tracking-tight">
                     Pregnancy <span className="dark:text-green-500">Journey</span>
@@ -7914,10 +8646,16 @@ function PregnancyDashboard() {
                     >
                         📝 Take Assessment
                     </button>
+                    {/* NEW: Voice Wellness Check button */}
+                    <button
+                        onClick={() => navigate('/voice-assessment')}
+                        className="px-5 py-3 bg-purple-600 text-white rounded-xl hover:bg-purple-700 shadow-lg flex items-center gap-2 font-bold transition-all"
+                    >
+                        🎙️ Voice Wellness Check
+                    </button>
                 </div>
             </div>
 
-            {/* Welcome Banner */}
             <div className="mb-8 p-6 bg-green-50 dark:bg-green-900/20 rounded-xl border-l-4 border-green-600 dark:border-green-500 shadow-sm">
                 <h2 className="text-2xl font-bold text-green-800 dark:text-green-400 mb-2 flex items-center gap-2">
                     <span className="text-3xl">🤰</span> Hello, {user.first_name || 'Parent'}!
@@ -7930,7 +8668,6 @@ function PregnancyDashboard() {
                 </div>
             </div>
 
-            {/* Quick Action Cards */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-8">
                 <button
                     onClick={() => setShowHealthGuide(true)}
@@ -7961,7 +8698,6 @@ function PregnancyDashboard() {
                 </button>
             </div>
 
-            {/* Next Appointment Card */}
             <div className="mb-8">
                 {apptLoading ? (
                     <div className="p-6 bg-blue-50 dark:bg-blue-900/20 rounded-xl border border-blue-200 dark:border-blue-800/50 flex items-center gap-3">
@@ -8058,9 +8794,7 @@ function PregnancyDashboard() {
                 )}
             </div>
 
-            {/* ── NEW: Scheduled Appointments Section ──────────────────────────────── */}
             <div className="mb-8 bg-white dark:bg-slate-800 rounded-2xl shadow-sm border border-gray-100 dark:border-slate-700 overflow-hidden">
-                {/* Section Header */}
                 <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100 dark:border-slate-700">
                     <div className="flex items-center gap-3">
                         <span className="text-2xl">🗓️</span>
@@ -8083,7 +8817,6 @@ function PregnancyDashboard() {
                     </button>
                 </div>
 
-                {/* Loading state */}
                 {allApptLoading && (
                     <div className="flex items-center justify-center gap-3 py-10">
                         <div className="w-5 h-5 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
@@ -8091,7 +8824,6 @@ function PregnancyDashboard() {
                     </div>
                 )}
 
-                {/* Upcoming Appointments */}
                 {!allApptLoading && (
                     <>
                         {upcomingAppointments.length > 0 ? (
@@ -8104,7 +8836,6 @@ function PregnancyDashboard() {
                                 <ul className="divide-y divide-gray-50 dark:divide-slate-700/50">
                                     {upcomingAppointments.map((appt) => (
                                         <li key={appt.id} className="px-6 py-4 flex items-center justify-between gap-4 hover:bg-blue-50/40 dark:hover:bg-blue-900/10 transition-all">
-                                            {/* Date badge */}
                                             <div className="shrink-0 w-12 h-12 bg-blue-600 dark:bg-blue-700 rounded-xl flex flex-col items-center justify-center shadow">
                                                 <span className="text-white text-[10px] font-bold uppercase leading-none">
                                                     {new Date(appt.date_time).toLocaleString('en-IN', { month: 'short' })}
@@ -8113,8 +8844,6 @@ function PregnancyDashboard() {
                                                     {new Date(appt.date_time).getDate()}
                                                 </span>
                                             </div>
-
-                                            {/* Info */}
                                             <div className="flex-1 min-w-0">
                                                 <div className="flex items-center gap-2 flex-wrap">
                                                     <p className="text-sm font-bold text-gray-900 dark:text-white truncate">
@@ -8125,7 +8854,6 @@ function PregnancyDashboard() {
                                                             </span>
                                                         )}
                                                     </p>
-                                                    {/* Days-until badge */}
                                                     <span className={`shrink-0 text-[10px] font-bold px-2 py-0.5 rounded-full ${
                                                         daysUntil(appt.date_time) === 'Today'
                                                             ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400'
@@ -8155,8 +8883,6 @@ function PregnancyDashboard() {
                                                     </span>
                                                 </div>
                                             </div>
-
-                                            {/* Delete control */}
                                             <div className="shrink-0">
                                                 {confirmDeleteId === appt.id ? (
                                                     <div className="flex flex-col gap-1.5 items-end">
@@ -8212,7 +8938,6 @@ function PregnancyDashboard() {
                             </div>
                         )}
 
-                        {/* Past Appointments (collapsible-style, dimmed) */}
                         {pastAppointments.length > 0 && (
                             <details className="group">
                                 <summary className="flex items-center gap-2 px-6 py-3 cursor-pointer border-t border-gray-100 dark:border-slate-700 text-xs font-bold uppercase tracking-widest text-gray-400 dark:text-slate-500 hover:text-gray-600 dark:hover:text-slate-300 select-none list-none">
@@ -8252,9 +8977,7 @@ function PregnancyDashboard() {
                     </>
                 )}
             </div>
-            {/* ── END: Scheduled Appointments Section ──────────────────────────────── */}
 
-            {/* Assessment result summary */}
             {latestResult && (
                 <div className="mb-8 bg-white dark:bg-slate-800 rounded-2xl shadow-sm border border-gray-100 dark:border-slate-700 p-6">
                     <div className="flex items-center justify-between mb-4">
@@ -8282,7 +9005,6 @@ function PregnancyDashboard() {
                 </div>
             )}
 
-            {/* Empty state */}
             {!latestResult && (
                 <div className="text-center py-16 bg-white dark:bg-slate-800 rounded-2xl border border-gray-100 dark:border-slate-700">
                     <div className="text-6xl mb-4">📋</div>
@@ -8563,6 +9285,32 @@ export default TeenDashboard;
 
 
 ================================================
+FILE: frontend/src/pages/VoiceAssessmentPage.jsx
+================================================
+import React from 'react';
+import { useNavigate } from 'react-router-dom';
+import VoiceAssessmentFlow from '../components/VoiceAssessment/VoiceAssessmentFlow';
+
+const VoiceAssessmentPage = () => {
+    const navigate = useNavigate();
+
+    const handleComplete = () => {
+        // Optionally redirect after completion
+        setTimeout(() => navigate('/dashboard/pregnancy'), 2000);
+    };
+
+    return (
+        <div className="min-h-screen bg-gradient-to-b from-pink-50 to-white dark:from-slate-900 dark:to-slate-950 py-12 px-4">
+            <button onClick={() => navigate(-1)} className="mb-6 text-pink-600 dark:text-pink-400 hover:underline">← Back</button>
+            <VoiceAssessmentFlow onComplete={handleComplete} onClose={() => navigate('/dashboard/pregnancy')} />
+        </div>
+    );
+};
+
+export default VoiceAssessmentPage;
+
+
+================================================
 FILE: frontend/src/services/api.js
 ================================================
 import axios from 'axios';
@@ -8682,6 +9430,32 @@ export const getHealthGuide = (id) => api.get(`/reports/health-guide/${id}/`);
 FILE: frontend/src/services/reportService.js
 ================================================
 
+
+
+================================================
+FILE: frontend/src/services/voiceAssessmentService.js
+================================================
+import api from './api';
+
+export const startVoiceSession = async () => {
+    const response = await api.post('/voice-assessments/start/');
+    return response.data;
+};
+
+export const sendVoiceResponse = async (sessionId, audioBlob) => {
+    const formData = new FormData();
+    formData.append('session_id', sessionId);
+    formData.append('audio', audioBlob, 'recording.webm');
+    const response = await api.post('/voice-assessments/respond/', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' }
+    });
+    return response.data;
+};
+
+export const getVoiceResult = async (sessionId) => {
+    const response = await api.get(`/voice-assessments/result/${sessionId}/`);
+    return response.data;
+};
 
 
 ================================================

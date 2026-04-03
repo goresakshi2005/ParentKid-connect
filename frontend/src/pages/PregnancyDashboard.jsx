@@ -1,5 +1,5 @@
 // frontend/src/pages/PregnancyDashboard.jsx
-// Updated: Added "Scheduled Appointments" section and Voice Wellness Check button.
+// Updated: Voice Wellness Check runs inline on dashboard and shows stress/confidence results after last question.
 
 import React, { useState, useEffect, useCallback } from 'react';
 import axios from 'axios';
@@ -10,7 +10,181 @@ import ResultsDisplay from '../components/Assessment/ResultsDisplay';
 import Loading from '../components/Common/Loading';
 import ReportUploader from '../components/Reports/ReportUploader';
 import MaternalHealthGuide from '../components/Reports/MaternalHealthGuide';
+import VoiceAssessmentFlow from '../components/VoiceAssessment/VoiceAssessmentFlow';
 
+// ── Inline Voice Wellness Result Card ─────────────────────────────────────────
+function VoiceWellnessResult({ result, onClose, onRetake }) {
+    if (!result) return null;
+    const { stress_score, confidence_score, fatigue_score, stress_level, insights, recommendations } = result;
+
+    const stressColor =
+        stress_score >= 70 ? 'text-red-600 dark:text-red-400' :
+        stress_score >= 40 ? 'text-yellow-600 dark:text-yellow-400' :
+        'text-green-600 dark:text-green-400';
+
+    const stressBg =
+        stress_score >= 70 ? 'bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800' :
+        stress_score >= 40 ? 'bg-yellow-50 dark:bg-yellow-900/20 border-yellow-200 dark:border-yellow-800' :
+        'bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800';
+
+    const confidenceColor =
+        confidence_score >= 70 ? 'text-green-600 dark:text-green-400' :
+        confidence_score >= 40 ? 'text-yellow-600 dark:text-yellow-400' :
+        'text-red-600 dark:text-red-400';
+
+    return (
+        <div className="mb-8 bg-white dark:bg-slate-900 rounded-2xl shadow-xl border border-purple-200 dark:border-purple-800 overflow-hidden fade-in">
+            {/* Header */}
+            <div className="bg-gradient-to-r from-purple-600 to-pink-600 px-6 py-4 flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                    <span className="text-2xl">🎙️</span>
+                    <div>
+                        <h2 className="text-lg font-bold text-white">Voice Wellness Results</h2>
+                        <p className="text-xs text-purple-200">Based on your voice tone &amp; responses</p>
+                    </div>
+                </div>
+                <button
+                    onClick={onClose}
+                    className="p-1.5 text-white/70 hover:text-white hover:bg-white/10 rounded-lg transition-all"
+                    title="Dismiss"
+                >
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                </button>
+            </div>
+
+            <div className="p-6">
+                {/* Score cards */}
+                <div className="grid grid-cols-3 gap-4 mb-6">
+                    {/* Stress */}
+                    <div className={`rounded-2xl border p-4 text-center ${stressBg}`}>
+                        <p className="text-xs font-bold uppercase tracking-wider text-gray-500 dark:text-slate-400 mb-1">Stress</p>
+                        <p className={`text-4xl font-black ${stressColor}`}>{stress_score}%</p>
+                        <span className={`text-xs font-semibold px-2 py-0.5 rounded-full mt-2 inline-block
+                            ${stress_score >= 70
+                                ? 'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300'
+                                : stress_score >= 40
+                                ? 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/40 dark:text-yellow-300'
+                                : 'bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300'
+                            }`}
+                        >
+                            {stress_level || (stress_score >= 70 ? 'High' : stress_score >= 40 ? 'Moderate' : 'Low')}
+                        </span>
+                    </div>
+
+                    {/* Confidence */}
+                    <div className={`rounded-2xl border p-4 text-center
+                        ${confidence_score >= 70
+                            ? 'bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800'
+                            : confidence_score >= 40
+                            ? 'bg-yellow-50 dark:bg-yellow-900/20 border-yellow-200 dark:border-yellow-800'
+                            : 'bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800'
+                        }`}
+                    >
+                        <p className="text-xs font-bold uppercase tracking-wider text-gray-500 dark:text-slate-400 mb-1">Confidence</p>
+                        <p className={`text-4xl font-black ${confidenceColor}`}>{confidence_score}%</p>
+                        <span className={`text-xs font-semibold px-2 py-0.5 rounded-full mt-2 inline-block
+                            ${confidence_score >= 70
+                                ? 'bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300'
+                                : confidence_score >= 40
+                                ? 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/40 dark:text-yellow-300'
+                                : 'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300'
+                            }`}
+                        >
+                            {confidence_score >= 70 ? 'High' : confidence_score >= 40 ? 'Moderate' : 'Low'}
+                        </span>
+                    </div>
+
+                    {/* Fatigue */}
+                    <div className={`rounded-2xl border p-4 text-center
+                        ${fatigue_score >= 70
+                            ? 'bg-orange-50 dark:bg-orange-900/20 border-orange-200 dark:border-orange-800'
+                            : fatigue_score >= 40
+                            ? 'bg-yellow-50 dark:bg-yellow-900/20 border-yellow-200 dark:border-yellow-800'
+                            : 'bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-800'
+                        }`}
+                    >
+                        <p className="text-xs font-bold uppercase tracking-wider text-gray-500 dark:text-slate-400 mb-1">Fatigue</p>
+                        <p className={`text-4xl font-black
+                            ${fatigue_score >= 70
+                                ? 'text-orange-600 dark:text-orange-400'
+                                : fatigue_score >= 40
+                                ? 'text-yellow-600 dark:text-yellow-400'
+                                : 'text-blue-600 dark:text-blue-400'
+                            }`}
+                        >
+                            {fatigue_score}%
+                        </p>
+                        <span className={`text-xs font-semibold px-2 py-0.5 rounded-full mt-2 inline-block
+                            ${fatigue_score >= 70
+                                ? 'bg-orange-100 text-orange-700 dark:bg-orange-900/40 dark:text-orange-300'
+                                : fatigue_score >= 40
+                                ? 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/40 dark:text-yellow-300'
+                                : 'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300'
+                            }`}
+                        >
+                            {fatigue_score >= 70 ? 'High' : fatigue_score >= 40 ? 'Moderate' : 'Low'}
+                        </span>
+                    </div>
+                </div>
+
+                {/* Insights + Recommendations in two columns */}
+                <div className="grid md:grid-cols-2 gap-4 mb-5">
+                    {insights && insights.length > 0 && (
+                        <div className="bg-purple-50 dark:bg-purple-900/10 border border-purple-100 dark:border-purple-800/40 rounded-xl p-4">
+                            <h3 className="text-xs font-bold uppercase tracking-widest text-purple-600 dark:text-purple-400 mb-3 flex items-center gap-1.5">
+                                <span>📝</span> Insights
+                            </h3>
+                            <ul className="space-y-2">
+                                {insights.map((item, i) => (
+                                    <li key={i} className="text-sm text-gray-700 dark:text-slate-300 flex items-start gap-2">
+                                        <span className="mt-1 text-purple-400 shrink-0">•</span>
+                                        <span>{item}</span>
+                                    </li>
+                                ))}
+                            </ul>
+                        </div>
+                    )}
+
+                    {recommendations && recommendations.length > 0 && (
+                        <div className="bg-pink-50 dark:bg-pink-900/10 border border-pink-100 dark:border-pink-800/40 rounded-xl p-4">
+                            <h3 className="text-xs font-bold uppercase tracking-widest text-pink-600 dark:text-pink-400 mb-3 flex items-center gap-1.5">
+                                <span>💡</span> Recommendations
+                            </h3>
+                            <ul className="space-y-2">
+                                {recommendations.map((item, i) => (
+                                    <li key={i} className="text-sm text-gray-700 dark:text-slate-300 flex items-start gap-2">
+                                        <span className="mt-1 text-pink-400 shrink-0">•</span>
+                                        <span>{item}</span>
+                                    </li>
+                                ))}
+                            </ul>
+                        </div>
+                    )}
+                </div>
+
+                {/* Actions */}
+                <div className="flex justify-end gap-3">
+                    <button
+                        onClick={onClose}
+                        className="px-5 py-2 text-sm font-semibold border border-gray-300 dark:border-slate-600 text-gray-600 dark:text-slate-300 rounded-xl hover:bg-gray-50 dark:hover:bg-slate-800 transition-all"
+                    >
+                        Dismiss
+                    </button>
+                    <button
+                        onClick={onRetake}
+                        className="px-5 py-2 text-sm font-semibold bg-purple-600 hover:bg-purple-700 text-white rounded-xl shadow transition-all"
+                    >
+                        🎙️ Check Again
+                    </button>
+                </div>
+            </div>
+        </div>
+    );
+}
+
+// ── Main PregnancyDashboard ────────────────────────────────────────────────────
 function PregnancyDashboard() {
     const { token, user } = useAuth();
     const navigate = useNavigate();
@@ -21,6 +195,10 @@ function PregnancyDashboard() {
     const [showResult, setShowResult] = useState(false);
     const [showReportUploader, setShowReportUploader] = useState(false);
     const [showHealthGuide, setShowHealthGuide] = useState(false);
+
+    // ── Voice wellness state ──────────────────────────────────────────────────
+    const [showVoiceFlow, setShowVoiceFlow] = useState(false);
+    const [voiceResult, setVoiceResult] = useState(null);
 
     // Next appointment state
     const [nextAppointment, setNextAppointment] = useState(null);
@@ -167,6 +345,21 @@ function PregnancyDashboard() {
         fetchAllAppointments();
     };
 
+    // ── Voice wellness handlers ───────────────────────────────────────────────
+    const handleVoiceComplete = useCallback((result) => {
+        setVoiceResult(result);
+        setShowVoiceFlow(false);   // hide the recorder, show the result card on dashboard
+    }, []);
+
+    const handleVoiceClose = () => {
+        setShowVoiceFlow(false);
+    };
+
+    const handleVoiceRetake = () => {
+        setVoiceResult(null);
+        setShowVoiceFlow(true);
+    };
+
     const formatApptDate = (isoString) => {
         const d = new Date(isoString);
         return d.toLocaleDateString('en-IN', {
@@ -254,6 +447,24 @@ function PregnancyDashboard() {
         );
     }
 
+    // ── Voice assessment inline view (recorder active) ────────────────────────
+    if (showVoiceFlow) {
+        return (
+            <div className="max-w-4xl mx-auto px-4 py-8">
+                <button
+                    onClick={handleVoiceClose}
+                    className="mb-6 text-purple-600 dark:text-purple-400 hover:underline flex items-center gap-2"
+                >
+                    ← Back to Dashboard
+                </button>
+                <VoiceAssessmentFlow
+                    onComplete={handleVoiceComplete}
+                    onClose={handleVoiceClose}
+                />
+            </div>
+        );
+    }
+
     const latestResult = pregnancyResults.length > 0 ? pregnancyResults[0] : null;
     const upcomingAppointments = allAppointments.filter(a => !isPast(a.date_time));
     const pastAppointments = allAppointments.filter(a => isPast(a.date_time));
@@ -284,15 +495,24 @@ function PregnancyDashboard() {
                     >
                         📝 Take Assessment
                     </button>
-                    {/* NEW: Voice Wellness Check button */}
+                    {/* Voice Wellness Check — opens inline */}
                     <button
-                        onClick={() => navigate('/voice-assessment')}
+                        onClick={() => { setVoiceResult(null); setShowVoiceFlow(true); }}
                         className="px-5 py-3 bg-purple-600 text-white rounded-xl hover:bg-purple-700 shadow-lg flex items-center gap-2 font-bold transition-all"
                     >
                         🎙️ Voice Wellness Check
                     </button>
                 </div>
             </div>
+
+            {/* ── Voice Wellness Result card (shown right after completing the check) ── */}
+            {voiceResult && (
+                <VoiceWellnessResult
+                    result={voiceResult}
+                    onClose={() => setVoiceResult(null)}
+                    onRetake={handleVoiceRetake}
+                />
+            )}
 
             <div className="mb-8 p-6 bg-green-50 dark:bg-green-900/20 rounded-xl border-l-4 border-green-600 dark:border-green-500 shadow-sm">
                 <h2 className="text-2xl font-bold text-green-800 dark:text-green-400 mb-2 flex items-center gap-2">
