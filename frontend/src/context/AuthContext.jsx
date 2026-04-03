@@ -25,7 +25,6 @@ export function AuthProvider({ children }) {
       const userData = response.data;
 
       // Always merge is_expecting from localStorage
-      // This covers: existing users before DB migration, and page refreshes
       if (!userData.is_expecting) {
         userData.is_expecting = localStorage.getItem('is_expecting') === 'true';
       }
@@ -49,7 +48,6 @@ export function AuthProvider({ children }) {
       const { access, user } = response.data;
       localStorage.setItem('access_token', access);
 
-      // Merge is_expecting from localStorage on login too
       if (!user.is_expecting) {
         user.is_expecting = localStorage.getItem('is_expecting') === 'true';
       }
@@ -70,8 +68,6 @@ export function AuthProvider({ children }) {
       );
       const { access, user } = response.data;
 
-      // Store expecting flag in localStorage immediately on signup
-      // This is the source of truth for routing — no DB dependency
       if (role === 'parent' && expecting) {
         localStorage.setItem('is_expecting', 'true');
         user.is_expecting = true;

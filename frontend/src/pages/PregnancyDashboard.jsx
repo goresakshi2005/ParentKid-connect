@@ -371,6 +371,19 @@ function PregnancyDashboard() {
                 </div>
             </div>
 
+            {/* ── Welcome / Greeting banner — shown ABOVE the wellness check result ── */}
+            <div className="mb-6 p-6 bg-green-50 dark:bg-green-900/20 rounded-xl border-l-4 border-green-600 dark:border-green-500 shadow-sm">
+                <h2 className="text-2xl font-bold text-green-800 dark:text-green-400 mb-2 flex items-center gap-2">
+                    <span className="text-3xl">🤰</span> Hello, {user.first_name || 'Radha'}!
+                </h2>
+                <p className="text-gray-700 dark:text-gray-300 mb-3">
+                    You're in the pregnancy stage. Track your health, get weekly insights, and prepare for your baby's arrival.
+                </p>
+                <div className="text-sm text-gray-600 dark:text-gray-400">
+                    Your baby is due {pregnancyChild.date_of_birth ? 'soon' : '—'} • Keep an eye on your wellness scores below.
+                </div>
+            </div>
+
             {/* ── Voice Wellness Result card (persisted from backend) ── */}
             {voiceResult && !voiceDismissed && (
                 <VoiceWellnessResult
@@ -391,19 +404,6 @@ function PregnancyDashboard() {
                     <button onClick={handleVoiceRetake} className="text-xs font-semibold text-white bg-purple-600 hover:bg-purple-700 px-3 py-1.5 rounded-lg transition-all shrink-0">Check again</button>
                 </div>
             )}
-
-            {/* Welcome banner */}
-            <div className="mb-8 p-6 bg-green-50 dark:bg-green-900/20 rounded-xl border-l-4 border-green-600 dark:border-green-500 shadow-sm">
-                <h2 className="text-2xl font-bold text-green-800 dark:text-green-400 mb-2 flex items-center gap-2">
-                    <span className="text-3xl">🤰</span> Hello, {user.first_name || 'Parent'}!
-                </h2>
-                <p className="text-gray-700 dark:text-gray-300 mb-4">
-                    You're in the pregnancy stage. Track your health, get weekly insights, and prepare for your baby's arrival.
-                </p>
-                <div className="text-sm text-gray-600 dark:text-gray-400">
-                    Your baby is due {pregnancyChild.date_of_birth ? 'soon' : '—'} • Keep an eye on your wellness scores below.
-                </div>
-            </div>
 
             {/* Quick-action cards */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-8">
