@@ -1,4 +1,5 @@
-import { startVoiceSession, sendVoiceResponse, getVoiceResult } from '../../services/voiceAssessmentService';
+import React, { useState, useEffect, useCallback } from 'react';
+import { startVoiceSession, sendVoiceResponse } from '../../services/voiceAssessmentService';
 import VoiceRecorder from './VoiceRecorder';
 import Loading from '../Common/Loading';
 

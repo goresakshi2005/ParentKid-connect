@@ -1,3 +1,4 @@
+import React, { useState, useRef, useEffect } from 'react';
 import { FiMic, FiSquare, FiLoader } from 'react-icons/fi';
 
 const VoiceRecorder = ({ onRecordingComplete, disabled = false }) => {
