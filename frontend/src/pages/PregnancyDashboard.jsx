@@ -174,7 +174,8 @@ function PregnancyDashboard() {
     // ── Voice wellness ────────────────────────────────────────────────────────
     const [showVoiceFlow,  setShowVoiceFlow]  = useState(false);
     const [voiceResult,    setVoiceResult]    = useState(null);   // loaded from backend
-    const [voiceDismissed, setVoiceDismissed] = useState(false);  // user hid the card this session
+    // FIX: starts as true so past results are always minimized on load/refresh
+    const [voiceDismissed, setVoiceDismissed] = useState(true);
 
     // Appointments
     const [nextAppointment, setNextAppointment] = useState(null);
@@ -201,7 +202,9 @@ function PregnancyDashboard() {
             const data = await getLatestVoiceResult();  // returns null on 404
             if (data) {
                 setVoiceResult(data);
-                setVoiceDismissed(false);
+                // FIX: do NOT call setVoiceDismissed(false) here.
+                // voiceDismissed stays true (its initial value) so the card
+                // is minimized by default on every load / refresh.
             }
         } catch (_) { /* no completed session yet — silently skip */ }
     };
@@ -288,7 +291,7 @@ function PregnancyDashboard() {
     // Voice handlers
     const handleVoiceComplete = useCallback((result) => {
         setVoiceResult(result);
-        setVoiceDismissed(false);
+        setVoiceDismissed(false); // expand card only after a fresh check-in
         setShowVoiceFlow(false);
     }, []);
     const handleVoiceClose   = () => setShowVoiceFlow(false);
