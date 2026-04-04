@@ -1,89 +1,434 @@
-import React, { useState, useEffect } from 'react';
-import axios from 'axios';
+// frontend/src/pages/TeenDashboard.jsx
+import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { useAuth } from '../context/AuthContext';
 import { useSubscription } from '../context/SubscriptionContext';
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import AssessmentPrompt from '../components/Teen/AssessmentPrompt';
-import AssessmentView from '../components/Parent/AssessmentView';
-import ResultsDisplay from '../components/Assessment/ResultsDisplay';
+import api from '../services/api';
+import {
+    parseVoiceText,
+    addTaskFromVoice,
+    getTasks,
+    updateTaskStatus,
+    deleteTask,
+} from '../services/studyPlannerService';
 
-function TeenDashboard() {
-    const { user, token } = useAuth();
-    const { canAccessInsights } = useSubscription();
-    const [results, setResults] = useState([]);
-    const [showAssessmentPrompt, setShowAssessmentPrompt] = useState(true);
-    const [takingAssessment, setTakingAssessment] = useState(false);
-    const [loading, setLoading] = useState(true);
+/* ─────────────────────────────────────────────
+   Helpers
+───────────────────────────────────────────── */
+const PRIORITY_COLORS = {
+    High:   'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400',
+    Medium: 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400',
+    Low:    'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400',
+};
 
-    useEffect(() => {
-        fetchResults();
-    }, [token]);
+const TYPE_ICONS = {
+    'Test/Exam':           '📝',
+    'Assignment/Deadline': '📌',
+    'Meeting':             '🤝',
+    'Task':                '✅',
+};
 
-    const fetchResults = async () => {
+function Badge({ text, color }) {
+    return (
+        <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-semibold ${color}`}>
+            {text}
+        </span>
+    );
+}
+
+/* ─────────────────────────────────────────────
+   Study Planner Section
+───────────────────────────────────────────── */
+function StudyPlanner() {
+    const [activeTab, setActiveTab]     = useState('upcoming');
+    const [tasks, setTasks]             = useState([]);
+    const [loading, setLoading]         = useState(false);
+    const [voiceText, setVoiceText]     = useState('');
+    const [isListening, setIsListening] = useState(false);
+    const [parsing, setParsing]         = useState(false);
+    const [preview, setPreview]         = useState(null);        // parsed JSON preview
+    const [feedback, setFeedback]       = useState(null);        // { type, message }
+    const [clarify, setClarify]         = useState(false);       // needs date clarification
+    const recognitionRef = useRef(null);
+
+    const fetchTasks = useCallback(async (filter) => {
+        setLoading(true);
         try {
-            const response = await axios.get(
-                `${process.env.REACT_APP_API_URL}/assessments/my_results/`,
-                { headers: { Authorization: `Bearer ${token}` } }
-            );
-            const data = response.data.results || response.data;
-            setResults(data);
-            if (data.length > 0) {
-                setShowAssessmentPrompt(false);
-            }
-        } catch (error) {
-            console.error('Failed to fetch results:', error);
+            const { data } = await getTasks(filter);
+            setTasks(Array.isArray(data) ? data : (data.results ?? []));
+        } catch {
+            setFeedback({ type: 'error', message: 'Failed to load tasks.' });
         } finally {
             setLoading(false);
         }
+    }, []);
+
+    useEffect(() => {
+        fetchTasks(activeTab);
+    }, [activeTab, fetchTasks]);
+
+    /* ── Web Speech API ── */
+    const startListening = () => {
+        const SpeechRecognition =
+            window.SpeechRecognition || window.webkitSpeechRecognition;
+        if (!SpeechRecognition) {
+            setFeedback({ type: 'error', message: 'Your browser does not support voice input. Please type instead.' });
+            return;
+        }
+        const recognition = new SpeechRecognition();
+        recognition.lang = 'en-US';
+        recognition.interimResults = false;
+        recognition.onresult = (e) => {
+            setVoiceText(e.results[0][0].transcript);
+        };
+        recognition.onend = () => setIsListening(false);
+        recognition.onerror = () => {
+            setIsListening(false);
+            setFeedback({ type: 'error', message: 'Voice capture failed. Please try again.' });
+        };
+        recognitionRef.current = recognition;
+        recognition.start();
+        setIsListening(true);
     };
 
-    const handleAssessmentComplete = (resultData) => {
+    const stopListening = () => {
+        recognitionRef.current?.stop();
+        setIsListening(false);
+    };
+
+    /* ── Parse preview ── */
+    const handleParse = async () => {
+        if (!voiceText.trim()) return;
+        setParsing(true);
+        setPreview(null);
+        setFeedback(null);
+        setClarify(false);
+        try {
+            const { data } = await parseVoiceText(voiceText);
+            if (data.needs_clarification) {
+                setClarify(true);
+                setFeedback({ type: 'warn', message: data.question });
+            } else {
+                setPreview(data.parsed);
+            }
+        } catch {
+            setFeedback({ type: 'error', message: 'AI parsing failed. Please try again.' });
+        } finally {
+            setParsing(false);
+        }
+    };
+
+    /* ── Confirm & save ── */
+    const handleConfirmSave = async () => {
+        if (!voiceText.trim()) return;
+        setParsing(true);
+        try {
+            const { data } = await addTaskFromVoice(voiceText);
+            if (data.needs_clarification) {
+                setClarify(true);
+                setFeedback({ type: 'warn', message: data.question });
+            } else if (data.duplicate) {
+                setFeedback({ type: 'warn', message: data.message });
+            } else {
+                setFeedback({ type: 'success', message: `✅ "${data.task.title}" added to your planner!` });
+                setVoiceText('');
+                setPreview(null);
+                fetchTasks(activeTab);
+            }
+        } catch {
+            setFeedback({ type: 'error', message: 'Failed to save task. Please try again.' });
+        } finally {
+            setParsing(false);
+        }
+    };
+
+    /* ── Status toggle ── */
+    const toggleStatus = async (task) => {
+        const next = task.status === 'Pending' ? 'Completed' : 'Pending';
+        try {
+            await updateTaskStatus(task.id, next);
+            fetchTasks(activeTab);
+        } catch {
+            setFeedback({ type: 'error', message: 'Status update failed.' });
+        }
+    };
+
+    /* ── Delete ── */
+    const handleDelete = async (id) => {
+        if (!window.confirm('Delete this task?')) return;
+        try {
+            await deleteTask(id);
+            fetchTasks(activeTab);
+        } catch {
+            setFeedback({ type: 'error', message: 'Delete failed.' });
+        }
+    };
+
+    const TABS = [
+        { key: 'upcoming',  label: '📅 Upcoming' },
+        { key: 'deadlines', label: '📌 Deadlines' },
+        { key: 'completed', label: '✅ Completed' },
+    ];
+
+    const feedbackStyle = {
+        success: 'bg-green-50 text-green-700 border-green-200 dark:bg-green-900/20 dark:text-green-400 dark:border-green-800',
+        warn:    'bg-yellow-50 text-yellow-700 border-yellow-200 dark:bg-yellow-900/20 dark:text-yellow-400 dark:border-yellow-800',
+        error:   'bg-red-50 text-red-700 border-red-200 dark:bg-red-900/20 dark:text-red-400 dark:border-red-800',
+    };
+
+    return (
+        <div className="card dark:bg-slate-900 border dark:border-slate-800 p-6 md:p-8 shadow-sm">
+            {/* Header */}
+            <div className="flex items-center justify-between mb-6">
+                <h2 className="text-2xl font-bold dark:text-white flex items-center gap-2">
+                    <span className="p-2 bg-violet-500/10 rounded-lg text-violet-500">🎓</span>
+                    Study Planner
+                </h2>
+                <span className="text-xs text-gray-400 dark:text-slate-500">AI-powered scheduler</span>
+            </div>
+
+            {/* ── Voice / Text Input ── */}
+            <div className="mb-6 p-5 bg-violet-50 dark:bg-violet-900/10 border border-violet-200 dark:border-violet-800/40 rounded-2xl">
+                <p className="text-sm font-semibold text-violet-700 dark:text-violet-300 mb-3">
+                    🎤 Speak or type your task (e.g. "Math test on 10th April at 10 AM")
+                </p>
+
+                <div className="flex gap-2">
+                    <textarea
+                        value={voiceText}
+                        onChange={(e) => setVoiceText(e.target.value)}
+                        placeholder='e.g. "Submit science project by 15th April" or "Meeting with mentor tomorrow at 5 PM"'
+                        rows={2}
+                        className="flex-1 p-3 rounded-xl border border-violet-300 dark:border-violet-700 bg-white dark:bg-slate-800 text-gray-800 dark:text-white text-sm resize-none focus:outline-none focus:ring-2 focus:ring-violet-400"
+                    />
+                    <button
+                        onClick={isListening ? stopListening : startListening}
+                        title={isListening ? 'Stop' : 'Speak'}
+                        className={`px-4 rounded-xl font-bold text-xl transition-all ${
+                            isListening
+                                ? 'bg-red-500 text-white animate-pulse'
+                                : 'bg-violet-600 text-white hover:bg-violet-700'
+                        }`}
+                    >
+                        {isListening ? '⏹' : '🎙'}
+                    </button>
+                </div>
+
+                <div className="flex gap-3 mt-3">
+                    <button
+                        onClick={handleParse}
+                        disabled={parsing || !voiceText.trim()}
+                        className="px-5 py-2 rounded-xl bg-violet-600 text-white text-sm font-semibold hover:bg-violet-700 disabled:opacity-50 transition"
+                    >
+                        {parsing ? '⏳ Parsing…' : '🔍 Preview'}
+                    </button>
+                    <button
+                        onClick={handleConfirmSave}
+                        disabled={parsing || !voiceText.trim()}
+                        className="px-5 py-2 rounded-xl bg-pink-600 text-white text-sm font-semibold hover:bg-pink-700 disabled:opacity-50 transition"
+                    >
+                        {parsing ? '⏳ Saving…' : '➕ Add Task'}
+                    </button>
+                </div>
+            </div>
+
+            {/* Feedback banner */}
+            {feedback && (
+                <div className={`mb-4 p-3 rounded-xl border text-sm font-medium ${feedbackStyle[feedback.type]}`}>
+                    {feedback.message}
+                    <button onClick={() => setFeedback(null)} className="float-right opacity-60 hover:opacity-100">✕</button>
+                </div>
+            )}
+
+            {/* ── Preview Card ── */}
+            {preview && (
+                <div className="mb-6 p-4 bg-white dark:bg-slate-800 border border-violet-300 dark:border-violet-700 rounded-2xl shadow">
+                    <p className="text-xs font-bold uppercase text-violet-500 mb-3">AI Preview — confirm before saving</p>
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
+                        <div><span className="font-semibold text-gray-500 dark:text-slate-400">Title</span><p className="dark:text-white">{preview.title}</p></div>
+                        <div><span className="font-semibold text-gray-500 dark:text-slate-400">Type</span><p className="dark:text-white">{TYPE_ICONS[preview.type]} {preview.type}</p></div>
+                        <div><span className="font-semibold text-gray-500 dark:text-slate-400">Date</span><p className="dark:text-white">{preview.date}</p></div>
+                        <div><span className="font-semibold text-gray-500 dark:text-slate-400">Time</span><p className="dark:text-white">{preview.time ?? '—'}</p></div>
+                        <div><span className="font-semibold text-gray-500 dark:text-slate-400">Priority</span><Badge text={preview.priority} color={PRIORITY_COLORS[preview.priority]} /></div>
+                        <div><span className="font-semibold text-gray-500 dark:text-slate-400">Reminder</span><p className="dark:text-white">{preview.reminder}</p></div>
+                        <div><span className="font-semibold text-gray-500 dark:text-slate-400">Deadline</span><p className="dark:text-white">{preview.deadline ? 'Yes' : 'No'}</p></div>
+                        <div><span className="font-semibold text-gray-500 dark:text-slate-400">Calendar</span><p className="dark:text-white">{preview.calendar_event?.event_type}</p></div>
+                    </div>
+                    <div className="mt-4 flex gap-3">
+                        <button
+                            onClick={handleConfirmSave}
+                            disabled={parsing}
+                            className="px-5 py-2 bg-pink-600 text-white rounded-xl text-sm font-bold hover:bg-pink-700 disabled:opacity-50"
+                        >
+                            ✅ Confirm & Save
+                        </button>
+                        <button
+                            onClick={() => { setPreview(null); setVoiceText(''); }}
+                            className="px-5 py-2 bg-gray-200 dark:bg-slate-700 text-gray-700 dark:text-white rounded-xl text-sm font-bold hover:bg-gray-300 dark:hover:bg-slate-600"
+                        >
+                            ✕ Discard
+                        </button>
+                    </div>
+                </div>
+            )}
+
+            {/* ── Tabs ── */}
+            <div className="flex gap-2 mb-5 border-b border-gray-100 dark:border-slate-800 pb-3">
+                {TABS.map((t) => (
+                    <button
+                        key={t.key}
+                        onClick={() => setActiveTab(t.key)}
+                        className={`px-4 py-2 rounded-xl text-sm font-semibold transition ${
+                            activeTab === t.key
+                                ? 'bg-violet-600 text-white shadow'
+                                : 'text-gray-500 dark:text-slate-400 hover:bg-violet-50 dark:hover:bg-violet-900/20'
+                        }`}
+                    >
+                        {t.label}
+                    </button>
+                ))}
+            </div>
+
+            {/* ── Task List ── */}
+            {loading ? (
+                <div className="text-center py-8 text-gray-400 text-sm">Loading…</div>
+            ) : tasks.length === 0 ? (
+                <div className="text-center py-12">
+                    <div className="text-4xl mb-3">📭</div>
+                    <p className="text-gray-400 dark:text-slate-500 text-sm">No tasks here yet. Add one above!</p>
+                </div>
+            ) : (
+                <ul className="space-y-3">
+                    {tasks.map((task) => (
+                        <li
+                            key={task.id}
+                            className={`flex items-start gap-4 p-4 rounded-2xl border transition ${
+                                task.status === 'Completed'
+                                    ? 'bg-gray-50 dark:bg-slate-800/50 border-gray-100 dark:border-slate-700/50 opacity-60'
+                                    : 'bg-white dark:bg-slate-800 border-gray-100 dark:border-slate-700 hover:shadow-md'
+                            }`}
+                        >
+                            {/* Checkbox */}
+                            <button
+                                onClick={() => toggleStatus(task)}
+                                title="Toggle status"
+                                className={`mt-0.5 w-5 h-5 rounded-full border-2 flex-shrink-0 transition ${
+                                    task.status === 'Completed'
+                                        ? 'bg-green-500 border-green-500'
+                                        : 'border-gray-300 dark:border-slate-600 hover:border-violet-500'
+                                }`}
+                            >
+                                {task.status === 'Completed' && <span className="text-white text-xs leading-none flex items-center justify-center h-full">✓</span>}
+                            </button>
+
+                            {/* Content */}
+                            <div className="flex-1 min-w-0">
+                                <div className="flex flex-wrap items-center gap-2 mb-1">
+                                    <span className="font-bold text-gray-800 dark:text-white truncate">
+                                        {TYPE_ICONS[task.task_type]} {task.title}
+                                    </span>
+                                    <Badge text={task.priority} color={PRIORITY_COLORS[task.priority]} />
+                                    <Badge
+                                        text={task.task_type}
+                                        color="bg-violet-100 text-violet-700 dark:bg-violet-900/30 dark:text-violet-300"
+                                    />
+                                </div>
+                                <div className="flex flex-wrap gap-3 text-xs text-gray-400 dark:text-slate-500">
+                                    <span>📅 {task.date}</span>
+                                    {task.time && <span>🕐 {task.time}</span>}
+                                    <span>🔔 {task.reminder}</span>
+                                    {task.deadline && <span className="text-red-500 font-semibold">⚠ Deadline</span>}
+                                </div>
+                            </div>
+
+                            {/* Delete */}
+                            <button
+                                onClick={() => handleDelete(task.id)}
+                                title="Delete"
+                                className="text-gray-300 hover:text-red-500 dark:text-slate-600 dark:hover:text-red-400 transition text-lg flex-shrink-0"
+                            >
+                                🗑
+                            </button>
+                        </li>
+                    ))}
+                </ul>
+            )}
+        </div>
+    );
+}
+
+/* ─────────────────────────────────────────────
+   Main TeenDashboard
+───────────────────────────────────────────── */
+export default function TeenDashboard() {
+    const { user } = useAuth();
+    const { canAccessInsights } = useSubscription();
+    const navigate = useNavigate();
+
+    const [results, setResults]                   = useState([]);
+    const [loading, setLoading]                   = useState(true);
+    const [takingAssessment, setTakingAssessment] = useState(false);
+    const [showAssessmentPrompt, setShowAssessmentPrompt] = useState(false);
+
+    useEffect(() => {
+        const fetchResults = async () => {
+            try {
+                const { data } = await api.get('/assessments/results/my_results/');
+                const teen = (data.results ?? data).filter(
+                    (r) => r.assessment?.assessment_type === 'teen'
+                );
+                setResults(teen);
+                if (teen.length === 0) setShowAssessmentPrompt(true);
+            } catch {
+                setResults([]);
+            } finally {
+                setLoading(false);
+            }
+        };
+        fetchResults();
+    }, []);
+
+    const handleAssessmentComplete = () => {
         setTakingAssessment(false);
         setShowAssessmentPrompt(false);
-        // Refresh results
-        fetchResults();
+        window.location.reload();
     };
 
     if (loading) {
         return (
-            <div className="flex flex-col items-center justify-center py-32 space-y-4">
-                <div className="w-12 h-12 border-4 border-blue-600 dark:border-pink-500 border-t-transparent rounded-full animate-spin"></div>
-                <p className="text-gray-500 dark:text-slate-400 font-medium italic">Loading your growth insights...</p>
+            <div className="flex items-center justify-center min-h-screen">
+                <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-pink-500" />
             </div>
         );
     }
 
-    // If taking assessment, show AssessmentView with type='teen'
     if (takingAssessment) {
         return (
             <div className="max-w-4xl mx-auto px-4 py-8">
-                <button
-                    onClick={() => setTakingAssessment(false)}
-                    className="mb-6 text-blue-600 dark:text-pink-400 hover:underline flex items-center gap-2"
-                >
-                    ← Back to Dashboard
-                </button>
-                <AssessmentView
-                    assessmentType="teen"
+                <AssessmentPrompt
                     onComplete={handleAssessmentComplete}
+                    onDismiss={() => setTakingAssessment(false)}
                 />
             </div>
         );
     }
 
     const chartData = results.map((r) => ({
-        date: new Date(r.created_at).toLocaleDateString(),
-        score: r.final_score,
-    }));
+        date: new Date(r.created_at).toLocaleDateString('en-IN', { month: 'short', day: 'numeric' }),
+        score: Math.round(r.final_score),
+    })).reverse();
 
     const latestResult = results[0];
 
     return (
-        <div className="max-w-7xl mx-auto px-4 py-8">
-            <h1 className="text-4xl font-extrabold mb-10 dark:text-white tracking-tight">
-                Your Growth <span className="dark:text-pink-500">Dashboard</span>
+        <div className="max-w-7xl mx-auto px-4 py-8 space-y-8">
+            <h1 className="text-4xl font-extrabold dark:text-white tracking-tight">
+                Your Growth <span className="dark:text-pink-500 text-blue-600">Dashboard</span>
             </h1>
 
+            {/* ── Assessment Prompt ── */}
             {showAssessmentPrompt && (
                 <AssessmentPrompt
                     onComplete={handleAssessmentComplete}
@@ -91,50 +436,46 @@ function TeenDashboard() {
                 />
             )}
 
+            {/* ── Study Planner (always visible) ── */}
+            <StudyPlanner />
+
+            {/* ── Assessment Results ── */}
             {latestResult ? (
                 <>
-                    <div className="card dark:bg-slate-900 border dark:border-slate-800 p-8 mb-8">
+                    <div className="card dark:bg-slate-900 border dark:border-slate-800 p-8 shadow-sm">
                         <h2 className="text-2xl font-bold mb-8 dark:text-white flex items-center gap-3">
                             <span className="p-2 bg-pink-500/10 rounded-lg text-pink-500">✨</span>
                             Latest Assessment
                         </h2>
                         <div className="grid md:grid-cols-5 gap-4">
-                            <div className="text-center p-6 bg-gray-50 dark:bg-slate-800 rounded-2xl border border-gray-100 dark:border-slate-700/50 shadow-sm">
-                                <p className="text-4xl font-black text-blue-600 dark:text-pink-500 mb-1">{latestResult.final_score}%</p>
-                                <p className="text-sm text-gray-500 dark:text-slate-400 font-bold uppercase tracking-wider">Overall</p>
-                            </div>
-                            <div className="text-center p-6 bg-gray-50 dark:bg-slate-800 rounded-2xl border border-gray-100 dark:border-slate-700/50 shadow-sm">
-                                <p className="text-4xl font-black text-green-600 mb-1">{latestResult.health_score}%</p>
-                                <p className="text-sm text-gray-500 dark:text-slate-400 font-bold uppercase tracking-wider">Health</p>
-                            </div>
-                            <div className="text-center p-6 bg-gray-50 dark:bg-slate-800 rounded-2xl border border-gray-100 dark:border-slate-700/50 shadow-sm">
-                                <p className="text-4xl font-black text-orange-600 mb-1">{latestResult.behavior_score}%</p>
-                                <p className="text-sm text-gray-500 dark:text-slate-400 font-bold uppercase tracking-wider">Behavior</p>
-                            </div>
-                            <div className="text-center p-6 bg-gray-50 dark:bg-slate-800 rounded-2xl border border-gray-100 dark:border-slate-700/50 shadow-sm">
-                                <p className="text-4xl font-black text-purple-600 mb-1">{latestResult.routine_score}%</p>
-                                <p className="text-sm text-gray-500 dark:text-slate-400 font-bold uppercase tracking-wider">Routine</p>
-                            </div>
-                            <div className="text-center p-6 bg-gray-50 dark:bg-slate-800 rounded-2xl border border-gray-100 dark:border-slate-700/50 shadow-sm">
-                                <p className="text-4xl font-black text-red-600 mb-1">{latestResult.emotional_score}%</p>
-                                <p className="text-sm text-gray-500 dark:text-slate-400 font-bold uppercase tracking-wider">Emotional</p>
-                            </div>
+                            {[
+                                { label: 'Overall',   value: latestResult.final_score,    color: 'text-blue-600 dark:text-pink-500' },
+                                { label: 'Health',    value: latestResult.health_score,   color: 'text-green-600' },
+                                { label: 'Behavior',  value: latestResult.behavior_score, color: 'text-orange-600' },
+                                { label: 'Routine',   value: latestResult.routine_score,  color: 'text-purple-600' },
+                                { label: 'Emotional', value: latestResult.emotional_score,color: 'text-red-600' },
+                            ].map(({ label, value, color }) => (
+                                <div key={label} className="text-center p-6 bg-gray-50 dark:bg-slate-800 rounded-2xl border border-gray-100 dark:border-slate-700/50 shadow-sm">
+                                    <p className={`text-4xl font-black ${color} mb-1`}>{value}%</p>
+                                    <p className="text-sm text-gray-500 dark:text-slate-400 font-bold uppercase tracking-wider">{label}</p>
+                                </div>
+                            ))}
                         </div>
 
                         <div className="grid md:grid-cols-2 gap-8 mt-8">
                             <div>
                                 <h3 className="font-semibold text-green-600 mb-2">Your Strengths</h3>
                                 <ul className="space-y-2">
-                                    {latestResult.strengths.map((strength, idx) => (
-                                        <li key={idx} className="text-gray-700 dark:text-gray-300">✓ {strength}</li>
+                                    {latestResult.strengths.map((s, i) => (
+                                        <li key={i} className="text-gray-700 dark:text-gray-300">✓ {s}</li>
                                     ))}
                                 </ul>
                             </div>
                             <div>
                                 <h3 className="font-semibold text-orange-600 mb-2">Areas to Improve</h3>
                                 <ul className="space-y-2">
-                                    {latestResult.improvements.map((improvement, idx) => (
-                                        <li key={idx} className="text-gray-700 dark:text-gray-300">→ {improvement}</li>
+                                    {latestResult.improvements.map((imp, i) => (
+                                        <li key={i} className="text-gray-700 dark:text-gray-300">→ {imp}</li>
                                     ))}
                                 </ul>
                             </div>
@@ -144,9 +485,9 @@ function TeenDashboard() {
                             <h3 className="font-bold mb-6 dark:text-white uppercase text-xs tracking-widest">Growth Recommendations</h3>
                             {canAccessInsights() ? (
                                 <div className="bg-blue-50 dark:bg-pink-500/5 p-6 rounded-2xl border border-blue-100 dark:border-pink-500/20 shadow-inner space-y-4">
-                                    {latestResult.recommendations.map((rec, idx) => (
-                                        <div key={idx} className="flex gap-4 items-start">
-                                            <span className="flex-shrink-0 w-6 h-6 bg-blue-600 dark:bg-pink-600 text-white rounded-full flex items-center justify-center text-xs font-bold">{idx + 1}</span>
+                                    {latestResult.recommendations.map((rec, i) => (
+                                        <div key={i} className="flex gap-4 items-start">
+                                            <span className="flex-shrink-0 w-6 h-6 bg-blue-600 dark:bg-pink-600 text-white rounded-full flex items-center justify-center text-xs font-bold">{i + 1}</span>
                                             <p className="text-gray-700 dark:text-slate-300 italic">{rec}</p>
                                         </div>
                                     ))}
@@ -154,8 +495,8 @@ function TeenDashboard() {
                             ) : (
                                 <div className="bg-gray-100 dark:bg-slate-800 p-10 rounded-2xl text-center border dark:border-slate-700">
                                     <div className="text-3xl mb-4">🔒</div>
-                                    <p className="text-gray-700 dark:text-slate-400 mb-6 font-medium">Upgrade to Growth plan to unlock personalized AI recommendations tailored for you.</p>
-                                    <button className="px-8 py-3 bg-blue-600 text-white rounded-xl font-bold hover:bg-blue-700 dark:bg-pink-600 dark:hover:bg-pink-700 shadow-lg dark:shadow-pink-500/20 transition-all">
+                                    <p className="text-gray-700 dark:text-slate-400 mb-6 font-medium">Upgrade to Growth plan to unlock personalised AI recommendations.</p>
+                                    <button className="px-8 py-3 bg-blue-600 text-white rounded-xl font-bold hover:bg-blue-700 dark:bg-pink-600 dark:hover:bg-pink-700 shadow-lg transition-all">
                                         Upgrade to Growth
                                     </button>
                                 </div>
@@ -165,24 +506,19 @@ function TeenDashboard() {
 
                     {results.length > 1 && (
                         <div className="card dark:bg-slate-900 border dark:border-slate-800 p-8 shadow-sm">
-                            <h2 className="text-lg font-bold mb-8 dark:text-white uppercase text-xs tracking-widest">Progress Over Time</h2>
+                            <h2 className="font-bold mb-8 dark:text-white uppercase text-xs tracking-widest">Progress Over Time</h2>
                             <ResponsiveContainer width="100%" height={300}>
                                 <LineChart data={chartData}>
                                     <CartesianGrid strokeDasharray="3 3" stroke="#334155" vertical={false} />
                                     <XAxis dataKey="date" stroke="#94a3b8" fontSize={12} tickLine={false} axisLine={false} dy={10} />
                                     <YAxis domain={[0, 100]} stroke="#94a3b8" fontSize={12} tickLine={false} axisLine={false} dx={-10} />
-                                    <Tooltip 
+                                    <Tooltip
                                         contentStyle={{ backgroundColor: '#0f172a', border: '1px solid #1e293b', borderRadius: '12px', color: '#f8fafc' }}
                                         itemStyle={{ color: '#ec4899' }}
                                     />
-                                    <Line 
-                                        type="monotone" 
-                                        dataKey="score" 
-                                        stroke="#ec4899" 
-                                        strokeWidth={4} 
-                                        dot={{ r: 6, fill: '#ec4899', strokeWidth: 2, stroke: '#ffffff' }} 
-                                        activeDot={{ r: 8, strokeWidth: 0 }} 
-                                    />
+                                    <Line type="monotone" dataKey="score" stroke="#ec4899" strokeWidth={4}
+                                        dot={{ r: 6, fill: '#ec4899', strokeWidth: 2, stroke: '#ffffff' }}
+                                        activeDot={{ r: 8, strokeWidth: 0 }} />
                                 </LineChart>
                             </ResponsiveContainer>
                         </div>
@@ -191,11 +527,11 @@ function TeenDashboard() {
             ) : (
                 <div className="card dark:bg-slate-900 border dark:border-slate-800 p-16 text-center shadow-lg flex flex-col items-center justify-center">
                     <div className="w-20 h-20 bg-blue-50 dark:bg-pink-500/10 rounded-full flex items-center justify-center mb-6 text-4xl">🚀</div>
-                    <h2 className="text-2xl font-bold dark:text-white mb-3 text-center">Ready to start your journey?</h2>
-                    <p className="text-gray-600 dark:text-slate-400 mb-8 max-w-sm text-center italic">Take your first assessment to unlock personalized growth insights and see your potential.</p>
+                    <h2 className="text-2xl font-bold dark:text-white mb-3">Ready to start your journey?</h2>
+                    <p className="text-gray-600 dark:text-slate-400 mb-8 max-w-sm italic">Take your first assessment to unlock personalised growth insights.</p>
                     <button
                         onClick={() => setTakingAssessment(true)}
-                        className="px-10 py-4 bg-blue-600 text-white rounded-2xl font-bold hover:bg-blue-700 dark:bg-pink-600 dark:hover:bg-pink-700 shadow-xl transition-all transform hover:scale-105 active:scale-95"
+                        className="px-10 py-4 bg-blue-600 text-white rounded-2xl font-bold hover:bg-blue-700 dark:bg-pink-600 dark:hover:bg-pink-700 shadow-xl transition-all hover:scale-105 active:scale-95"
                     >
                         Start Your First Assessment
                     </button>
@@ -204,5 +540,3 @@ function TeenDashboard() {
         </div>
     );
 }
-
-export default TeenDashboard;

@@ -53,6 +53,7 @@ Directory structure:
     │   │   ├── reports/
     │   │   │   ├── __init__.py
     │   │   │   ├── admin.py
+    │   │   │   ├── apps.py
     │   │   │   ├── models.py
     │   │   │   ├── serializers.py
     │   │   │   ├── urls.py
@@ -68,6 +69,26 @@ Directory structure:
     │   │   │       ├── extractor.py
     │   │   │       ├── maternal_health_service.py
     │   │   │       └── orchestrator.py
+    │   │   ├── screen_monitor/
+    │   │   │   ├── admin.py
+    │   │   │   ├── ai_service.py
+    │   │   │   ├── models.py
+    │   │   │   ├── serializers.py
+    │   │   │   ├── urls.py
+    │   │   │   ├── views.py
+    │   │   │   └── migrations/
+    │   │   │       ├── 0001_initial.py
+    │   │   │       └── __init__.py
+    │   │   ├── study_planner/
+    │   │   │   ├── __init__.py
+    │   │   │   ├── admin.py
+    │   │   │   ├── models.py
+    │   │   │   ├── serializers.py
+    │   │   │   ├── urls.py
+    │   │   │   ├── views.py
+    │   │   │   └── migrations/
+    │   │   │       ├── 0001_initial.py
+    │   │   │       └── __init__.py
     │   │   ├── subscriptions/
     │   │   │   ├── __init__.py
     │   │   │   ├── admin.py
@@ -181,6 +202,7 @@ Directory structure:
             │   ├── authService.js
             │   ├── maternalHealthService.js
             │   ├── reportService.js
+            │   ├── studyPlannerService.js
             │   └── voiceAssessmentService.js
             ├── styles/
             │   ├── index.css
@@ -1745,6 +1767,19 @@ FILE: backend/apps/reports/admin.py
 
 
 ================================================
+FILE: backend/apps/reports/apps.py
+================================================
+from django.apps import AppConfig
+
+
+class ReportsConfig(AppConfig):
+    default_auto_field = 'django.db.models.BigAutoField'
+    name = 'apps.reports'
+    verbose_name = 'Reports'
+
+
+
+================================================
 FILE: backend/apps/reports/models.py
 ================================================
 # backend/apps/reports/models.py
@@ -2814,6 +2849,868 @@ def confirm_and_schedule(
         "google_event_id": google_event_id,
         "message": f"Appointment saved for {scheduled_time}{calendar_note}.",
     }
+
+
+================================================
+FILE: backend/apps/screen_monitor/admin.py
+================================================
+from django.contrib import admin
+from .models import ScreenSession, BehaviorAnalysis
+
+
+@admin.register(ScreenSession)
+class ScreenSessionAdmin(admin.ModelAdmin):
+    list_display = ('user', 'recorded_at', 'total_time', 'social_time', 'study_time', 'time_of_day')
+    list_filter = ('time_of_day',)
+    search_fields = ('user__email',)
+
+
+@admin.register(BehaviorAnalysis)
+class BehaviorAnalysisAdmin(admin.ModelAdmin):
+    list_display = ('session', 'detected_state', 'intensity', 'risk_level', 'parent_alert', 'analyzed_at')
+    list_filter = ('detected_state', 'risk_level', 'parent_alert')
+
+
+================================================
+FILE: backend/apps/screen_monitor/ai_service.py
+================================================
+"""
+screen_monitor/ai_service.py
+
+Calls the Anthropic Claude API to analyse a teen's screen session
+and return a structured BehaviorAnalysis JSON payload.
+"""
+import json
+import logging
+from datetime import datetime
+
+logger = logging.getLogger(__name__)
+
+
+SYSTEM_PROMPT = """You are an AI Teen Behavior Monitoring System embedded in a parental-care app.
+You analyze a teenager's screen usage data and return ONLY a valid JSON object â€” no markdown, no explanation.
+
+OUTPUT FORMAT (strict JSON, nothing else):
+{
+  "detected_state": "normal|stressed|fatigued|distracted|overuse",
+  "intensity": "low|medium|high",
+  "confidence": <float 0.0-1.0>,
+  "behavior_pattern": "<short explanation, e.g. excessive social media at night>",
+  "risk_level": "none|low|medium|high",
+  "auto_action": {
+    "action_type": "focus_mode|digital_detox|rest_mode|none",
+    "description": "<what the system should automatically do>",
+    "duration": "<e.g. 30 minutes, or empty string>"
+  },
+  "system_changes": ["<change 1>", "<change 2>"],
+  "user_message": "<short friendly 1-line message for the teen>",
+  "parent_alert": "none|consider|required"
+}
+
+RULES:
+- Focus on automation, not advice.
+- Night usage + high social media = higher risk.
+- Continuous usage > 90 min = fatigue or distraction.
+- Detect patterns from recent logs, not just single events.
+- Keep user_message friendly and non-alarming.
+- Avoid medical language.
+"""
+
+
+def _build_user_prompt(session_data: dict, recent_logs: list[dict]) -> str:
+    recent_text = "\n".join(
+        f"- [{log.get('recorded_at', '')}] state={log.get('detected_state', 'unknown')} "
+        f"social={log.get('social_time', 0)}min study={log.get('study_time', 0)}min "
+        f"continuous={log.get('continuous_usage', 0)}min"
+        for log in recent_logs[-5:]
+    ) or "No recent logs."
+
+    return f"""
+Screen Data:
+- Total Screen Time (minutes): {session_data['total_time']}
+- Social Media Usage (minutes): {session_data['social_time']}
+- Study App Usage (minutes): {session_data['study_time']}
+- Time of Usage: {session_data['time_of_day']}
+- Continuous Usage Duration (minutes): {session_data['continuous_usage']}
+- App Categories Used: {', '.join(session_data.get('apps_list', []))}
+
+Recent Context (last few logs):
+{recent_text}
+
+Analyze this data and return the JSON object.
+"""
+
+
+def analyze_session(session_data: dict, recent_logs: list[dict]) -> dict:
+    """
+    Calls Claude and returns the parsed analysis dict.
+    Falls back to a safe default if the API call fails.
+    """
+    try:
+        # Lazy import to avoid importing heavy third-party libs at module import time
+        import anthropic
+
+        client = anthropic.Anthropic()
+
+        message = client.messages.create(
+            model="claude-sonnet-4-20250514",
+            max_tokens=600,
+            system=SYSTEM_PROMPT,
+            messages=[
+                {"role": "user", "content": _build_user_prompt(session_data, recent_logs)}
+            ],
+        )
+        raw_text = message.content[0].text.strip()
+        return json.loads(raw_text)
+    except Exception as exc:
+        logger.error("Screen monitor AI analysis failed: %s", exc)
+        return _fallback_result()
+
+
+def _fallback_result() -> dict:
+    return {
+        "detected_state": "normal",
+        "intensity": "low",
+        "confidence": 0.5,
+        "behavior_pattern": "Unable to analyze at this time.",
+        "risk_level": "none",
+        "auto_action": {"action_type": "none", "description": "", "duration": ""},
+        "system_changes": [],
+        "user_message": "Keep up the good work! ðŸ˜Š",
+        "parent_alert": "none",
+    }
+
+
+================================================
+FILE: backend/apps/screen_monitor/models.py
+================================================
+from django.db import models
+from django.contrib.auth import get_user_model
+
+User = get_user_model()
+
+
+class ScreenSession(models.Model):
+    """
+    Automatically captured screen usage session for a teen user.
+    In production, this is populated by the device agent / browser extension.
+    For the demo, the frontend simulates real-time session data.
+    """
+    TIME_OF_DAY_CHOICES = [
+        ('morning', 'Morning'),
+        ('afternoon', 'Afternoon'),
+        ('evening', 'Evening'),
+        ('night', 'Night'),
+    ]
+
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='screen_sessions')
+    recorded_at = models.DateTimeField(auto_now_add=True)
+
+    # Automatically tracked metrics (minutes)
+    total_time = models.PositiveIntegerField(default=0)
+    social_time = models.PositiveIntegerField(default=0)
+    study_time = models.PositiveIntegerField(default=0)
+    continuous_usage = models.PositiveIntegerField(default=0)
+
+    time_of_day = models.CharField(max_length=20, choices=TIME_OF_DAY_CHOICES, default='evening')
+    apps_list = models.JSONField(default=list)  # ["Instagram", "YouTube", "Khan Academy"]
+
+    class Meta:
+        ordering = ['-recorded_at']
+
+    def __str__(self):
+        return f"{self.user.email} | {self.recorded_at.date()} | {self.total_time}min"
+
+
+class BehaviorAnalysis(models.Model):
+    """
+    AI-generated analysis result for a ScreenSession.
+    Auto-triggered after each session is logged.
+    """
+    DETECTED_STATE_CHOICES = [
+        ('normal', 'Normal'),
+        ('stressed', 'Stressed'),
+        ('fatigued', 'Fatigued'),
+        ('distracted', 'Distracted'),
+        ('overuse', 'Overuse'),
+    ]
+    INTENSITY_CHOICES = [('low', 'Low'), ('medium', 'Medium'), ('high', 'High')]
+    RISK_CHOICES = [('none', 'None'), ('low', 'Low'), ('medium', 'Medium'), ('high', 'High')]
+    ACTION_CHOICES = [('focus_mode', 'Focus Mode'), ('digital_detox', 'Digital Detox'), ('rest_mode', 'Rest Mode'), ('none', 'None')]
+    PARENT_ALERT_CHOICES = [('none', 'None'), ('consider', 'Consider'), ('required', 'Required')]
+
+    session = models.OneToOneField(ScreenSession, on_delete=models.CASCADE, related_name='analysis')
+    analyzed_at = models.DateTimeField(auto_now_add=True)
+
+    detected_state = models.CharField(max_length=20, choices=DETECTED_STATE_CHOICES, default='normal')
+    intensity = models.CharField(max_length=10, choices=INTENSITY_CHOICES, default='low')
+    confidence = models.FloatField(default=0.5)
+    behavior_pattern = models.TextField(blank=True)
+    risk_level = models.CharField(max_length=10, choices=RISK_CHOICES, default='none')
+
+    # Auto-action
+    action_type = models.CharField(max_length=20, choices=ACTION_CHOICES, default='none')
+    action_description = models.TextField(blank=True)
+    action_duration = models.CharField(max_length=50, blank=True)
+
+    system_changes = models.JSONField(default=list)
+    user_message = models.TextField(blank=True)
+    parent_alert = models.CharField(max_length=10, choices=PARENT_ALERT_CHOICES, default='none')
+
+    # Raw JSON from AI
+    raw_result = models.JSONField(default=dict)
+
+    class Meta:
+        ordering = ['-analyzed_at']
+
+    def __str__(self):
+        return f"{self.session.user.email} | {self.detected_state} ({self.intensity})"
+
+
+================================================
+FILE: backend/apps/screen_monitor/serializers.py
+================================================
+from rest_framework import serializers
+from .models import ScreenSession, BehaviorAnalysis
+
+
+class BehaviorAnalysisSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = BehaviorAnalysis
+        fields = [
+            'id', 'analyzed_at', 'detected_state', 'intensity', 'confidence',
+            'behavior_pattern', 'risk_level', 'action_type', 'action_description',
+            'action_duration', 'system_changes', 'user_message', 'parent_alert',
+        ]
+
+
+class ScreenSessionSerializer(serializers.ModelSerializer):
+    analysis = BehaviorAnalysisSerializer(read_only=True)
+
+    class Meta:
+        model = ScreenSession
+        fields = [
+            'id', 'recorded_at', 'total_time', 'social_time', 'study_time',
+            'continuous_usage', 'time_of_day', 'apps_list', 'analysis',
+        ]
+        read_only_fields = ['recorded_at']
+
+
+class ScreenSessionCreateSerializer(serializers.ModelSerializer):
+    """Used when the device agent POSTs a new session."""
+    class Meta:
+        model = ScreenSession
+        fields = [
+            'total_time', 'social_time', 'study_time',
+            'continuous_usage', 'time_of_day', 'apps_list',
+        ]
+
+
+================================================
+FILE: backend/apps/screen_monitor/urls.py
+================================================
+from django.urls import path
+from . import views
+
+urlpatterns = [
+    path('session/', views.log_session, name='screen-log-session'),
+    path('sessions/', views.list_sessions, name='screen-list-sessions'),
+    path('latest/', views.latest_analysis, name='screen-latest-analysis'),
+    path('summary/', views.weekly_summary, name='screen-weekly-summary'),
+]
+
+
+================================================
+FILE: backend/apps/screen_monitor/views.py
+================================================
+"""
+screen_monitor/views.py
+
+Endpoints:
+  POST /screen-monitor/session/   â€“ device agent logs a new session (auto-triggers AI)
+  GET  /screen-monitor/sessions/  â€“ teen/parent fetches session history + analyses
+  GET  /screen-monitor/latest/    â€“ latest analysis for the logged-in teen
+  GET  /screen-monitor/summary/   â€“ aggregated weekly summary
+"""
+from django.utils import timezone
+from rest_framework import status
+from rest_framework.decorators import api_view, permission_classes
+from rest_framework.permissions import IsAuthenticated
+from rest_framework.response import Response
+
+from .ai_service import analyze_session
+from .models import BehaviorAnalysis, ScreenSession
+from .serializers import (
+    BehaviorAnalysisSerializer,
+    ScreenSessionCreateSerializer,
+    ScreenSessionSerializer,
+)
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def log_session(request):
+    """
+    Called automatically by the device agent / browser extension.
+    Creates a ScreenSession, runs AI analysis, stores BehaviorAnalysis.
+    """
+    serializer = ScreenSessionCreateSerializer(data=request.data)
+    if not serializer.is_valid():
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+    session = serializer.save(user=request.user)
+
+    # Fetch recent sessions for context (last 5, excluding this one)
+    recent_qs = (
+        ScreenSession.objects
+        .filter(user=request.user)
+        .exclude(pk=session.pk)
+        .prefetch_related('analysis')
+        .order_by('-recorded_at')[:5]
+    )
+    recent_logs = []
+    for s in recent_qs:
+        entry = {
+            'recorded_at': s.recorded_at.isoformat(),
+            'total_time': s.total_time,
+            'social_time': s.social_time,
+            'study_time': s.study_time,
+            'continuous_usage': s.continuous_usage,
+            'time_of_day': s.time_of_day,
+        }
+        if hasattr(s, 'analysis'):
+            entry['detected_state'] = s.analysis.detected_state
+        recent_logs.append(entry)
+
+    # Run AI analysis
+    session_data = {
+        'total_time': session.total_time,
+        'social_time': session.social_time,
+        'study_time': session.study_time,
+        'continuous_usage': session.continuous_usage,
+        'time_of_day': session.time_of_day,
+        'apps_list': session.apps_list,
+    }
+    result = analyze_session(session_data, recent_logs)
+
+    auto_action = result.get('auto_action', {})
+    BehaviorAnalysis.objects.create(
+        session=session,
+        detected_state=result.get('detected_state', 'normal'),
+        intensity=result.get('intensity', 'low'),
+        confidence=result.get('confidence', 0.5),
+        behavior_pattern=result.get('behavior_pattern', ''),
+        risk_level=result.get('risk_level', 'none'),
+        action_type=auto_action.get('action_type', 'none'),
+        action_description=auto_action.get('description', ''),
+        action_duration=auto_action.get('duration', ''),
+        system_changes=result.get('system_changes', []),
+        user_message=result.get('user_message', ''),
+        parent_alert=result.get('parent_alert', 'none'),
+        raw_result=result,
+    )
+
+    return Response(ScreenSessionSerializer(session).data, status=status.HTTP_201_CREATED)
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def list_sessions(request):
+    """Return last 20 sessions with analyses for the logged-in teen."""
+    sessions = (
+        ScreenSession.objects
+        .filter(user=request.user)
+        .prefetch_related('analysis')
+        .order_by('-recorded_at')[:20]
+    )
+    return Response(ScreenSessionSerializer(sessions, many=True).data)
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def latest_analysis(request):
+    """Return the most recent BehaviorAnalysis for the logged-in teen."""
+    try:
+        session = (
+            ScreenSession.objects
+            .filter(user=request.user)
+            .prefetch_related('analysis')
+            .latest('recorded_at')
+        )
+        analysis = session.analysis
+        return Response(BehaviorAnalysisSerializer(analysis).data)
+    except (ScreenSession.DoesNotExist, BehaviorAnalysis.DoesNotExist):
+        return Response({'detail': 'No analysis yet.'}, status=status.HTTP_404_NOT_FOUND)
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def weekly_summary(request):
+    """Aggregated stats for the past 7 days."""
+    from django.db.models import Avg, Count, Sum
+    from datetime import timedelta
+
+    seven_days_ago = timezone.now() - timedelta(days=7)
+    sessions = ScreenSession.objects.filter(
+        user=request.user,
+        recorded_at__gte=seven_days_ago,
+    )
+
+    agg = sessions.aggregate(
+        total_sessions=Count('id'),
+        avg_total=Avg('total_time'),
+        avg_social=Avg('social_time'),
+        avg_study=Avg('study_time'),
+        total_screen=Sum('total_time'),
+    )
+
+    # Count risk levels from analyses
+    from django.db.models import Q
+    risk_counts = {
+        'none': BehaviorAnalysis.objects.filter(session__in=sessions, risk_level='none').count(),
+        'low': BehaviorAnalysis.objects.filter(session__in=sessions, risk_level='low').count(),
+        'medium': BehaviorAnalysis.objects.filter(session__in=sessions, risk_level='medium').count(),
+        'high': BehaviorAnalysis.objects.filter(session__in=sessions, risk_level='high').count(),
+    }
+
+    state_counts = {}
+    for state in ['normal', 'stressed', 'fatigued', 'distracted', 'overuse']:
+        state_counts[state] = BehaviorAnalysis.objects.filter(
+            session__in=sessions, detected_state=state
+        ).count()
+
+    return Response({
+        **agg,
+        'risk_counts': risk_counts,
+        'state_counts': state_counts,
+    })
+
+
+================================================
+FILE: backend/apps/screen_monitor/migrations/0001_initial.py
+================================================
+# Generated by Django 4.2 on 2026-04-03 16:44
+
+from django.conf import settings
+from django.db import migrations, models
+import django.db.models.deletion
+
+
+class Migration(migrations.Migration):
+
+    initial = True
+
+    dependencies = [
+        migrations.swappable_dependency(settings.AUTH_USER_MODEL),
+    ]
+
+    operations = [
+        migrations.CreateModel(
+            name='ScreenSession',
+            fields=[
+                ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
+                ('recorded_at', models.DateTimeField(auto_now_add=True)),
+                ('total_time', models.PositiveIntegerField(default=0)),
+                ('social_time', models.PositiveIntegerField(default=0)),
+                ('study_time', models.PositiveIntegerField(default=0)),
+                ('continuous_usage', models.PositiveIntegerField(default=0)),
+                ('time_of_day', models.CharField(choices=[('morning', 'Morning'), ('afternoon', 'Afternoon'), ('evening', 'Evening'), ('night', 'Night')], default='evening', max_length=20)),
+                ('apps_list', models.JSONField(default=list)),
+                ('user', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='screen_sessions', to=settings.AUTH_USER_MODEL)),
+            ],
+            options={
+                'ordering': ['-recorded_at'],
+            },
+        ),
+        migrations.CreateModel(
+            name='BehaviorAnalysis',
+            fields=[
+                ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
+                ('analyzed_at', models.DateTimeField(auto_now_add=True)),
+                ('detected_state', models.CharField(choices=[('normal', 'Normal'), ('stressed', 'Stressed'), ('fatigued', 'Fatigued'), ('distracted', 'Distracted'), ('overuse', 'Overuse')], default='normal', max_length=20)),
+                ('intensity', models.CharField(choices=[('low', 'Low'), ('medium', 'Medium'), ('high', 'High')], default='low', max_length=10)),
+                ('confidence', models.FloatField(default=0.5)),
+                ('behavior_pattern', models.TextField(blank=True)),
+                ('risk_level', models.CharField(choices=[('none', 'None'), ('low', 'Low'), ('medium', 'Medium'), ('high', 'High')], default='none', max_length=10)),
+                ('action_type', models.CharField(choices=[('focus_mode', 'Focus Mode'), ('digital_detox', 'Digital Detox'), ('rest_mode', 'Rest Mode'), ('none', 'None')], default='none', max_length=20)),
+                ('action_description', models.TextField(blank=True)),
+                ('action_duration', models.CharField(blank=True, max_length=50)),
+                ('system_changes', models.JSONField(default=list)),
+                ('user_message', models.TextField(blank=True)),
+                ('parent_alert', models.CharField(choices=[('none', 'None'), ('consider', 'Consider'), ('required', 'Required')], default='none', max_length=10)),
+                ('raw_result', models.JSONField(default=dict)),
+                ('session', models.OneToOneField(on_delete=django.db.models.deletion.CASCADE, related_name='analysis', to='screen_monitor.screensession')),
+            ],
+            options={
+                'ordering': ['-analyzed_at'],
+            },
+        ),
+    ]
+
+
+
+================================================
+FILE: backend/apps/screen_monitor/migrations/__init__.py
+================================================
+
+
+
+================================================
+FILE: backend/apps/study_planner/__init__.py
+================================================
+
+
+
+================================================
+FILE: backend/apps/study_planner/admin.py
+================================================
+from django.contrib import admin
+from .models import StudyTask
+
+
+@admin.register(StudyTask)
+class StudyTaskAdmin(admin.ModelAdmin):
+    list_display = ('title', 'task_type', 'date', 'time', 'priority', 'status', 'user')
+    list_filter = ('task_type', 'priority', 'status', 'deadline')
+    search_fields = ('title', 'user__email')
+    ordering = ('date', 'time')
+
+
+================================================
+FILE: backend/apps/study_planner/models.py
+================================================
+from django.db import models
+from django.contrib.auth import get_user_model
+
+User = get_user_model()
+
+
+class StudyTask(models.Model):
+    TASK_TYPES = (
+        ('Task', 'Task'),
+        ('Meeting', 'Meeting'),
+        ('Test/Exam', 'Test/Exam'),
+        ('Assignment/Deadline', 'Assignment/Deadline'),
+    )
+    PRIORITY_CHOICES = (
+        ('Low', 'Low'),
+        ('Medium', 'Medium'),
+        ('High', 'High'),
+    )
+    STATUS_CHOICES = (
+        ('Pending', 'Pending'),
+        ('Completed', 'Completed'),
+    )
+
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='study_tasks')
+    title = models.CharField(max_length=255)
+    task_type = models.CharField(max_length=30, choices=TASK_TYPES)
+    date = models.DateField()
+    time = models.TimeField(null=True, blank=True)
+    deadline = models.BooleanField(default=False)
+    reminder = models.CharField(max_length=50)   # e.g. "30 minutes before"
+    priority = models.CharField(max_length=10, choices=PRIORITY_CHOICES, default='Medium')
+    status = models.CharField(max_length=10, choices=STATUS_CHOICES, default='Pending')
+
+    # raw voice input stored for reference
+    voice_input = models.TextField(blank=True, default='')
+
+    # structured JSON from AI parser
+    parsed_json = models.JSONField(default=dict)
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['date', 'time']
+
+    def __str__(self):
+        return f"{self.user.email} â€“ {self.title} ({self.date})"
+
+
+================================================
+FILE: backend/apps/study_planner/serializers.py
+================================================
+from rest_framework import serializers
+from .models import StudyTask
+
+
+class StudyTaskSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = StudyTask
+        fields = [
+            'id', 'title', 'task_type', 'date', 'time',
+            'deadline', 'reminder', 'priority', 'status',
+            'voice_input', 'parsed_json', 'created_at', 'updated_at',
+        ]
+        read_only_fields = ['id', 'created_at', 'updated_at']
+
+
+class VoiceInputSerializer(serializers.Serializer):
+    """Accepts a raw voice-to-text string and returns structured JSON."""
+    voice_text = serializers.CharField()
+
+
+================================================
+FILE: backend/apps/study_planner/urls.py
+================================================
+from django.urls import path, include
+from rest_framework.routers import DefaultRouter
+from .views import StudyTaskViewSet
+
+router = DefaultRouter()
+router.register(r'study-tasks', StudyTaskViewSet, basename='study-task')
+
+urlpatterns = [
+    path('', include(router.urls)),
+]
+
+
+================================================
+FILE: backend/apps/study_planner/views.py
+================================================
+import json
+import re
+from datetime import date, timedelta, datetime
+
+import google.generativeai as genai
+from django.conf import settings
+from rest_framework import status
+from rest_framework.decorators import action
+from rest_framework.permissions import IsAuthenticated
+from rest_framework.response import Response
+from rest_framework.viewsets import ModelViewSet
+
+from .models import StudyTask
+from .serializers import StudyTaskSerializer, VoiceInputSerializer
+
+genai.configure(api_key=settings.GEMINI_API_KEY)
+
+TODAY = date.today()
+
+
+def _parse_with_gemini(voice_text: str) -> dict:
+    """
+    Call Gemini to convert natural-language academic input into structured JSON.
+    Returns a dict with keys: title, type, date, time, deadline, reminder,
+    priority, calendar_event.
+    """
+    today_str = TODAY.isoformat()
+
+    prompt = f"""
+Today's date is {today_str}.
+You are an AI academic task parser for a teen student planner.
+
+From the following voice input, extract a JSON object with EXACTLY these keys:
+- "title": short task title (string)
+- "type": one of ["Task", "Meeting", "Test/Exam", "Assignment/Deadline"]
+- "date": YYYY-MM-DD (convert relative dates like "tomorrow", "Sunday", "next Monday")
+- "time": "HH:MM" in 24-hr format, or null if not mentioned
+- "deadline": true if it is a submission/deadline, false otherwise
+- "reminder": "30 minutes before" if timed event, "2 days before" if deadline
+- "priority": "High" for exams/tests/deadlines, "Medium" for meetings, "Low" for general tasks
+- "calendar_event": {{ "create": true, "event_type": "timed" }} if time given,
+                    {{ "create": true, "event_type": "all-day deadline" }} if deadline
+- "missing_date": true if the date is completely absent and you cannot infer it, otherwise false
+
+Respond ONLY with valid JSON. No explanation, no markdown.
+
+Voice input: "{voice_text}"
+"""
+    model = genai.GenerativeModel("gemini-1.5-flash")
+    response = model.generate_content(prompt)
+    raw = response.text.strip()
+
+    # strip markdown fences if present
+    raw = re.sub(r"^```(?:json)?", "", raw).strip()
+    raw = re.sub(r"```$", "", raw).strip()
+
+    return json.loads(raw)
+
+
+class StudyTaskViewSet(ModelViewSet):
+    """
+    CRUD for StudyTask + custom actions:
+      POST /api/study-tasks/parse_voice/   â€“ parse voice text, return JSON (no save)
+      POST /api/study-tasks/add_from_voice/ â€“ parse + save to DB
+      PATCH /api/study-tasks/{id}/update_status/ â€“ toggle Pending / Completed
+    """
+    serializer_class = StudyTaskSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        qs = StudyTask.objects.filter(user=self.request.user)
+        task_filter = self.request.query_params.get('filter')
+        if task_filter == 'upcoming':
+            qs = qs.filter(status='Pending', date__gte=TODAY)
+        elif task_filter == 'deadlines':
+            qs = qs.filter(deadline=True, status='Pending')
+        elif task_filter == 'completed':
+            qs = qs.filter(status='Completed')
+        return qs
+
+    def perform_create(self, serializer):
+        serializer.save(user=self.request.user)
+
+    # ------------------------------------------------------------------ #
+    @action(detail=False, methods=['post'], url_path='parse_voice')
+    def parse_voice(self, request):
+        """
+        Parse a voice text string and return structured JSON without saving.
+        Useful for preview before saving.
+        """
+        ser = VoiceInputSerializer(data=request.data)
+        ser.is_valid(raise_exception=True)
+        voice_text = ser.validated_data['voice_text']
+
+        try:
+            parsed = _parse_with_gemini(voice_text)
+        except Exception as e:
+            return Response(
+                {'error': f'AI parsing failed: {str(e)}'},
+                status=status.HTTP_502_BAD_GATEWAY,
+            )
+
+        if parsed.get('missing_date'):
+            return Response(
+                {
+                    'needs_clarification': True,
+                    'question': 'Could you tell me the date for this task?',
+                    'partial': parsed,
+                },
+                status=status.HTTP_200_OK,
+            )
+
+        return Response({'parsed': parsed}, status=status.HTTP_200_OK)
+
+    # ------------------------------------------------------------------ #
+    @action(detail=False, methods=['post'], url_path='add_from_voice')
+    def add_from_voice(self, request):
+        """
+        Parse voice text and immediately persist the task.
+        Prevents duplicates: checks title + date + user.
+        """
+        ser = VoiceInputSerializer(data=request.data)
+        ser.is_valid(raise_exception=True)
+        voice_text = ser.validated_data['voice_text']
+
+        try:
+            parsed = _parse_with_gemini(voice_text)
+        except Exception as e:
+            return Response(
+                {'error': f'AI parsing failed: {str(e)}'},
+                status=status.HTTP_502_BAD_GATEWAY,
+            )
+
+        if parsed.get('missing_date'):
+            return Response(
+                {
+                    'needs_clarification': True,
+                    'question': 'Could you tell me the date for this task?',
+                },
+                status=status.HTTP_200_OK,
+            )
+
+        # Duplicate check
+        existing = StudyTask.objects.filter(
+            user=request.user,
+            title__iexact=parsed.get('title', ''),
+            date=parsed.get('date'),
+        ).first()
+
+        if existing:
+            return Response(
+                {
+                    'duplicate': True,
+                    'message': 'A task with this title and date already exists.',
+                    'task': StudyTaskSerializer(existing).data,
+                },
+                status=status.HTTP_200_OK,
+            )
+
+        task = StudyTask.objects.create(
+            user=request.user,
+            title=parsed.get('title', 'Untitled Task'),
+            task_type=parsed.get('type', 'Task'),
+            date=parsed.get('date', TODAY.isoformat()),
+            time=parsed.get('time'),
+            deadline=parsed.get('deadline', False),
+            reminder=parsed.get('reminder', '30 minutes before'),
+            priority=parsed.get('priority', 'Medium'),
+            voice_input=voice_text,
+            parsed_json=parsed,
+        )
+
+        return Response(
+            {'created': True, 'task': StudyTaskSerializer(task).data},
+            status=status.HTTP_201_CREATED,
+        )
+
+    # ------------------------------------------------------------------ #
+    @action(detail=True, methods=['patch'], url_path='update_status')
+    def update_status(self, request, pk=None):
+        """Toggle task status between Pending and Completed."""
+        task = self.get_object()
+        new_status = request.data.get('status')
+        if new_status not in ('Pending', 'Completed'):
+            return Response(
+                {'error': 'status must be Pending or Completed'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        task.status = new_status
+        task.save()
+        return Response(StudyTaskSerializer(task).data)
+
+
+================================================
+FILE: backend/apps/study_planner/migrations/0001_initial.py
+================================================
+# Generated by Django 4.2 on 2026-04-04 16:45
+
+from django.conf import settings
+from django.db import migrations, models
+import django.db.models.deletion
+
+
+class Migration(migrations.Migration):
+
+    initial = True
+
+    dependencies = [
+        migrations.swappable_dependency(settings.AUTH_USER_MODEL),
+    ]
+
+    operations = [
+        migrations.CreateModel(
+            name='StudyTask',
+            fields=[
+                ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
+                ('title', models.CharField(max_length=255)),
+                ('task_type', models.CharField(choices=[('Task', 'Task'), ('Meeting', 'Meeting'), ('Test/Exam', 'Test/Exam'), ('Assignment/Deadline', 'Assignment/Deadline')], max_length=30)),
+                ('date', models.DateField()),
+                ('time', models.TimeField(blank=True, null=True)),
+                ('deadline', models.BooleanField(default=False)),
+                ('reminder', models.CharField(max_length=50)),
+                ('priority', models.CharField(choices=[('Low', 'Low'), ('Medium', 'Medium'), ('High', 'High')], default='Medium', max_length=10)),
+                ('status', models.CharField(choices=[('Pending', 'Pending'), ('Completed', 'Completed')], default='Pending', max_length=10)),
+                ('voice_input', models.TextField(blank=True, default='')),
+                ('parsed_json', models.JSONField(default=dict)),
+                ('created_at', models.DateTimeField(auto_now_add=True)),
+                ('updated_at', models.DateTimeField(auto_now=True)),
+                ('user', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='study_tasks', to=settings.AUTH_USER_MODEL)),
+            ],
+            options={
+                'ordering': ['date', 'time'],
+            },
+        ),
+    ]
+
+
+
+================================================
+FILE: backend/apps/study_planner/migrations/__init__.py
+================================================
+
 
 
 ================================================
@@ -4182,6 +5079,7 @@ INSTALLED_APPS = [
     'apps.insights',
     'apps.reports',
     'apps.voice_assessments',
+    'apps.study_planner',
 ]
 
 MIDDLEWARE = [
@@ -4306,6 +5204,7 @@ urlpatterns = [
     # so frontend calls http://localhost:8000/api/reports/upload/ correctly
     path('api/', include('apps.reports.urls')),
     path('api/voice-assessments/', include('apps.voice_assessments.urls')),
+    path('api/', include('apps.study_planner.urls')),
 ]
 
 if settings.DEBUG:
@@ -7613,6 +8512,7 @@ export default VoiceAssessmentFlow;
 ================================================
 FILE: frontend/src/components/VoiceAssessment/VoiceRecorder.jsx
 ================================================
+import React, { useState, useRef, useEffect } from 'react';
 import { FiMic, FiSquare, FiLoader } from 'react-icons/fi';
 
 const VoiceRecorder = ({ onRecordingComplete, disabled = false }) => {
@@ -8545,7 +9445,8 @@ function PregnancyDashboard() {
     // ── Voice wellness ────────────────────────────────────────────────────────
     const [showVoiceFlow,  setShowVoiceFlow]  = useState(false);
     const [voiceResult,    setVoiceResult]    = useState(null);   // loaded from backend
-    const [voiceDismissed, setVoiceDismissed] = useState(false);  // user hid the card this session
+    // FIX: starts as true so past results are always minimized on load/refresh
+    const [voiceDismissed, setVoiceDismissed] = useState(true);
 
     // Appointments
     const [nextAppointment, setNextAppointment] = useState(null);
@@ -8572,7 +9473,9 @@ function PregnancyDashboard() {
             const data = await getLatestVoiceResult();  // returns null on 404
             if (data) {
                 setVoiceResult(data);
-                setVoiceDismissed(false);
+                // FIX: do NOT call setVoiceDismissed(false) here.
+                // voiceDismissed stays true (its initial value) so the card
+                // is minimized by default on every load / refresh.
             }
         } catch (_) { /* no completed session yet — silently skip */ }
     };
@@ -8659,7 +9562,7 @@ function PregnancyDashboard() {
     // Voice handlers
     const handleVoiceComplete = useCallback((result) => {
         setVoiceResult(result);
-        setVoiceDismissed(false);
+        setVoiceDismissed(false); // expand card only after a fresh check-in
         setShowVoiceFlow(false);
     }, []);
     const handleVoiceClose   = () => setShowVoiceFlow(false);
@@ -9038,92 +9941,437 @@ export default PricingPage;
 ================================================
 FILE: frontend/src/pages/TeenDashboard.jsx
 ================================================
-import React, { useState, useEffect } from 'react';
-import axios from 'axios';
+// frontend/src/pages/TeenDashboard.jsx
+import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { useAuth } from '../context/AuthContext';
 import { useSubscription } from '../context/SubscriptionContext';
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import AssessmentPrompt from '../components/Teen/AssessmentPrompt';
-import AssessmentView from '../components/Parent/AssessmentView';
-import ResultsDisplay from '../components/Assessment/ResultsDisplay';
+import api from '../services/api';
+import {
+    parseVoiceText,
+    addTaskFromVoice,
+    getTasks,
+    updateTaskStatus,
+    deleteTask,
+} from '../services/studyPlannerService';
 
-function TeenDashboard() {
-    const { user, token } = useAuth();
-    const { canAccessInsights } = useSubscription();
-    const [results, setResults] = useState([]);
-    const [showAssessmentPrompt, setShowAssessmentPrompt] = useState(true);
-    const [takingAssessment, setTakingAssessment] = useState(false);
-    const [loading, setLoading] = useState(true);
+/* ─────────────────────────────────────────────
+   Helpers
+───────────────────────────────────────────── */
+const PRIORITY_COLORS = {
+    High:   'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400',
+    Medium: 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400',
+    Low:    'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400',
+};
 
-    useEffect(() => {
-        fetchResults();
-    }, [token]);
+const TYPE_ICONS = {
+    'Test/Exam':           '📝',
+    'Assignment/Deadline': '📌',
+    'Meeting':             '🤝',
+    'Task':                '✅',
+};
 
-    const fetchResults = async () => {
+function Badge({ text, color }) {
+    return (
+        <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-semibold ${color}`}>
+            {text}
+        </span>
+    );
+}
+
+/* ─────────────────────────────────────────────
+   Study Planner Section
+───────────────────────────────────────────── */
+function StudyPlanner() {
+    const [activeTab, setActiveTab]     = useState('upcoming');
+    const [tasks, setTasks]             = useState([]);
+    const [loading, setLoading]         = useState(false);
+    const [voiceText, setVoiceText]     = useState('');
+    const [isListening, setIsListening] = useState(false);
+    const [parsing, setParsing]         = useState(false);
+    const [preview, setPreview]         = useState(null);        // parsed JSON preview
+    const [feedback, setFeedback]       = useState(null);        // { type, message }
+    const [clarify, setClarify]         = useState(false);       // needs date clarification
+    const recognitionRef = useRef(null);
+
+    const fetchTasks = useCallback(async (filter) => {
+        setLoading(true);
         try {
-            const response = await axios.get(
-                `${process.env.REACT_APP_API_URL}/assessments/my_results/`,
-                { headers: { Authorization: `Bearer ${token}` } }
-            );
-            const data = response.data.results || response.data;
-            setResults(data);
-            if (data.length > 0) {
-                setShowAssessmentPrompt(false);
-            }
-        } catch (error) {
-            console.error('Failed to fetch results:', error);
+            const { data } = await getTasks(filter);
+            setTasks(Array.isArray(data) ? data : (data.results ?? []));
+        } catch {
+            setFeedback({ type: 'error', message: 'Failed to load tasks.' });
         } finally {
             setLoading(false);
         }
+    }, []);
+
+    useEffect(() => {
+        fetchTasks(activeTab);
+    }, [activeTab, fetchTasks]);
+
+    /* ── Web Speech API ── */
+    const startListening = () => {
+        const SpeechRecognition =
+            window.SpeechRecognition || window.webkitSpeechRecognition;
+        if (!SpeechRecognition) {
+            setFeedback({ type: 'error', message: 'Your browser does not support voice input. Please type instead.' });
+            return;
+        }
+        const recognition = new SpeechRecognition();
+        recognition.lang = 'en-US';
+        recognition.interimResults = false;
+        recognition.onresult = (e) => {
+            setVoiceText(e.results[0][0].transcript);
+        };
+        recognition.onend = () => setIsListening(false);
+        recognition.onerror = () => {
+            setIsListening(false);
+            setFeedback({ type: 'error', message: 'Voice capture failed. Please try again.' });
+        };
+        recognitionRef.current = recognition;
+        recognition.start();
+        setIsListening(true);
     };
 
-    const handleAssessmentComplete = (resultData) => {
+    const stopListening = () => {
+        recognitionRef.current?.stop();
+        setIsListening(false);
+    };
+
+    /* ── Parse preview ── */
+    const handleParse = async () => {
+        if (!voiceText.trim()) return;
+        setParsing(true);
+        setPreview(null);
+        setFeedback(null);
+        setClarify(false);
+        try {
+            const { data } = await parseVoiceText(voiceText);
+            if (data.needs_clarification) {
+                setClarify(true);
+                setFeedback({ type: 'warn', message: data.question });
+            } else {
+                setPreview(data.parsed);
+            }
+        } catch {
+            setFeedback({ type: 'error', message: 'AI parsing failed. Please try again.' });
+        } finally {
+            setParsing(false);
+        }
+    };
+
+    /* ── Confirm & save ── */
+    const handleConfirmSave = async () => {
+        if (!voiceText.trim()) return;
+        setParsing(true);
+        try {
+            const { data } = await addTaskFromVoice(voiceText);
+            if (data.needs_clarification) {
+                setClarify(true);
+                setFeedback({ type: 'warn', message: data.question });
+            } else if (data.duplicate) {
+                setFeedback({ type: 'warn', message: data.message });
+            } else {
+                setFeedback({ type: 'success', message: `✅ "${data.task.title}" added to your planner!` });
+                setVoiceText('');
+                setPreview(null);
+                fetchTasks(activeTab);
+            }
+        } catch {
+            setFeedback({ type: 'error', message: 'Failed to save task. Please try again.' });
+        } finally {
+            setParsing(false);
+        }
+    };
+
+    /* ── Status toggle ── */
+    const toggleStatus = async (task) => {
+        const next = task.status === 'Pending' ? 'Completed' : 'Pending';
+        try {
+            await updateTaskStatus(task.id, next);
+            fetchTasks(activeTab);
+        } catch {
+            setFeedback({ type: 'error', message: 'Status update failed.' });
+        }
+    };
+
+    /* ── Delete ── */
+    const handleDelete = async (id) => {
+        if (!window.confirm('Delete this task?')) return;
+        try {
+            await deleteTask(id);
+            fetchTasks(activeTab);
+        } catch {
+            setFeedback({ type: 'error', message: 'Delete failed.' });
+        }
+    };
+
+    const TABS = [
+        { key: 'upcoming',  label: '📅 Upcoming' },
+        { key: 'deadlines', label: '📌 Deadlines' },
+        { key: 'completed', label: '✅ Completed' },
+    ];
+
+    const feedbackStyle = {
+        success: 'bg-green-50 text-green-700 border-green-200 dark:bg-green-900/20 dark:text-green-400 dark:border-green-800',
+        warn:    'bg-yellow-50 text-yellow-700 border-yellow-200 dark:bg-yellow-900/20 dark:text-yellow-400 dark:border-yellow-800',
+        error:   'bg-red-50 text-red-700 border-red-200 dark:bg-red-900/20 dark:text-red-400 dark:border-red-800',
+    };
+
+    return (
+        <div className="card dark:bg-slate-900 border dark:border-slate-800 p-6 md:p-8 shadow-sm">
+            {/* Header */}
+            <div className="flex items-center justify-between mb-6">
+                <h2 className="text-2xl font-bold dark:text-white flex items-center gap-2">
+                    <span className="p-2 bg-violet-500/10 rounded-lg text-violet-500">🎓</span>
+                    Study Planner
+                </h2>
+                <span className="text-xs text-gray-400 dark:text-slate-500">AI-powered scheduler</span>
+            </div>
+
+            {/* ── Voice / Text Input ── */}
+            <div className="mb-6 p-5 bg-violet-50 dark:bg-violet-900/10 border border-violet-200 dark:border-violet-800/40 rounded-2xl">
+                <p className="text-sm font-semibold text-violet-700 dark:text-violet-300 mb-3">
+                    🎤 Speak or type your task (e.g. "Math test on 10th April at 10 AM")
+                </p>
+
+                <div className="flex gap-2">
+                    <textarea
+                        value={voiceText}
+                        onChange={(e) => setVoiceText(e.target.value)}
+                        placeholder='e.g. "Submit science project by 15th April" or "Meeting with mentor tomorrow at 5 PM"'
+                        rows={2}
+                        className="flex-1 p-3 rounded-xl border border-violet-300 dark:border-violet-700 bg-white dark:bg-slate-800 text-gray-800 dark:text-white text-sm resize-none focus:outline-none focus:ring-2 focus:ring-violet-400"
+                    />
+                    <button
+                        onClick={isListening ? stopListening : startListening}
+                        title={isListening ? 'Stop' : 'Speak'}
+                        className={`px-4 rounded-xl font-bold text-xl transition-all ${
+                            isListening
+                                ? 'bg-red-500 text-white animate-pulse'
+                                : 'bg-violet-600 text-white hover:bg-violet-700'
+                        }`}
+                    >
+                        {isListening ? '⏹' : '🎙'}
+                    </button>
+                </div>
+
+                <div className="flex gap-3 mt-3">
+                    <button
+                        onClick={handleParse}
+                        disabled={parsing || !voiceText.trim()}
+                        className="px-5 py-2 rounded-xl bg-violet-600 text-white text-sm font-semibold hover:bg-violet-700 disabled:opacity-50 transition"
+                    >
+                        {parsing ? '⏳ Parsing…' : '🔍 Preview'}
+                    </button>
+                    <button
+                        onClick={handleConfirmSave}
+                        disabled={parsing || !voiceText.trim()}
+                        className="px-5 py-2 rounded-xl bg-pink-600 text-white text-sm font-semibold hover:bg-pink-700 disabled:opacity-50 transition"
+                    >
+                        {parsing ? '⏳ Saving…' : '➕ Add Task'}
+                    </button>
+                </div>
+            </div>
+
+            {/* Feedback banner */}
+            {feedback && (
+                <div className={`mb-4 p-3 rounded-xl border text-sm font-medium ${feedbackStyle[feedback.type]}`}>
+                    {feedback.message}
+                    <button onClick={() => setFeedback(null)} className="float-right opacity-60 hover:opacity-100">✕</button>
+                </div>
+            )}
+
+            {/* ── Preview Card ── */}
+            {preview && (
+                <div className="mb-6 p-4 bg-white dark:bg-slate-800 border border-violet-300 dark:border-violet-700 rounded-2xl shadow">
+                    <p className="text-xs font-bold uppercase text-violet-500 mb-3">AI Preview — confirm before saving</p>
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
+                        <div><span className="font-semibold text-gray-500 dark:text-slate-400">Title</span><p className="dark:text-white">{preview.title}</p></div>
+                        <div><span className="font-semibold text-gray-500 dark:text-slate-400">Type</span><p className="dark:text-white">{TYPE_ICONS[preview.type]} {preview.type}</p></div>
+                        <div><span className="font-semibold text-gray-500 dark:text-slate-400">Date</span><p className="dark:text-white">{preview.date}</p></div>
+                        <div><span className="font-semibold text-gray-500 dark:text-slate-400">Time</span><p className="dark:text-white">{preview.time ?? '—'}</p></div>
+                        <div><span className="font-semibold text-gray-500 dark:text-slate-400">Priority</span><Badge text={preview.priority} color={PRIORITY_COLORS[preview.priority]} /></div>
+                        <div><span className="font-semibold text-gray-500 dark:text-slate-400">Reminder</span><p className="dark:text-white">{preview.reminder}</p></div>
+                        <div><span className="font-semibold text-gray-500 dark:text-slate-400">Deadline</span><p className="dark:text-white">{preview.deadline ? 'Yes' : 'No'}</p></div>
+                        <div><span className="font-semibold text-gray-500 dark:text-slate-400">Calendar</span><p className="dark:text-white">{preview.calendar_event?.event_type}</p></div>
+                    </div>
+                    <div className="mt-4 flex gap-3">
+                        <button
+                            onClick={handleConfirmSave}
+                            disabled={parsing}
+                            className="px-5 py-2 bg-pink-600 text-white rounded-xl text-sm font-bold hover:bg-pink-700 disabled:opacity-50"
+                        >
+                            ✅ Confirm & Save
+                        </button>
+                        <button
+                            onClick={() => { setPreview(null); setVoiceText(''); }}
+                            className="px-5 py-2 bg-gray-200 dark:bg-slate-700 text-gray-700 dark:text-white rounded-xl text-sm font-bold hover:bg-gray-300 dark:hover:bg-slate-600"
+                        >
+                            ✕ Discard
+                        </button>
+                    </div>
+                </div>
+            )}
+
+            {/* ── Tabs ── */}
+            <div className="flex gap-2 mb-5 border-b border-gray-100 dark:border-slate-800 pb-3">
+                {TABS.map((t) => (
+                    <button
+                        key={t.key}
+                        onClick={() => setActiveTab(t.key)}
+                        className={`px-4 py-2 rounded-xl text-sm font-semibold transition ${
+                            activeTab === t.key
+                                ? 'bg-violet-600 text-white shadow'
+                                : 'text-gray-500 dark:text-slate-400 hover:bg-violet-50 dark:hover:bg-violet-900/20'
+                        }`}
+                    >
+                        {t.label}
+                    </button>
+                ))}
+            </div>
+
+            {/* ── Task List ── */}
+            {loading ? (
+                <div className="text-center py-8 text-gray-400 text-sm">Loading…</div>
+            ) : tasks.length === 0 ? (
+                <div className="text-center py-12">
+                    <div className="text-4xl mb-3">📭</div>
+                    <p className="text-gray-400 dark:text-slate-500 text-sm">No tasks here yet. Add one above!</p>
+                </div>
+            ) : (
+                <ul className="space-y-3">
+                    {tasks.map((task) => (
+                        <li
+                            key={task.id}
+                            className={`flex items-start gap-4 p-4 rounded-2xl border transition ${
+                                task.status === 'Completed'
+                                    ? 'bg-gray-50 dark:bg-slate-800/50 border-gray-100 dark:border-slate-700/50 opacity-60'
+                                    : 'bg-white dark:bg-slate-800 border-gray-100 dark:border-slate-700 hover:shadow-md'
+                            }`}
+                        >
+                            {/* Checkbox */}
+                            <button
+                                onClick={() => toggleStatus(task)}
+                                title="Toggle status"
+                                className={`mt-0.5 w-5 h-5 rounded-full border-2 flex-shrink-0 transition ${
+                                    task.status === 'Completed'
+                                        ? 'bg-green-500 border-green-500'
+                                        : 'border-gray-300 dark:border-slate-600 hover:border-violet-500'
+                                }`}
+                            >
+                                {task.status === 'Completed' && <span className="text-white text-xs leading-none flex items-center justify-center h-full">✓</span>}
+                            </button>
+
+                            {/* Content */}
+                            <div className="flex-1 min-w-0">
+                                <div className="flex flex-wrap items-center gap-2 mb-1">
+                                    <span className="font-bold text-gray-800 dark:text-white truncate">
+                                        {TYPE_ICONS[task.task_type]} {task.title}
+                                    </span>
+                                    <Badge text={task.priority} color={PRIORITY_COLORS[task.priority]} />
+                                    <Badge
+                                        text={task.task_type}
+                                        color="bg-violet-100 text-violet-700 dark:bg-violet-900/30 dark:text-violet-300"
+                                    />
+                                </div>
+                                <div className="flex flex-wrap gap-3 text-xs text-gray-400 dark:text-slate-500">
+                                    <span>📅 {task.date}</span>
+                                    {task.time && <span>🕐 {task.time}</span>}
+                                    <span>🔔 {task.reminder}</span>
+                                    {task.deadline && <span className="text-red-500 font-semibold">⚠ Deadline</span>}
+                                </div>
+                            </div>
+
+                            {/* Delete */}
+                            <button
+                                onClick={() => handleDelete(task.id)}
+                                title="Delete"
+                                className="text-gray-300 hover:text-red-500 dark:text-slate-600 dark:hover:text-red-400 transition text-lg flex-shrink-0"
+                            >
+                                🗑
+                            </button>
+                        </li>
+                    ))}
+                </ul>
+            )}
+        </div>
+    );
+}
+
+/* ─────────────────────────────────────────────
+   Main TeenDashboard
+───────────────────────────────────────────── */
+export default function TeenDashboard() {
+    const { user } = useAuth();
+    const { canAccessInsights } = useSubscription();
+    const navigate = useNavigate();
+
+    const [results, setResults]                   = useState([]);
+    const [loading, setLoading]                   = useState(true);
+    const [takingAssessment, setTakingAssessment] = useState(false);
+    const [showAssessmentPrompt, setShowAssessmentPrompt] = useState(false);
+
+    useEffect(() => {
+        const fetchResults = async () => {
+            try {
+                const { data } = await api.get('/assessments/results/my_results/');
+                const teen = (data.results ?? data).filter(
+                    (r) => r.assessment?.assessment_type === 'teen'
+                );
+                setResults(teen);
+                if (teen.length === 0) setShowAssessmentPrompt(true);
+            } catch {
+                setResults([]);
+            } finally {
+                setLoading(false);
+            }
+        };
+        fetchResults();
+    }, []);
+
+    const handleAssessmentComplete = () => {
         setTakingAssessment(false);
         setShowAssessmentPrompt(false);
-        // Refresh results
-        fetchResults();
+        window.location.reload();
     };
 
     if (loading) {
         return (
-            <div className="flex flex-col items-center justify-center py-32 space-y-4">
-                <div className="w-12 h-12 border-4 border-blue-600 dark:border-pink-500 border-t-transparent rounded-full animate-spin"></div>
-                <p className="text-gray-500 dark:text-slate-400 font-medium italic">Loading your growth insights...</p>
+            <div className="flex items-center justify-center min-h-screen">
+                <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-pink-500" />
             </div>
         );
     }
 
-    // If taking assessment, show AssessmentView with type='teen'
     if (takingAssessment) {
         return (
             <div className="max-w-4xl mx-auto px-4 py-8">
-                <button
-                    onClick={() => setTakingAssessment(false)}
-                    className="mb-6 text-blue-600 dark:text-pink-400 hover:underline flex items-center gap-2"
-                >
-                    ← Back to Dashboard
-                </button>
-                <AssessmentView
-                    assessmentType="teen"
+                <AssessmentPrompt
                     onComplete={handleAssessmentComplete}
+                    onDismiss={() => setTakingAssessment(false)}
                 />
             </div>
         );
     }
 
     const chartData = results.map((r) => ({
-        date: new Date(r.created_at).toLocaleDateString(),
-        score: r.final_score,
-    }));
+        date: new Date(r.created_at).toLocaleDateString('en-IN', { month: 'short', day: 'numeric' }),
+        score: Math.round(r.final_score),
+    })).reverse();
 
     const latestResult = results[0];
 
     return (
-        <div className="max-w-7xl mx-auto px-4 py-8">
-            <h1 className="text-4xl font-extrabold mb-10 dark:text-white tracking-tight">
-                Your Growth <span className="dark:text-pink-500">Dashboard</span>
+        <div className="max-w-7xl mx-auto px-4 py-8 space-y-8">
+            <h1 className="text-4xl font-extrabold dark:text-white tracking-tight">
+                Your Growth <span className="dark:text-pink-500 text-blue-600">Dashboard</span>
             </h1>
 
+            {/* ── Assessment Prompt ── */}
             {showAssessmentPrompt && (
                 <AssessmentPrompt
                     onComplete={handleAssessmentComplete}
@@ -9131,50 +10379,46 @@ function TeenDashboard() {
                 />
             )}
 
+            {/* ── Study Planner (always visible) ── */}
+            <StudyPlanner />
+
+            {/* ── Assessment Results ── */}
             {latestResult ? (
                 <>
-                    <div className="card dark:bg-slate-900 border dark:border-slate-800 p-8 mb-8">
+                    <div className="card dark:bg-slate-900 border dark:border-slate-800 p-8 shadow-sm">
                         <h2 className="text-2xl font-bold mb-8 dark:text-white flex items-center gap-3">
                             <span className="p-2 bg-pink-500/10 rounded-lg text-pink-500">✨</span>
                             Latest Assessment
                         </h2>
                         <div className="grid md:grid-cols-5 gap-4">
-                            <div className="text-center p-6 bg-gray-50 dark:bg-slate-800 rounded-2xl border border-gray-100 dark:border-slate-700/50 shadow-sm">
-                                <p className="text-4xl font-black text-blue-600 dark:text-pink-500 mb-1">{latestResult.final_score}%</p>
-                                <p className="text-sm text-gray-500 dark:text-slate-400 font-bold uppercase tracking-wider">Overall</p>
-                            </div>
-                            <div className="text-center p-6 bg-gray-50 dark:bg-slate-800 rounded-2xl border border-gray-100 dark:border-slate-700/50 shadow-sm">
-                                <p className="text-4xl font-black text-green-600 mb-1">{latestResult.health_score}%</p>
-                                <p className="text-sm text-gray-500 dark:text-slate-400 font-bold uppercase tracking-wider">Health</p>
-                            </div>
-                            <div className="text-center p-6 bg-gray-50 dark:bg-slate-800 rounded-2xl border border-gray-100 dark:border-slate-700/50 shadow-sm">
-                                <p className="text-4xl font-black text-orange-600 mb-1">{latestResult.behavior_score}%</p>
-                                <p className="text-sm text-gray-500 dark:text-slate-400 font-bold uppercase tracking-wider">Behavior</p>
-                            </div>
-                            <div className="text-center p-6 bg-gray-50 dark:bg-slate-800 rounded-2xl border border-gray-100 dark:border-slate-700/50 shadow-sm">
-                                <p className="text-4xl font-black text-purple-600 mb-1">{latestResult.routine_score}%</p>
-                                <p className="text-sm text-gray-500 dark:text-slate-400 font-bold uppercase tracking-wider">Routine</p>
-                            </div>
-                            <div className="text-center p-6 bg-gray-50 dark:bg-slate-800 rounded-2xl border border-gray-100 dark:border-slate-700/50 shadow-sm">
-                                <p className="text-4xl font-black text-red-600 mb-1">{latestResult.emotional_score}%</p>
-                                <p className="text-sm text-gray-500 dark:text-slate-400 font-bold uppercase tracking-wider">Emotional</p>
-                            </div>
+                            {[
+                                { label: 'Overall',   value: latestResult.final_score,    color: 'text-blue-600 dark:text-pink-500' },
+                                { label: 'Health',    value: latestResult.health_score,   color: 'text-green-600' },
+                                { label: 'Behavior',  value: latestResult.behavior_score, color: 'text-orange-600' },
+                                { label: 'Routine',   value: latestResult.routine_score,  color: 'text-purple-600' },
+                                { label: 'Emotional', value: latestResult.emotional_score,color: 'text-red-600' },
+                            ].map(({ label, value, color }) => (
+                                <div key={label} className="text-center p-6 bg-gray-50 dark:bg-slate-800 rounded-2xl border border-gray-100 dark:border-slate-700/50 shadow-sm">
+                                    <p className={`text-4xl font-black ${color} mb-1`}>{value}%</p>
+                                    <p className="text-sm text-gray-500 dark:text-slate-400 font-bold uppercase tracking-wider">{label}</p>
+                                </div>
+                            ))}
                         </div>
 
                         <div className="grid md:grid-cols-2 gap-8 mt-8">
                             <div>
                                 <h3 className="font-semibold text-green-600 mb-2">Your Strengths</h3>
                                 <ul className="space-y-2">
-                                    {latestResult.strengths.map((strength, idx) => (
-                                        <li key={idx} className="text-gray-700 dark:text-gray-300">✓ {strength}</li>
+                                    {latestResult.strengths.map((s, i) => (
+                                        <li key={i} className="text-gray-700 dark:text-gray-300">✓ {s}</li>
                                     ))}
                                 </ul>
                             </div>
                             <div>
                                 <h3 className="font-semibold text-orange-600 mb-2">Areas to Improve</h3>
                                 <ul className="space-y-2">
-                                    {latestResult.improvements.map((improvement, idx) => (
-                                        <li key={idx} className="text-gray-700 dark:text-gray-300">→ {improvement}</li>
+                                    {latestResult.improvements.map((imp, i) => (
+                                        <li key={i} className="text-gray-700 dark:text-gray-300">→ {imp}</li>
                                     ))}
                                 </ul>
                             </div>
@@ -9184,9 +10428,9 @@ function TeenDashboard() {
                             <h3 className="font-bold mb-6 dark:text-white uppercase text-xs tracking-widest">Growth Recommendations</h3>
                             {canAccessInsights() ? (
                                 <div className="bg-blue-50 dark:bg-pink-500/5 p-6 rounded-2xl border border-blue-100 dark:border-pink-500/20 shadow-inner space-y-4">
-                                    {latestResult.recommendations.map((rec, idx) => (
-                                        <div key={idx} className="flex gap-4 items-start">
-                                            <span className="flex-shrink-0 w-6 h-6 bg-blue-600 dark:bg-pink-600 text-white rounded-full flex items-center justify-center text-xs font-bold">{idx + 1}</span>
+                                    {latestResult.recommendations.map((rec, i) => (
+                                        <div key={i} className="flex gap-4 items-start">
+                                            <span className="flex-shrink-0 w-6 h-6 bg-blue-600 dark:bg-pink-600 text-white rounded-full flex items-center justify-center text-xs font-bold">{i + 1}</span>
                                             <p className="text-gray-700 dark:text-slate-300 italic">{rec}</p>
                                         </div>
                                     ))}
@@ -9194,8 +10438,8 @@ function TeenDashboard() {
                             ) : (
                                 <div className="bg-gray-100 dark:bg-slate-800 p-10 rounded-2xl text-center border dark:border-slate-700">
                                     <div className="text-3xl mb-4">🔒</div>
-                                    <p className="text-gray-700 dark:text-slate-400 mb-6 font-medium">Upgrade to Growth plan to unlock personalized AI recommendations tailored for you.</p>
-                                    <button className="px-8 py-3 bg-blue-600 text-white rounded-xl font-bold hover:bg-blue-700 dark:bg-pink-600 dark:hover:bg-pink-700 shadow-lg dark:shadow-pink-500/20 transition-all">
+                                    <p className="text-gray-700 dark:text-slate-400 mb-6 font-medium">Upgrade to Growth plan to unlock personalised AI recommendations.</p>
+                                    <button className="px-8 py-3 bg-blue-600 text-white rounded-xl font-bold hover:bg-blue-700 dark:bg-pink-600 dark:hover:bg-pink-700 shadow-lg transition-all">
                                         Upgrade to Growth
                                     </button>
                                 </div>
@@ -9205,24 +10449,19 @@ function TeenDashboard() {
 
                     {results.length > 1 && (
                         <div className="card dark:bg-slate-900 border dark:border-slate-800 p-8 shadow-sm">
-                            <h2 className="text-lg font-bold mb-8 dark:text-white uppercase text-xs tracking-widest">Progress Over Time</h2>
+                            <h2 className="font-bold mb-8 dark:text-white uppercase text-xs tracking-widest">Progress Over Time</h2>
                             <ResponsiveContainer width="100%" height={300}>
                                 <LineChart data={chartData}>
                                     <CartesianGrid strokeDasharray="3 3" stroke="#334155" vertical={false} />
                                     <XAxis dataKey="date" stroke="#94a3b8" fontSize={12} tickLine={false} axisLine={false} dy={10} />
                                     <YAxis domain={[0, 100]} stroke="#94a3b8" fontSize={12} tickLine={false} axisLine={false} dx={-10} />
-                                    <Tooltip 
+                                    <Tooltip
                                         contentStyle={{ backgroundColor: '#0f172a', border: '1px solid #1e293b', borderRadius: '12px', color: '#f8fafc' }}
                                         itemStyle={{ color: '#ec4899' }}
                                     />
-                                    <Line 
-                                        type="monotone" 
-                                        dataKey="score" 
-                                        stroke="#ec4899" 
-                                        strokeWidth={4} 
-                                        dot={{ r: 6, fill: '#ec4899', strokeWidth: 2, stroke: '#ffffff' }} 
-                                        activeDot={{ r: 8, strokeWidth: 0 }} 
-                                    />
+                                    <Line type="monotone" dataKey="score" stroke="#ec4899" strokeWidth={4}
+                                        dot={{ r: 6, fill: '#ec4899', strokeWidth: 2, stroke: '#ffffff' }}
+                                        activeDot={{ r: 8, strokeWidth: 0 }} />
                                 </LineChart>
                             </ResponsiveContainer>
                         </div>
@@ -9231,11 +10470,11 @@ function TeenDashboard() {
             ) : (
                 <div className="card dark:bg-slate-900 border dark:border-slate-800 p-16 text-center shadow-lg flex flex-col items-center justify-center">
                     <div className="w-20 h-20 bg-blue-50 dark:bg-pink-500/10 rounded-full flex items-center justify-center mb-6 text-4xl">🚀</div>
-                    <h2 className="text-2xl font-bold dark:text-white mb-3 text-center">Ready to start your journey?</h2>
-                    <p className="text-gray-600 dark:text-slate-400 mb-8 max-w-sm text-center italic">Take your first assessment to unlock personalized growth insights and see your potential.</p>
+                    <h2 className="text-2xl font-bold dark:text-white mb-3">Ready to start your journey?</h2>
+                    <p className="text-gray-600 dark:text-slate-400 mb-8 max-w-sm italic">Take your first assessment to unlock personalised growth insights.</p>
                     <button
                         onClick={() => setTakingAssessment(true)}
-                        className="px-10 py-4 bg-blue-600 text-white rounded-2xl font-bold hover:bg-blue-700 dark:bg-pink-600 dark:hover:bg-pink-700 shadow-xl transition-all transform hover:scale-105 active:scale-95"
+                        className="px-10 py-4 bg-blue-600 text-white rounded-2xl font-bold hover:bg-blue-700 dark:bg-pink-600 dark:hover:bg-pink-700 shadow-xl transition-all hover:scale-105 active:scale-95"
                     >
                         Start Your First Assessment
                     </button>
@@ -9244,8 +10483,6 @@ function TeenDashboard() {
         </div>
     );
 }
-
-export default TeenDashboard;
 
 
 ================================================
@@ -9394,6 +10631,47 @@ export const getHealthGuide = (id) => api.get(`/reports/health-guide/${id}/`);
 FILE: frontend/src/services/reportService.js
 ================================================
 
+
+
+================================================
+FILE: frontend/src/services/studyPlannerService.js
+================================================
+// frontend/src/services/studyPlannerService.js
+import api from './api';
+
+/**
+ * Parse a voice text string â†’ structured JSON (preview, no save)
+ */
+export const parseVoiceText = (voice_text) =>
+    api.post('/study-tasks/parse_voice/', { voice_text });
+
+/**
+ * Parse + immediately save the task to the database.
+ */
+export const addTaskFromVoice = (voice_text) =>
+    api.post('/study-tasks/add_from_voice/', { voice_text });
+
+/**
+ * Fetch all tasks. Optional filter: 'upcoming' | 'deadlines' | 'completed'
+ */
+export const getTasks = (filter = '') =>
+    api.get('/study-tasks/', { params: filter ? { filter } : {} });
+
+/**
+ * Create a task manually (from structured form data)
+ */
+export const createTask = (data) => api.post('/study-tasks/', data);
+
+/**
+ * Update task status: 'Pending' or 'Completed'
+ */
+export const updateTaskStatus = (id, status) =>
+    api.patch(`/study-tasks/${id}/update_status/`, { status });
+
+/**
+ * Delete a task
+ */
+export const deleteTask = (id) => api.delete(`/study-tasks/${id}/`);
 
 
 ================================================

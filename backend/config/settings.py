@@ -28,6 +28,7 @@ INSTALLED_APPS = [
     'apps.insights',
     'apps.reports',
     'apps.voice_assessments',
+    'apps.study_planner',
 ]
 
 MIDDLEWARE = [
