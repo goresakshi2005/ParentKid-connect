@@ -31,11 +31,11 @@ class StudyTask(models.Model):
     priority = models.CharField(max_length=10, choices=PRIORITY_CHOICES, default='Medium')
     status = models.CharField(max_length=10, choices=STATUS_CHOICES, default='Pending')
 
-    # raw voice input stored for reference
     voice_input = models.TextField(blank=True, default='')
-
-    # structured JSON from AI parser
     parsed_json = models.JSONField(default=dict)
+
+    # Google Calendar event ID (if synced)
+    google_calendar_event_id = models.CharField(max_length=200, blank=True, null=True)
 
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)

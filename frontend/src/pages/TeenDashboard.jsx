@@ -14,9 +14,7 @@ import {
     deleteTask,
 } from '../services/studyPlannerService';
 
-/* ─────────────────────────────────────────────
-   Helpers
-───────────────────────────────────────────── */
+// Helper components
 const PRIORITY_COLORS = {
     High:   'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400',
     Medium: 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400',
@@ -38,9 +36,51 @@ function Badge({ text, color }) {
     );
 }
 
-/* ─────────────────────────────────────────────
-   Study Planner Section
-───────────────────────────────────────────── */
+// ===== NEW: Google Calendar connection banner =====
+function GoogleCalendarBanner({ connected, onConnect, connecting }) {
+    if (connected === null) return null; // loading state handled outside
+    if (connected) {
+        return (
+            <div className="mb-6 p-3 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-xl flex items-center gap-3">
+                <span className="text-xl">✅</span>
+                <p className="text-green-700 dark:text-green-400 text-sm font-medium">
+                    Google Calendar connected — your study tasks will be added automatically.
+                </p>
+            </div>
+        );
+    }
+    return (
+        <div className="mb-6 p-4 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-300 dark:border-yellow-700 rounded-xl flex items-center justify-between gap-4">
+            <div className="flex items-center gap-3">
+                <span className="text-2xl">📅</span>
+                <div>
+                    <p className="font-semibold text-yellow-800 dark:text-yellow-300 text-sm">
+                        Google Calendar not connected
+                    </p>
+                    <p className="text-yellow-700 dark:text-yellow-400 text-xs">
+                        Connect your Google account so tasks are added to your calendar automatically.
+                    </p>
+                </div>
+            </div>
+            <button
+                onClick={onConnect}
+                disabled={connecting}
+                className="shrink-0 px-4 py-2 bg-yellow-500 hover:bg-yellow-600 disabled:opacity-60 text-white text-sm font-bold rounded-xl transition-all flex items-center gap-2"
+            >
+                {connecting ? (
+                    <>
+                        <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                        Connecting...
+                    </>
+                ) : (
+                    "Connect Google Calendar"
+                )}
+            </button>
+        </div>
+    );
+}
+
+// ===== Study Planner Component (with calendar sync indicator) =====
 function StudyPlanner() {
     const [activeTab, setActiveTab]     = useState('upcoming');
     const [tasks, setTasks]             = useState([]);
@@ -48,9 +88,9 @@ function StudyPlanner() {
     const [voiceText, setVoiceText]     = useState('');
     const [isListening, setIsListening] = useState(false);
     const [parsing, setParsing]         = useState(false);
-    const [preview, setPreview]         = useState(null);        // parsed JSON preview
-    const [feedback, setFeedback]       = useState(null);        // { type, message }
-    const [clarify, setClarify]         = useState(false);       // needs date clarification
+    const [preview, setPreview]         = useState(null);
+    const [feedback, setFeedback]       = useState(null);
+    const [clarify, setClarify]         = useState(false);
     const recognitionRef = useRef(null);
 
     const fetchTasks = useCallback(async (filter) => {
@@ -69,10 +109,8 @@ function StudyPlanner() {
         fetchTasks(activeTab);
     }, [activeTab, fetchTasks]);
 
-    /* ── Web Speech API ── */
     const startListening = () => {
-        const SpeechRecognition =
-            window.SpeechRecognition || window.webkitSpeechRecognition;
+        const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
         if (!SpeechRecognition) {
             setFeedback({ type: 'error', message: 'Your browser does not support voice input. Please type instead.' });
             return;
@@ -80,9 +118,7 @@ function StudyPlanner() {
         const recognition = new SpeechRecognition();
         recognition.lang = 'en-US';
         recognition.interimResults = false;
-        recognition.onresult = (e) => {
-            setVoiceText(e.results[0][0].transcript);
-        };
+        recognition.onresult = (e) => setVoiceText(e.results[0][0].transcript);
         recognition.onend = () => setIsListening(false);
         recognition.onerror = () => {
             setIsListening(false);
@@ -98,7 +134,6 @@ function StudyPlanner() {
         setIsListening(false);
     };
 
-    /* ── Parse preview ── */
     const handleParse = async () => {
         if (!voiceText.trim()) return;
         setParsing(true);
@@ -120,7 +155,6 @@ function StudyPlanner() {
         }
     };
 
-    /* ── Confirm & save ── */
     const handleConfirmSave = async () => {
         if (!voiceText.trim()) return;
         setParsing(true);
@@ -144,7 +178,6 @@ function StudyPlanner() {
         }
     };
 
-    /* ── Status toggle ── */
     const toggleStatus = async (task) => {
         const next = task.status === 'Pending' ? 'Completed' : 'Pending';
         try {
@@ -155,7 +188,6 @@ function StudyPlanner() {
         }
     };
 
-    /* ── Delete ── */
     const handleDelete = async (id) => {
         if (!window.confirm('Delete this task?')) return;
         try {
@@ -180,7 +212,6 @@ function StudyPlanner() {
 
     return (
         <div className="card dark:bg-slate-900 border dark:border-slate-800 p-6 md:p-8 shadow-sm">
-            {/* Header */}
             <div className="flex items-center justify-between mb-6">
                 <h2 className="text-2xl font-bold dark:text-white flex items-center gap-2">
                     <span className="p-2 bg-violet-500/10 rounded-lg text-violet-500">🎓</span>
@@ -189,12 +220,11 @@ function StudyPlanner() {
                 <span className="text-xs text-gray-400 dark:text-slate-500">AI-powered scheduler</span>
             </div>
 
-            {/* ── Voice / Text Input ── */}
+            {/* Voice / Text Input */}
             <div className="mb-6 p-5 bg-violet-50 dark:bg-violet-900/10 border border-violet-200 dark:border-violet-800/40 rounded-2xl">
                 <p className="text-sm font-semibold text-violet-700 dark:text-violet-300 mb-3">
                     🎤 Speak or type your task (e.g. "Math test on 10th April at 10 AM")
                 </p>
-
                 <div className="flex gap-2">
                     <textarea
                         value={voiceText}
@@ -215,7 +245,6 @@ function StudyPlanner() {
                         {isListening ? '⏹' : '🎙'}
                     </button>
                 </div>
-
                 <div className="flex gap-3 mt-3">
                     <button
                         onClick={handleParse}
@@ -242,7 +271,7 @@ function StudyPlanner() {
                 </div>
             )}
 
-            {/* ── Preview Card ── */}
+            {/* Preview Card */}
             {preview && (
                 <div className="mb-6 p-4 bg-white dark:bg-slate-800 border border-violet-300 dark:border-violet-700 rounded-2xl shadow">
                     <p className="text-xs font-bold uppercase text-violet-500 mb-3">AI Preview — confirm before saving</p>
@@ -274,7 +303,7 @@ function StudyPlanner() {
                 </div>
             )}
 
-            {/* ── Tabs ── */}
+            {/* Tabs */}
             <div className="flex gap-2 mb-5 border-b border-gray-100 dark:border-slate-800 pb-3">
                 {TABS.map((t) => (
                     <button
@@ -291,7 +320,7 @@ function StudyPlanner() {
                 ))}
             </div>
 
-            {/* ── Task List ── */}
+            {/* Task List */}
             {loading ? (
                 <div className="text-center py-8 text-gray-400 text-sm">Loading…</div>
             ) : tasks.length === 0 ? (
@@ -310,7 +339,6 @@ function StudyPlanner() {
                                     : 'bg-white dark:bg-slate-800 border-gray-100 dark:border-slate-700 hover:shadow-md'
                             }`}
                         >
-                            {/* Checkbox */}
                             <button
                                 onClick={() => toggleStatus(task)}
                                 title="Toggle status"
@@ -323,17 +351,17 @@ function StudyPlanner() {
                                 {task.status === 'Completed' && <span className="text-white text-xs leading-none flex items-center justify-center h-full">✓</span>}
                             </button>
 
-                            {/* Content */}
                             <div className="flex-1 min-w-0">
                                 <div className="flex flex-wrap items-center gap-2 mb-1">
                                     <span className="font-bold text-gray-800 dark:text-white truncate">
                                         {TYPE_ICONS[task.task_type]} {task.title}
                                     </span>
                                     <Badge text={task.priority} color={PRIORITY_COLORS[task.priority]} />
-                                    <Badge
-                                        text={task.task_type}
-                                        color="bg-violet-100 text-violet-700 dark:bg-violet-900/30 dark:text-violet-300"
-                                    />
+                                    <Badge text={task.task_type} color="bg-violet-100 text-violet-700 dark:bg-violet-900/30 dark:text-violet-300" />
+                                    {/* Google Calendar sync indicator */}
+                                    {task.google_calendar_event_id && (
+                                        <span className="text-xs text-blue-600 dark:text-blue-400" title="Synced to Google Calendar">📅✓</span>
+                                    )}
                                 </div>
                                 <div className="flex flex-wrap gap-3 text-xs text-gray-400 dark:text-slate-500">
                                     <span>📅 {task.date}</span>
@@ -343,7 +371,6 @@ function StudyPlanner() {
                                 </div>
                             </div>
 
-                            {/* Delete */}
                             <button
                                 onClick={() => handleDelete(task.id)}
                                 title="Delete"
@@ -359,11 +386,9 @@ function StudyPlanner() {
     );
 }
 
-/* ─────────────────────────────────────────────
-   Main TeenDashboard
-───────────────────────────────────────────── */
+// ===== Main TeenDashboard =====
 export default function TeenDashboard() {
-    const { user } = useAuth();
+    const { user, token } = useAuth();
     const { canAccessInsights } = useSubscription();
     const navigate = useNavigate();
 
@@ -372,10 +397,14 @@ export default function TeenDashboard() {
     const [takingAssessment, setTakingAssessment] = useState(false);
     const [showAssessmentPrompt, setShowAssessmentPrompt] = useState(false);
 
+    // Google Calendar connection state
+    const [googleConnected, setGoogleConnected] = useState(null);
+    const [connectingGoogle, setConnectingGoogle] = useState(false);
+
     useEffect(() => {
         const fetchResults = async () => {
             try {
-                const { data } = await api.get('/assessments/results/my_results/');
+                const { data } = await api.get('/assessments/my_results/');
                 const teen = (data.results ?? data).filter(
                     (r) => r.assessment?.assessment_type === 'teen'
                 );
@@ -388,7 +417,30 @@ export default function TeenDashboard() {
             }
         };
         fetchResults();
+        checkGoogleStatus();
     }, []);
+
+    const checkGoogleStatus = async () => {
+        try {
+            const res = await api.get('/users/google_status/');
+            setGoogleConnected(res.data.connected);
+        } catch {
+            setGoogleConnected(false);
+        }
+    };
+
+    const handleConnectGoogle = async () => {
+        setConnectingGoogle(true);
+        try {
+            const res = await api.get('/users/google_oauth_url/');
+            // Store current path in sessionStorage to redirect back after OAuth
+            sessionStorage.setItem('redirectAfterGoogle', '/dashboard/teen');
+            window.location.href = res.data.url;
+        } catch {
+            alert("Could not start Google connection. Please try again.");
+            setConnectingGoogle(false);
+        }
+    };
 
     const handleAssessmentComplete = () => {
         setTakingAssessment(false);
@@ -428,7 +480,15 @@ export default function TeenDashboard() {
                 Your Growth <span className="dark:text-pink-500 text-blue-600">Dashboard</span>
             </h1>
 
-            {/* ── Assessment Prompt ── */}
+            {/* Google Calendar banner */}
+            {googleConnected !== null && (
+                <GoogleCalendarBanner
+                    connected={googleConnected}
+                    onConnect={handleConnectGoogle}
+                    connecting={connectingGoogle}
+                />
+            )}
+
             {showAssessmentPrompt && (
                 <AssessmentPrompt
                     onComplete={handleAssessmentComplete}
@@ -436,10 +496,10 @@ export default function TeenDashboard() {
                 />
             )}
 
-            {/* ── Study Planner (always visible) ── */}
+            {/* Study Planner (always visible) */}
             <StudyPlanner />
 
-            {/* ── Assessment Results ── */}
+            {/* Assessment Results */}
             {latestResult ? (
                 <>
                     <div className="card dark:bg-slate-900 border dark:border-slate-800 p-8 shadow-sm">

@@ -88,6 +88,7 @@ Directory structure:
     │   │   │   ├── views.py
     │   │   │   └── migrations/
     │   │   │       ├── 0001_initial.py
+    │   │   │       ├── 0002_studytask_google_calendar_event_id.py
     │   │   │       └── __init__.py
     │   │   ├── subscriptions/
     │   │   │   ├── __init__.py
@@ -2509,6 +2510,143 @@ def delete_calendar_event(service, event_id: str):
     service.events().delete(calendarId="primary", eventId=event_id).execute()
 
 
+from datetime import datetime, timedelta
+
+import google.auth.transport.requests
+from google.oauth2.credentials import Credentials
+from googleapiclient.discovery import build
+from django.conf import settings
+
+
+def build_calendar_service(access_token: str, refresh_token: str):
+    """
+    Build and return an authenticated Google Calendar service.
+    Also returns the (possibly refreshed) access token.
+    """
+    creds = Credentials(
+        token=access_token,
+        refresh_token=refresh_token,
+        token_uri="https://oauth2.googleapis.com/token",
+        client_id=settings.GOOGLE_CLIENT_ID,
+        client_secret=settings.GOOGLE_CLIENT_SECRET,
+        expiry=None,
+    )
+
+    request = google.auth.transport.requests.Request()
+    if not creds.valid:
+        creds.refresh(request)
+
+    service = build("calendar", "v3", credentials=creds)
+    return service, creds.token
+
+
+def create_appointment_event(
+    service,
+    appointment_datetime: datetime,
+    doctor: str,
+    parent_email: str,
+    timezone: str = "Asia/Kolkata",
+) -> str:
+    """
+    Creates a Google Calendar event for a pregnancy appointment.
+    Returns the created event ID.
+    """
+    end_datetime = appointment_datetime + timedelta(minutes=30)
+
+    description = "Auto-extracted from your uploaded pregnancy checkup report."
+    if doctor:
+        description += f"\nDoctor: {doctor}"
+
+    event = {
+        "summary": "ðŸ¤° Pregnancy Checkup Appointment",
+        "description": description,
+        "colorId": "7",   # Peacock blue
+        "start": {
+            "dateTime": appointment_datetime.isoformat(),
+            "timeZone": timezone,
+        },
+        "end": {
+            "dateTime": end_datetime.isoformat(),
+            "timeZone": timezone,
+        },
+        "attendees": [{"email": parent_email}],
+        "reminders": {
+            "useDefault": False,
+            "overrides": [
+                {"method": "email", "minutes": 24 * 60},
+                {"method": "popup", "minutes": 120},
+            ],
+        },
+    }
+
+    created_event = service.events().insert(calendarId="primary", body=event, sendUpdates="all").execute()
+    return created_event.get("id")
+
+
+def delete_calendar_event(service, event_id: str):
+    """Delete a calendar event by ID."""
+    service.events().delete(calendarId="primary", eventId=event_id).execute()
+
+
+# ===== NEW: Study Task event creation =====
+def create_study_task_event(
+    service,
+    task,
+    timezone: str = "Asia/Kolkata",
+) -> str:
+    """
+    Creates a Google Calendar event for a StudyTask.
+    - If task.time is present â†’ timed event (30 min duration)
+    - If task.time is absent (deadline) â†’ all-day event
+    Returns the created event ID.
+    """
+    start_datetime = datetime.combine(task.date, task.time) if task.time else None
+
+    if start_datetime:
+        # Timed event
+        end_datetime = start_datetime + timedelta(minutes=30)
+        event_body = {
+            "summary": f"ðŸ“š {task.title}",
+            "description": f"Task type: {task.task_type}\nPriority: {task.priority}\nReminder: {task.reminder}",
+            "colorId": "5",   # Banana yellow for study tasks
+            "start": {
+                "dateTime": start_datetime.isoformat(),
+                "timeZone": timezone,
+            },
+            "end": {
+                "dateTime": end_datetime.isoformat(),
+                "timeZone": timezone,
+            },
+            "reminders": {
+                "useDefault": False,
+                "overrides": [
+                    {"method": "email", "minutes": 60},
+                    {"method": "popup", "minutes": 30},
+                ],
+            },
+        }
+    else:
+        # All-day deadline
+        end_date = task.date + timedelta(days=1)   # all-day events need exclusive end date
+        event_body = {
+            "summary": f"ðŸ“Œ DEADLINE: {task.title}",
+            "description": f"Task type: {task.task_type}\nPriority: {task.priority}\nReminder: {task.reminder}",
+            "colorId": "11",   # Tomato red for deadlines
+            "start": {"date": task.date.isoformat()},
+            "end": {"date": end_date.isoformat()},
+            "reminders": {
+                "useDefault": False,
+                "overrides": [
+                    {"method": "email", "minutes": 24 * 60},
+                    {"method": "popup", "minutes": 60},
+                ],
+            },
+        }
+
+    created_event = service.events().insert(calendarId="primary", body=event_body, sendUpdates="all").execute()
+    return created_event.get("id")
+
+
 ================================================
 FILE: backend/apps/reports/services/extractor.py
 ================================================
@@ -3412,11 +3550,11 @@ class StudyTask(models.Model):
     priority = models.CharField(max_length=10, choices=PRIORITY_CHOICES, default='Medium')
     status = models.CharField(max_length=10, choices=STATUS_CHOICES, default='Pending')
 
-    # raw voice input stored for reference
     voice_input = models.TextField(blank=True, default='')
-
-    # structured JSON from AI parser
     parsed_json = models.JSONField(default=dict)
+
+    # Google Calendar event ID (if synced)
+    google_calendar_event_id = models.CharField(max_length=200, blank=True, null=True)
 
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -3442,12 +3580,12 @@ class StudyTaskSerializer(serializers.ModelSerializer):
             'id', 'title', 'task_type', 'date', 'time',
             'deadline', 'reminder', 'priority', 'status',
             'voice_input', 'parsed_json', 'created_at', 'updated_at',
+            'google_calendar_event_id',   # <-- added
         ]
-        read_only_fields = ['id', 'created_at', 'updated_at']
+        read_only_fields = ['id', 'created_at', 'updated_at', 'google_calendar_event_id']
 
 
 class VoiceInputSerializer(serializers.Serializer):
-    """Accepts a raw voice-to-text string and returns structured JSON."""
     voice_text = serializers.CharField()
 
 
@@ -3493,7 +3631,7 @@ def _parse_with_gemini(voice_text: str) -> dict:
     """
     Call Gemini to convert natural-language academic input into structured JSON.
     Returns a dict with keys: title, type, date, time, deadline, reminder,
-    priority, calendar_event.
+    priority, calendar_event, missing_date.
     """
     today_str = TODAY.isoformat()
 
@@ -3517,24 +3655,93 @@ Respond ONLY with valid JSON. No explanation, no markdown.
 
 Voice input: "{voice_text}"
 """
-    model = genai.GenerativeModel("gemini-1.5-flash")
+    model = genai.GenerativeModel("gemini-2.5-flash")
     response = model.generate_content(prompt)
     raw = response.text.strip()
 
-    # strip markdown fences if present
-    raw = re.sub(r"^```(?:json)?", "", raw).strip()
-    raw = re.sub(r"```$", "", raw).strip()
+    # Strip markdown code fences
+    raw = re.sub(r"^```(?:json)?\s*", "", raw)
+    raw = re.sub(r"\s*```$", "", raw)
 
-    return json.loads(raw)
+    try:
+        parsed = json.loads(raw)
+    except json.JSONDecodeError:
+        # Fallback: return a minimal dict with missing_date=True
+        return {
+            "title": "",
+            "type": "Task",
+            "date": "",
+            "time": None,
+            "deadline": False,
+            "reminder": "30 minutes before",
+            "priority": "Medium",
+            "calendar_event": {"create": False},
+            "missing_date": True,
+        }
+
+    # Ensure parsed is a dict, not a list
+    if isinstance(parsed, list):
+        # If it's a list, take the first element if it's a dict, else fallback
+        if parsed and isinstance(parsed[0], dict):
+            parsed = parsed[0]
+        else:
+            return {
+                "title": "",
+                "type": "Task",
+                "date": "",
+                "time": None,
+                "deadline": False,
+                "reminder": "30 minutes before",
+                "priority": "Medium",
+                "calendar_event": {"create": False},
+                "missing_date": True,
+            }
+
+    # Ensure all required keys exist with defaults
+    defaults = {
+        "title": "Untitled Task",
+        "type": "Task",
+        "date": today_str,
+        "time": None,
+        "deadline": False,
+        "reminder": "30 minutes before",
+        "priority": "Medium",
+        "calendar_event": {"create": False},
+        "missing_date": False,
+    }
+    for key, default in defaults.items():
+        if key not in parsed:
+            parsed[key] = default
+
+    return parsed
+
+
+def _sync_with_google_calendar(task):
+    """
+    If the user has Google OAuth tokens, create a Calendar event for this task.
+    Returns the google_event_id, or None.
+    """
+    user = task.user
+    if not user.google_access_token or not user.google_refresh_token:
+        return None
+
+    try:
+        from apps.reports.services.calendar_service import build_calendar_service, create_study_task_event
+
+        service, new_token = build_calendar_service(user.google_access_token, user.google_refresh_token)
+        if new_token and new_token != user.google_access_token:
+            user.google_access_token = new_token
+            user.save(update_fields=["google_access_token"])
+
+        event_id = create_study_task_event(service, task)
+        return event_id
+    except Exception as e:
+        # Log error but don't fail the task creation
+        print(f"Google Calendar sync failed for task {task.id}: {str(e)}")
+        return None
 
 
 class StudyTaskViewSet(ModelViewSet):
-    """
-    CRUD for StudyTask + custom actions:
-      POST /api/study-tasks/parse_voice/   â€“ parse voice text, return JSON (no save)
-      POST /api/study-tasks/add_from_voice/ â€“ parse + save to DB
-      PATCH /api/study-tasks/{id}/update_status/ â€“ toggle Pending / Completed
-    """
     serializer_class = StudyTaskSerializer
     permission_classes = [IsAuthenticated]
 
@@ -3550,15 +3757,16 @@ class StudyTaskViewSet(ModelViewSet):
         return qs
 
     def perform_create(self, serializer):
-        serializer.save(user=self.request.user)
+        task = serializer.save(user=self.request.user)
+        # Sync to Google Calendar
+        event_id = _sync_with_google_calendar(task)
+        if event_id:
+            task.google_calendar_event_id = event_id
+            task.save(update_fields=["google_calendar_event_id"])
 
-    # ------------------------------------------------------------------ #
+    # ------------------------------------------------------------------
     @action(detail=False, methods=['post'], url_path='parse_voice')
     def parse_voice(self, request):
-        """
-        Parse a voice text string and return structured JSON without saving.
-        Useful for preview before saving.
-        """
         ser = VoiceInputSerializer(data=request.data)
         ser.is_valid(raise_exception=True)
         voice_text = ser.validated_data['voice_text']
@@ -3583,13 +3791,9 @@ class StudyTaskViewSet(ModelViewSet):
 
         return Response({'parsed': parsed}, status=status.HTTP_200_OK)
 
-    # ------------------------------------------------------------------ #
+    # ------------------------------------------------------------------
     @action(detail=False, methods=['post'], url_path='add_from_voice')
     def add_from_voice(self, request):
-        """
-        Parse voice text and immediately persist the task.
-        Prevents duplicates: checks title + date + user.
-        """
         ser = VoiceInputSerializer(data=request.data)
         ser.is_valid(raise_exception=True)
         voice_text = ser.validated_data['voice_text']
@@ -3641,15 +3845,20 @@ class StudyTaskViewSet(ModelViewSet):
             parsed_json=parsed,
         )
 
+        # Sync to Google Calendar
+        event_id = _sync_with_google_calendar(task)
+        if event_id:
+            task.google_calendar_event_id = event_id
+            task.save(update_fields=["google_calendar_event_id"])
+
         return Response(
             {'created': True, 'task': StudyTaskSerializer(task).data},
             status=status.HTTP_201_CREATED,
         )
 
-    # ------------------------------------------------------------------ #
+    # ------------------------------------------------------------------
     @action(detail=True, methods=['patch'], url_path='update_status')
     def update_status(self, request, pk=None):
-        """Toggle task status between Pending and Completed."""
         task = self.get_object()
         new_status = request.data.get('status')
         if new_status not in ('Pending', 'Completed'):
@@ -3660,6 +3869,24 @@ class StudyTaskViewSet(ModelViewSet):
         task.status = new_status
         task.save()
         return Response(StudyTaskSerializer(task).data)
+
+    # ------------------------------------------------------------------
+    def destroy(self, request, *args, **kwargs):
+        """Override delete to also remove the Google Calendar event if it exists."""
+        task = self.get_object()
+        if task.google_calendar_event_id:
+            try:
+                from apps.reports.services.calendar_service import build_calendar_service, delete_calendar_event
+                user = request.user
+                if user.google_access_token and user.google_refresh_token:
+                    service, new_token = build_calendar_service(user.google_access_token, user.google_refresh_token)
+                    if new_token and new_token != user.google_access_token:
+                        user.google_access_token = new_token
+                        user.save(update_fields=["google_access_token"])
+                    delete_calendar_event(service, task.google_calendar_event_id)
+            except Exception as e:
+                print(f"Failed to delete calendar event for task {task.id}: {e}")
+        return super().destroy(request, *args, **kwargs)
 
 
 ================================================
@@ -3705,6 +3932,29 @@ class Migration(migrations.Migration):
         ),
     ]
 
+
+
+================================================
+FILE: backend/apps/study_planner/migrations/0002_studytask_google_calendar_event_id.py
+================================================
+# Generated by Django 4.2 on 2026-04-05 10:00
+
+from django.db import migrations, models
+
+
+class Migration(migrations.Migration):
+
+    dependencies = [
+        ('study_planner', '0001_initial'),
+    ]
+
+    operations = [
+        migrations.AddField(
+            model_name='studytask',
+            name='google_calendar_event_id',
+            field=models.CharField(blank=True, max_length=200, null=True),
+        ),
+    ]
 
 
 ================================================
@@ -9957,9 +10207,7 @@ import {
     deleteTask,
 } from '../services/studyPlannerService';
 
-/* ─────────────────────────────────────────────
-   Helpers
-───────────────────────────────────────────── */
+// Helper components
 const PRIORITY_COLORS = {
     High:   'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400',
     Medium: 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400',
@@ -9981,9 +10229,51 @@ function Badge({ text, color }) {
     );
 }
 
-/* ─────────────────────────────────────────────
-   Study Planner Section
-───────────────────────────────────────────── */
+// ===== NEW: Google Calendar connection banner =====
+function GoogleCalendarBanner({ connected, onConnect, connecting }) {
+    if (connected === null) return null; // loading state handled outside
+    if (connected) {
+        return (
+            <div className="mb-6 p-3 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-xl flex items-center gap-3">
+                <span className="text-xl">✅</span>
+                <p className="text-green-700 dark:text-green-400 text-sm font-medium">
+                    Google Calendar connected — your study tasks will be added automatically.
+                </p>
+            </div>
+        );
+    }
+    return (
+        <div className="mb-6 p-4 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-300 dark:border-yellow-700 rounded-xl flex items-center justify-between gap-4">
+            <div className="flex items-center gap-3">
+                <span className="text-2xl">📅</span>
+                <div>
+                    <p className="font-semibold text-yellow-800 dark:text-yellow-300 text-sm">
+                        Google Calendar not connected
+                    </p>
+                    <p className="text-yellow-700 dark:text-yellow-400 text-xs">
+                        Connect your Google account so tasks are added to your calendar automatically.
+                    </p>
+                </div>
+            </div>
+            <button
+                onClick={onConnect}
+                disabled={connecting}
+                className="shrink-0 px-4 py-2 bg-yellow-500 hover:bg-yellow-600 disabled:opacity-60 text-white text-sm font-bold rounded-xl transition-all flex items-center gap-2"
+            >
+                {connecting ? (
+                    <>
+                        <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                        Connecting...
+                    </>
+                ) : (
+                    "Connect Google Calendar"
+                )}
+            </button>
+        </div>
+    );
+}
+
+// ===== Study Planner Component (with calendar sync indicator) =====
 function StudyPlanner() {
     const [activeTab, setActiveTab]     = useState('upcoming');
     const [tasks, setTasks]             = useState([]);
@@ -9991,9 +10281,9 @@ function StudyPlanner() {
     const [voiceText, setVoiceText]     = useState('');
     const [isListening, setIsListening] = useState(false);
     const [parsing, setParsing]         = useState(false);
-    const [preview, setPreview]         = useState(null);        // parsed JSON preview
-    const [feedback, setFeedback]       = useState(null);        // { type, message }
-    const [clarify, setClarify]         = useState(false);       // needs date clarification
+    const [preview, setPreview]         = useState(null);
+    const [feedback, setFeedback]       = useState(null);
+    const [clarify, setClarify]         = useState(false);
     const recognitionRef = useRef(null);
 
     const fetchTasks = useCallback(async (filter) => {
@@ -10012,10 +10302,8 @@ function StudyPlanner() {
         fetchTasks(activeTab);
     }, [activeTab, fetchTasks]);
 
-    /* ── Web Speech API ── */
     const startListening = () => {
-        const SpeechRecognition =
-            window.SpeechRecognition || window.webkitSpeechRecognition;
+        const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
         if (!SpeechRecognition) {
             setFeedback({ type: 'error', message: 'Your browser does not support voice input. Please type instead.' });
             return;
@@ -10023,9 +10311,7 @@ function StudyPlanner() {
         const recognition = new SpeechRecognition();
         recognition.lang = 'en-US';
         recognition.interimResults = false;
-        recognition.onresult = (e) => {
-            setVoiceText(e.results[0][0].transcript);
-        };
+        recognition.onresult = (e) => setVoiceText(e.results[0][0].transcript);
         recognition.onend = () => setIsListening(false);
         recognition.onerror = () => {
             setIsListening(false);
@@ -10041,7 +10327,6 @@ function StudyPlanner() {
         setIsListening(false);
     };
 
-    /* ── Parse preview ── */
     const handleParse = async () => {
         if (!voiceText.trim()) return;
         setParsing(true);
@@ -10063,7 +10348,6 @@ function StudyPlanner() {
         }
     };
 
-    /* ── Confirm & save ── */
     const handleConfirmSave = async () => {
         if (!voiceText.trim()) return;
         setParsing(true);
@@ -10087,7 +10371,6 @@ function StudyPlanner() {
         }
     };
 
-    /* ── Status toggle ── */
     const toggleStatus = async (task) => {
         const next = task.status === 'Pending' ? 'Completed' : 'Pending';
         try {
@@ -10098,7 +10381,6 @@ function StudyPlanner() {
         }
     };
 
-    /* ── Delete ── */
     const handleDelete = async (id) => {
         if (!window.confirm('Delete this task?')) return;
         try {
@@ -10123,7 +10405,6 @@ function StudyPlanner() {
 
     return (
         <div className="card dark:bg-slate-900 border dark:border-slate-800 p-6 md:p-8 shadow-sm">
-            {/* Header */}
             <div className="flex items-center justify-between mb-6">
                 <h2 className="text-2xl font-bold dark:text-white flex items-center gap-2">
                     <span className="p-2 bg-violet-500/10 rounded-lg text-violet-500">🎓</span>
@@ -10132,12 +10413,11 @@ function StudyPlanner() {
                 <span className="text-xs text-gray-400 dark:text-slate-500">AI-powered scheduler</span>
             </div>
 
-            {/* ── Voice / Text Input ── */}
+            {/* Voice / Text Input */}
             <div className="mb-6 p-5 bg-violet-50 dark:bg-violet-900/10 border border-violet-200 dark:border-violet-800/40 rounded-2xl">
                 <p className="text-sm font-semibold text-violet-700 dark:text-violet-300 mb-3">
                     🎤 Speak or type your task (e.g. "Math test on 10th April at 10 AM")
                 </p>
-
                 <div className="flex gap-2">
                     <textarea
                         value={voiceText}
@@ -10158,7 +10438,6 @@ function StudyPlanner() {
                         {isListening ? '⏹' : '🎙'}
                     </button>
                 </div>
-
                 <div className="flex gap-3 mt-3">
                     <button
                         onClick={handleParse}
@@ -10185,7 +10464,7 @@ function StudyPlanner() {
                 </div>
             )}
 
-            {/* ── Preview Card ── */}
+            {/* Preview Card */}
             {preview && (
                 <div className="mb-6 p-4 bg-white dark:bg-slate-800 border border-violet-300 dark:border-violet-700 rounded-2xl shadow">
                     <p className="text-xs font-bold uppercase text-violet-500 mb-3">AI Preview — confirm before saving</p>
@@ -10217,7 +10496,7 @@ function StudyPlanner() {
                 </div>
             )}
 
-            {/* ── Tabs ── */}
+            {/* Tabs */}
             <div className="flex gap-2 mb-5 border-b border-gray-100 dark:border-slate-800 pb-3">
                 {TABS.map((t) => (
                     <button
@@ -10234,7 +10513,7 @@ function StudyPlanner() {
                 ))}
             </div>
 
-            {/* ── Task List ── */}
+            {/* Task List */}
             {loading ? (
                 <div className="text-center py-8 text-gray-400 text-sm">Loading…</div>
             ) : tasks.length === 0 ? (
@@ -10253,7 +10532,6 @@ function StudyPlanner() {
                                     : 'bg-white dark:bg-slate-800 border-gray-100 dark:border-slate-700 hover:shadow-md'
                             }`}
                         >
-                            {/* Checkbox */}
                             <button
                                 onClick={() => toggleStatus(task)}
                                 title="Toggle status"
@@ -10266,17 +10544,17 @@ function StudyPlanner() {
                                 {task.status === 'Completed' && <span className="text-white text-xs leading-none flex items-center justify-center h-full">✓</span>}
                             </button>
 
-                            {/* Content */}
                             <div className="flex-1 min-w-0">
                                 <div className="flex flex-wrap items-center gap-2 mb-1">
                                     <span className="font-bold text-gray-800 dark:text-white truncate">
                                         {TYPE_ICONS[task.task_type]} {task.title}
                                     </span>
                                     <Badge text={task.priority} color={PRIORITY_COLORS[task.priority]} />
-                                    <Badge
-                                        text={task.task_type}
-                                        color="bg-violet-100 text-violet-700 dark:bg-violet-900/30 dark:text-violet-300"
-                                    />
+                                    <Badge text={task.task_type} color="bg-violet-100 text-violet-700 dark:bg-violet-900/30 dark:text-violet-300" />
+                                    {/* Google Calendar sync indicator */}
+                                    {task.google_calendar_event_id && (
+                                        <span className="text-xs text-blue-600 dark:text-blue-400" title="Synced to Google Calendar">📅✓</span>
+                                    )}
                                 </div>
                                 <div className="flex flex-wrap gap-3 text-xs text-gray-400 dark:text-slate-500">
                                     <span>📅 {task.date}</span>
@@ -10286,7 +10564,6 @@ function StudyPlanner() {
                                 </div>
                             </div>
 
-                            {/* Delete */}
                             <button
                                 onClick={() => handleDelete(task.id)}
                                 title="Delete"
@@ -10302,11 +10579,9 @@ function StudyPlanner() {
     );
 }
 
-/* ─────────────────────────────────────────────
-   Main TeenDashboard
-───────────────────────────────────────────── */
+// ===== Main TeenDashboard =====
 export default function TeenDashboard() {
-    const { user } = useAuth();
+    const { user, token } = useAuth();
     const { canAccessInsights } = useSubscription();
     const navigate = useNavigate();
 
@@ -10315,10 +10590,14 @@ export default function TeenDashboard() {
     const [takingAssessment, setTakingAssessment] = useState(false);
     const [showAssessmentPrompt, setShowAssessmentPrompt] = useState(false);
 
+    // Google Calendar connection state
+    const [googleConnected, setGoogleConnected] = useState(null);
+    const [connectingGoogle, setConnectingGoogle] = useState(false);
+
     useEffect(() => {
         const fetchResults = async () => {
             try {
-                const { data } = await api.get('/assessments/results/my_results/');
+                const { data } = await api.get('/assessments/my_results/');
                 const teen = (data.results ?? data).filter(
                     (r) => r.assessment?.assessment_type === 'teen'
                 );
@@ -10331,7 +10610,30 @@ export default function TeenDashboard() {
             }
         };
         fetchResults();
+        checkGoogleStatus();
     }, []);
+
+    const checkGoogleStatus = async () => {
+        try {
+            const res = await api.get('/users/google_status/');
+            setGoogleConnected(res.data.connected);
+        } catch {
+            setGoogleConnected(false);
+        }
+    };
+
+    const handleConnectGoogle = async () => {
+        setConnectingGoogle(true);
+        try {
+            const res = await api.get('/users/google_oauth_url/');
+            // Store current path in sessionStorage to redirect back after OAuth
+            sessionStorage.setItem('redirectAfterGoogle', '/dashboard/teen');
+            window.location.href = res.data.url;
+        } catch {
+            alert("Could not start Google connection. Please try again.");
+            setConnectingGoogle(false);
+        }
+    };
 
     const handleAssessmentComplete = () => {
         setTakingAssessment(false);
@@ -10371,7 +10673,15 @@ export default function TeenDashboard() {
                 Your Growth <span className="dark:text-pink-500 text-blue-600">Dashboard</span>
             </h1>
 
-            {/* ── Assessment Prompt ── */}
+            {/* Google Calendar banner */}
+            {googleConnected !== null && (
+                <GoogleCalendarBanner
+                    connected={googleConnected}
+                    onConnect={handleConnectGoogle}
+                    connecting={connectingGoogle}
+                />
+            )}
+
             {showAssessmentPrompt && (
                 <AssessmentPrompt
                     onComplete={handleAssessmentComplete}
@@ -10379,10 +10689,10 @@ export default function TeenDashboard() {
                 />
             )}
 
-            {/* ── Study Planner (always visible) ── */}
+            {/* Study Planner (always visible) */}
             <StudyPlanner />
 
-            {/* ── Assessment Results ── */}
+            {/* Assessment Results */}
             {latestResult ? (
                 <>
                     <div className="card dark:bg-slate-900 border dark:border-slate-800 p-8 shadow-sm">

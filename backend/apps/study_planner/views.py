@@ -1,6 +1,7 @@
 import json
 import re
 from datetime import date, timedelta, datetime
+import logging
 
 import google.generativeai as genai
 from django.conf import settings
@@ -13,6 +14,7 @@ from rest_framework.viewsets import ModelViewSet
 from .models import StudyTask
 from .serializers import StudyTaskSerializer, VoiceInputSerializer
 
+logger = logging.getLogger(__name__)
 genai.configure(api_key=settings.GEMINI_API_KEY)
 
 TODAY = date.today()
@@ -22,7 +24,7 @@ def _parse_with_gemini(voice_text: str) -> dict:
     """
     Call Gemini to convert natural-language academic input into structured JSON.
     Returns a dict with keys: title, type, date, time, deadline, reminder,
-    priority, calendar_event.
+    priority, calendar_event, missing_date.
     """
     today_str = TODAY.isoformat()
 
@@ -50,20 +52,90 @@ Voice input: "{voice_text}"
     response = model.generate_content(prompt)
     raw = response.text.strip()
 
-    # strip markdown fences if present
-    raw = re.sub(r"^```(?:json)?", "", raw).strip()
-    raw = re.sub(r"```$", "", raw).strip()
+    # Strip markdown code fences
+    raw = re.sub(r"^```(?:json)?\s*", "", raw)
+    raw = re.sub(r"\s*```$", "", raw)
 
-    return json.loads(raw)
+    try:
+        parsed = json.loads(raw)
+    except json.JSONDecodeError:
+        # Fallback: return a minimal dict with missing_date=True
+        return {
+            "title": "",
+            "type": "Task",
+            "date": "",
+            "time": None,
+            "deadline": False,
+            "reminder": "30 minutes before",
+            "priority": "Medium",
+            "calendar_event": {"create": False},
+            "missing_date": True,
+        }
+
+    # Ensure parsed is a dict, not a list
+    if isinstance(parsed, list):
+        if parsed and isinstance(parsed[0], dict):
+            parsed = parsed[0]
+        else:
+            return {
+                "title": "",
+                "type": "Task",
+                "date": "",
+                "time": None,
+                "deadline": False,
+                "reminder": "30 minutes before",
+                "priority": "Medium",
+                "calendar_event": {"create": False},
+                "missing_date": True,
+            }
+
+    # Ensure all required keys exist with defaults
+    defaults = {
+        "title": "Untitled Task",
+        "type": "Task",
+        "date": today_str,
+        "time": None,
+        "deadline": False,
+        "reminder": "30 minutes before",
+        "priority": "Medium",
+        "calendar_event": {"create": False},
+        "missing_date": False,
+    }
+    for key, default in defaults.items():
+        if key not in parsed:
+            parsed[key] = default
+
+    return parsed
+
+
+def _sync_with_google_calendar(task):
+    """
+    If the user has Google OAuth tokens, create a Calendar event for this task.
+    Returns the google_event_id, or None.
+    """
+    user = task.user
+    if not user.google_access_token or not user.google_refresh_token:
+        logger.info(f"User {user.email} has no Google tokens. Skipping calendar sync.")
+        return None
+
+    try:
+        from apps.reports.services.calendar_service import build_calendar_service, create_study_task_event
+
+        service, new_token = build_calendar_service(user.google_access_token, user.google_refresh_token)
+        if new_token and new_token != user.google_access_token:
+            user.google_access_token = new_token
+            user.save(update_fields=["google_access_token"])
+            logger.info(f"Refreshed Google access token for user {user.email}")
+
+        event_id = create_study_task_event(service, task)
+        logger.info(f"Created Google Calendar event {event_id} for task {task.id} (user {user.email})")
+        return event_id
+    except Exception as e:
+        logger.error(f"Google Calendar sync failed for task {task.id}: {str(e)}", exc_info=True)
+        return None
 
 
 class StudyTaskViewSet(ModelViewSet):
-    """
-    CRUD for StudyTask + custom actions:
-      POST /api/study-tasks/parse_voice/   – parse voice text, return JSON (no save)
-      POST /api/study-tasks/add_from_voice/ – parse + save to DB
-      PATCH /api/study-tasks/{id}/update_status/ – toggle Pending / Completed
-    """
     serializer_class = StudyTaskSerializer
     permission_classes = [IsAuthenticated]
 
@@ -79,15 +151,16 @@ class StudyTaskViewSet(ModelViewSet):
         return qs
 
     def perform_create(self, serializer):
-        serializer.save(user=self.request.user)
+        task = serializer.save(user=self.request.user)
+        # Sync to Google Calendar (for manually created tasks)
+        event_id = _sync_with_google_calendar(task)
+        if event_id:
+            task.google_calendar_event_id = event_id
+            task.save(update_fields=["google_calendar_event_id"])
 
-    # ------------------------------------------------------------------ #
+    # ------------------------------------------------------------------
     @action(detail=False, methods=['post'], url_path='parse_voice')
     def parse_voice(self, request):
-        """
-        Parse a voice text string and return structured JSON without saving.
-        Useful for preview before saving.
-        """
         ser = VoiceInputSerializer(data=request.data)
         ser.is_valid(raise_exception=True)
         voice_text = ser.validated_data['voice_text']
@@ -112,13 +185,9 @@ class StudyTaskViewSet(ModelViewSet):
 
         return Response({'parsed': parsed}, status=status.HTTP_200_OK)
 
-    # ------------------------------------------------------------------ #
+    # ------------------------------------------------------------------
     @action(detail=False, methods=['post'], url_path='add_from_voice')
     def add_from_voice(self, request):
-        """
-        Parse voice text and immediately persist the task.
-        Prevents duplicates: checks title + date + user.
-        """
         ser = VoiceInputSerializer(data=request.data)
         ser.is_valid(raise_exception=True)
         voice_text = ser.validated_data['voice_text']
@@ -170,15 +239,20 @@ class StudyTaskViewSet(ModelViewSet):
             parsed_json=parsed,
         )
 
+        # Sync to Google Calendar (for voice-created tasks)
+        event_id = _sync_with_google_calendar(task)
+        if event_id:
+            task.google_calendar_event_id = event_id
+            task.save(update_fields=["google_calendar_event_id"])
+
         return Response(
             {'created': True, 'task': StudyTaskSerializer(task).data},
             status=status.HTTP_201_CREATED,
         )
 
-    # ------------------------------------------------------------------ #
+    # ------------------------------------------------------------------
     @action(detail=True, methods=['patch'], url_path='update_status')
     def update_status(self, request, pk=None):
-        """Toggle task status between Pending and Completed."""
         task = self.get_object()
         new_status = request.data.get('status')
         if new_status not in ('Pending', 'Completed'):
@@ -189,3 +263,22 @@ class StudyTaskViewSet(ModelViewSet):
         task.status = new_status
         task.save()
         return Response(StudyTaskSerializer(task).data)
+
+    # ------------------------------------------------------------------
+    def destroy(self, request, *args, **kwargs):
+        """Override delete to also remove the Google Calendar event if it exists."""
+        task = self.get_object()
+        if task.google_calendar_event_id:
+            try:
+                from apps.reports.services.calendar_service import build_calendar_service, delete_calendar_event
+                user = request.user
+                if user.google_access_token and user.google_refresh_token:
+                    service, new_token = build_calendar_service(user.google_access_token, user.google_refresh_token)
+                    if new_token and new_token != user.google_access_token:
+                        user.google_access_token = new_token
+                        user.save(update_fields=["google_access_token"])
+                    delete_calendar_event(service, task.google_calendar_event_id)
+                    logger.info(f"Deleted Google Calendar event {task.google_calendar_event_id} for task {task.id}")
+            except Exception as e:
+                logger.error(f"Failed to delete calendar event for task {task.id}: {e}")
+        return super().destroy(request, *args, **kwargs)
