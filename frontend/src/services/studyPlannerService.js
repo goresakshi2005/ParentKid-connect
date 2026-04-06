@@ -2,13 +2,15 @@
 import api from './api';
 
 /**
- * Parse a voice text string → structured JSON (preview, no save)
+ * Parse a voice text string → structured JSON preview (no save).
+ * Now returns { parsed: [task, task, ...] } — always an ARRAY of tasks.
  */
 export const parseVoiceText = (voice_text) =>
     api.post('/study-tasks/parse_voice/', { voice_text });
 
 /**
- * Parse + immediately save the task to the database.
+ * Parse + immediately save ALL tasks found in the voice text.
+ * Returns { created: true, count: N, tasks: [...], skipped_duplicates: [...] }
  */
 export const addTaskFromVoice = (voice_text) =>
     api.post('/study-tasks/add_from_voice/', { voice_text });

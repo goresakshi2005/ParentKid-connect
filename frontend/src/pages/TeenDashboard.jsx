@@ -1,4 +1,10 @@
 // frontend/src/pages/TeenDashboard.jsx
+//
+// Key change: voice / text input may contain MULTIPLE tasks in one paragraph.
+// parse_voice  → returns { parsed: [task, task, ...] }
+// add_from_voice → saves ALL tasks, syncs each to Google Calendar,
+//                  returns { created: true, count: N, tasks: [...], skipped_duplicates: [...] }
+//
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
@@ -14,7 +20,8 @@ import {
     deleteTask,
 } from '../services/studyPlannerService';
 
-// Helper components
+// ─── Helpers ────────────────────────────────────────────────────────────────
+
 const PRIORITY_COLORS = {
     High:   'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400',
     Medium: 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400',
@@ -36,9 +43,10 @@ function Badge({ text, color }) {
     );
 }
 
-// ===== NEW: Google Calendar connection banner =====
+// ─── Google Calendar banner ─────────────────────────────────────────────────
+
 function GoogleCalendarBanner({ connected, onConnect, connecting }) {
-    if (connected === null) return null; // loading state handled outside
+    if (connected === null) return null;
     if (connected) {
         return (
             <div className="mb-6 p-3 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-xl flex items-center gap-3">
@@ -80,17 +88,97 @@ function GoogleCalendarBanner({ connected, onConnect, connecting }) {
     );
 }
 
-// ===== Study Planner Component (with calendar sync indicator) =====
+// ─── Multi-task preview card ────────────────────────────────────────────────
+//
+// Shows all tasks parsed from one voice/text input so the teen can review them
+// before confirming. Each task is shown as its own compact card inside the list.
+
+function MultiTaskPreview({ tasks, onConfirm, onDiscard, saving }) {
+    if (!tasks || tasks.length === 0) return null;
+
+    return (
+        <div className="mb-6 p-4 bg-white dark:bg-slate-800 border border-violet-300 dark:border-violet-700 rounded-2xl shadow">
+            <div className="flex items-center justify-between mb-3">
+                <p className="text-xs font-bold uppercase text-violet-500">
+                    AI Preview — {tasks.length} task{tasks.length > 1 ? 's' : ''} detected
+                </p>
+                <span className="text-xs text-gray-400 dark:text-slate-500">Review before saving</span>
+            </div>
+
+            <div className="space-y-3 mb-4">
+                {tasks.map((t, idx) => (
+                    <div
+                        key={idx}
+                        className="p-3 bg-violet-50 dark:bg-violet-900/10 border border-violet-100 dark:border-violet-800/30 rounded-xl"
+                    >
+                        {/* Task number badge */}
+                        <div className="flex items-center gap-2 mb-2">
+                            <span className="w-5 h-5 rounded-full bg-violet-600 text-white text-xs flex items-center justify-center font-bold flex-shrink-0">
+                                {idx + 1}
+                            </span>
+                            <span className="font-semibold text-gray-800 dark:text-white text-sm">
+                                {TYPE_ICONS[t.type] ?? '📋'} {t.title}
+                            </span>
+                            <Badge text={t.priority} color={PRIORITY_COLORS[t.priority] ?? ''} />
+                        </div>
+                        <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-xs text-gray-500 dark:text-slate-400 pl-7">
+                            <div><span className="font-semibold">Type: </span>{t.type}</div>
+                            <div><span className="font-semibold">Date: </span>{t.date}</div>
+                            <div><span className="font-semibold">Time: </span>{t.time ?? '—'}</div>
+                            <div><span className="font-semibold">Reminder: </span>{t.reminder}</div>
+                            <div><span className="font-semibold">Deadline: </span>{t.deadline ? 'Yes' : 'No'}</div>
+                            <div>
+                                <span className="font-semibold">Calendar: </span>
+                                {t.calendar_event?.create
+                                    ? `📅 ${t.calendar_event.event_type}`
+                                    : 'Not scheduled'}
+                            </div>
+                        </div>
+                    </div>
+                ))}
+            </div>
+
+            <div className="flex gap-3">
+                <button
+                    onClick={onConfirm}
+                    disabled={saving}
+                    className="px-5 py-2 bg-pink-600 text-white rounded-xl text-sm font-bold hover:bg-pink-700 disabled:opacity-50 flex items-center gap-2"
+                >
+                    {saving ? (
+                        <>
+                            <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                            Saving…
+                        </>
+                    ) : (
+                        <>✅ Confirm & Save All {tasks.length > 1 ? `(${tasks.length})` : ''}</>
+                    )}
+                </button>
+                <button
+                    onClick={onDiscard}
+                    disabled={saving}
+                    className="px-5 py-2 bg-gray-200 dark:bg-slate-700 text-gray-700 dark:text-white rounded-xl text-sm font-bold hover:bg-gray-300 dark:hover:bg-slate-600"
+                >
+                    ✕ Discard
+                </button>
+            </div>
+        </div>
+    );
+}
+
+// ─── Study Planner ──────────────────────────────────────────────────────────
+
 function StudyPlanner() {
-    const [activeTab, setActiveTab]     = useState('upcoming');
-    const [tasks, setTasks]             = useState([]);
-    const [loading, setLoading]         = useState(false);
-    const [voiceText, setVoiceText]     = useState('');
-    const [isListening, setIsListening] = useState(false);
-    const [parsing, setParsing]         = useState(false);
-    const [preview, setPreview]         = useState(null);
-    const [feedback, setFeedback]       = useState(null);
-    const [clarify, setClarify]         = useState(false);
+    const [activeTab, setActiveTab]       = useState('upcoming');
+    const [tasks, setTasks]               = useState([]);
+    const [loading, setLoading]           = useState(false);
+    const [voiceText, setVoiceText]       = useState('');
+    const [isListening, setIsListening]   = useState(false);
+    const [parsing, setParsing]           = useState(false);
+    const [saving, setSaving]             = useState(false);
+    // previews is now ALWAYS an array of task dicts (or null)
+    const [previews, setPreviews]         = useState(null);
+    const [feedback, setFeedback]         = useState(null);
+    const [clarify, setClarify]           = useState(false);
     const recognitionRef = useRef(null);
 
     const fetchTasks = useCallback(async (filter) => {
@@ -108,6 +196,8 @@ function StudyPlanner() {
     useEffect(() => {
         fetchTasks(activeTab);
     }, [activeTab, fetchTasks]);
+
+    // ── voice input ──────────────────────────────────────────────────────────
 
     const startListening = () => {
         const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
@@ -134,10 +224,12 @@ function StudyPlanner() {
         setIsListening(false);
     };
 
+    // ── preview (parse only, no save) ────────────────────────────────────────
+
     const handleParse = async () => {
         if (!voiceText.trim()) return;
         setParsing(true);
-        setPreview(null);
+        setPreviews(null);
         setFeedback(null);
         setClarify(false);
         try {
@@ -146,7 +238,8 @@ function StudyPlanner() {
                 setClarify(true);
                 setFeedback({ type: 'warn', message: data.question });
             } else {
-                setPreview(data.parsed);
+                // data.parsed is always an array now
+                setPreviews(data.parsed);
             }
         } catch {
             setFeedback({ type: 'error', message: 'AI parsing failed. Please try again.' });
@@ -155,28 +248,48 @@ function StudyPlanner() {
         }
     };
 
+    // ── confirm & save all tasks ─────────────────────────────────────────────
+
     const handleConfirmSave = async () => {
         if (!voiceText.trim()) return;
-        setParsing(true);
+        setSaving(true);
         try {
             const { data } = await addTaskFromVoice(voiceText);
+
             if (data.needs_clarification) {
                 setClarify(true);
                 setFeedback({ type: 'warn', message: data.question });
-            } else if (data.duplicate) {
-                setFeedback({ type: 'warn', message: data.message });
-            } else {
-                setFeedback({ type: 'success', message: `✅ "${data.task.title}" added to your planner!` });
-                setVoiceText('');
-                setPreview(null);
-                fetchTasks(activeTab);
+                return;
             }
+
+            // Build success message
+            const count = data.count ?? 0;
+            const skipped = data.skipped_duplicates ?? [];
+            let msg = '';
+
+            if (count > 0) {
+                const titles = data.tasks.map((t) => `"${t.title}"`).join(', ');
+                msg = `✅ ${count} task${count > 1 ? 's' : ''} added: ${titles}`;
+            }
+            if (skipped.length > 0) {
+                msg += ` (skipped ${skipped.length} duplicate${skipped.length > 1 ? 's' : ''}: ${skipped.map((s) => `"${s}"`).join(', ')})`;
+            }
+            if (count === 0 && skipped.length === 0) {
+                msg = 'No tasks were added.';
+            }
+
+            setFeedback({ type: count > 0 ? 'success' : 'warn', message: msg });
+            setVoiceText('');
+            setPreviews(null);
+            fetchTasks(activeTab);
         } catch {
-            setFeedback({ type: 'error', message: 'Failed to save task. Please try again.' });
+            setFeedback({ type: 'error', message: 'Failed to save tasks. Please try again.' });
         } finally {
-            setParsing(false);
+            setSaving(false);
         }
     };
+
+    // ── task status / delete ─────────────────────────────────────────────────
 
     const toggleStatus = async (task) => {
         const next = task.status === 'Pending' ? 'Completed' : 'Pending';
@@ -197,6 +310,8 @@ function StudyPlanner() {
             setFeedback({ type: 'error', message: 'Delete failed.' });
         }
     };
+
+    // ── UI ───────────────────────────────────────────────────────────────────
 
     const TABS = [
         { key: 'upcoming',  label: '📅 Upcoming' },
@@ -220,17 +335,20 @@ function StudyPlanner() {
                 <span className="text-xs text-gray-400 dark:text-slate-500">AI-powered scheduler</span>
             </div>
 
-            {/* Voice / Text Input */}
+            {/* ── Voice / Text Input ─────────────────────────────────────── */}
             <div className="mb-6 p-5 bg-violet-50 dark:bg-violet-900/10 border border-violet-200 dark:border-violet-800/40 rounded-2xl">
-                <p className="text-sm font-semibold text-violet-700 dark:text-violet-300 mb-3">
-                    🎤 Speak or type your task (e.g. "Math test on 10th April at 10 AM")
+                <p className="text-sm font-semibold text-violet-700 dark:text-violet-300 mb-1">
+                    🎤 Speak or type one or more tasks
+                </p>
+                <p className="text-xs text-violet-500 dark:text-violet-400 mb-3">
+                    e.g. "Math test on 10th April at 10 AM, submit science project by 15th April, meeting with mentor tomorrow at 5 PM"
                 </p>
                 <div className="flex gap-2">
                     <textarea
                         value={voiceText}
                         onChange={(e) => setVoiceText(e.target.value)}
-                        placeholder='e.g. "Submit science project by 15th April" or "Meeting with mentor tomorrow at 5 PM"'
-                        rows={2}
+                        placeholder='Describe all your tasks in one go…'
+                        rows={3}
                         className="flex-1 p-3 rounded-xl border border-violet-300 dark:border-violet-700 bg-white dark:bg-slate-800 text-gray-800 dark:text-white text-sm resize-none focus:outline-none focus:ring-2 focus:ring-violet-400"
                     />
                     <button
@@ -248,22 +366,27 @@ function StudyPlanner() {
                 <div className="flex gap-3 mt-3">
                     <button
                         onClick={handleParse}
-                        disabled={parsing || !voiceText.trim()}
+                        disabled={parsing || saving || !voiceText.trim()}
                         className="px-5 py-2 rounded-xl bg-violet-600 text-white text-sm font-semibold hover:bg-violet-700 disabled:opacity-50 transition"
                     >
-                        {parsing ? '⏳ Parsing…' : '🔍 Preview'}
+                        {parsing ? '⏳ Parsing…' : '🔍 Preview Tasks'}
                     </button>
                     <button
                         onClick={handleConfirmSave}
-                        disabled={parsing || !voiceText.trim()}
-                        className="px-5 py-2 rounded-xl bg-pink-600 text-white text-sm font-semibold hover:bg-pink-700 disabled:opacity-50 transition"
+                        disabled={parsing || saving || !voiceText.trim()}
+                        className="px-5 py-2 rounded-xl bg-pink-600 text-white text-sm font-semibold hover:bg-pink-700 disabled:opacity-50 transition flex items-center gap-2"
                     >
-                        {parsing ? '⏳ Saving…' : '➕ Add Task'}
+                        {saving ? (
+                            <>
+                                <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                                Saving…
+                            </>
+                        ) : '➕ Add All Tasks'}
                     </button>
                 </div>
             </div>
 
-            {/* Feedback banner */}
+            {/* ── Feedback banner ─────────────────────────────────────────── */}
             {feedback && (
                 <div className={`mb-4 p-3 rounded-xl border text-sm font-medium ${feedbackStyle[feedback.type]}`}>
                     {feedback.message}
@@ -271,39 +394,17 @@ function StudyPlanner() {
                 </div>
             )}
 
-            {/* Preview Card */}
-            {preview && (
-                <div className="mb-6 p-4 bg-white dark:bg-slate-800 border border-violet-300 dark:border-violet-700 rounded-2xl shadow">
-                    <p className="text-xs font-bold uppercase text-violet-500 mb-3">AI Preview — confirm before saving</p>
-                    <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
-                        <div><span className="font-semibold text-gray-500 dark:text-slate-400">Title</span><p className="dark:text-white">{preview.title}</p></div>
-                        <div><span className="font-semibold text-gray-500 dark:text-slate-400">Type</span><p className="dark:text-white">{TYPE_ICONS[preview.type]} {preview.type}</p></div>
-                        <div><span className="font-semibold text-gray-500 dark:text-slate-400">Date</span><p className="dark:text-white">{preview.date}</p></div>
-                        <div><span className="font-semibold text-gray-500 dark:text-slate-400">Time</span><p className="dark:text-white">{preview.time ?? '—'}</p></div>
-                        <div><span className="font-semibold text-gray-500 dark:text-slate-400">Priority</span><Badge text={preview.priority} color={PRIORITY_COLORS[preview.priority]} /></div>
-                        <div><span className="font-semibold text-gray-500 dark:text-slate-400">Reminder</span><p className="dark:text-white">{preview.reminder}</p></div>
-                        <div><span className="font-semibold text-gray-500 dark:text-slate-400">Deadline</span><p className="dark:text-white">{preview.deadline ? 'Yes' : 'No'}</p></div>
-                        <div><span className="font-semibold text-gray-500 dark:text-slate-400">Calendar</span><p className="dark:text-white">{preview.calendar_event?.event_type}</p></div>
-                    </div>
-                    <div className="mt-4 flex gap-3">
-                        <button
-                            onClick={handleConfirmSave}
-                            disabled={parsing}
-                            className="px-5 py-2 bg-pink-600 text-white rounded-xl text-sm font-bold hover:bg-pink-700 disabled:opacity-50"
-                        >
-                            ✅ Confirm & Save
-                        </button>
-                        <button
-                            onClick={() => { setPreview(null); setVoiceText(''); }}
-                            className="px-5 py-2 bg-gray-200 dark:bg-slate-700 text-gray-700 dark:text-white rounded-xl text-sm font-bold hover:bg-gray-300 dark:hover:bg-slate-600"
-                        >
-                            ✕ Discard
-                        </button>
-                    </div>
-                </div>
+            {/* ── Multi-task Preview ──────────────────────────────────────── */}
+            {previews && previews.length > 0 && (
+                <MultiTaskPreview
+                    tasks={previews}
+                    onConfirm={handleConfirmSave}
+                    onDiscard={() => { setPreviews(null); setVoiceText(''); }}
+                    saving={saving}
+                />
             )}
 
-            {/* Tabs */}
+            {/* ── Tabs ────────────────────────────────────────────────────── */}
             <div className="flex gap-2 mb-5 border-b border-gray-100 dark:border-slate-800 pb-3">
                 {TABS.map((t) => (
                     <button
@@ -318,9 +419,15 @@ function StudyPlanner() {
                         {t.label}
                     </button>
                 ))}
+                {/* Task count badge */}
+                {!loading && (
+                    <span className="ml-auto self-center text-xs text-gray-400 dark:text-slate-500">
+                        {tasks.length} task{tasks.length !== 1 ? 's' : ''}
+                    </span>
+                )}
             </div>
 
-            {/* Task List */}
+            {/* ── Task List ───────────────────────────────────────────────── */}
             {loading ? (
                 <div className="text-center py-8 text-gray-400 text-sm">Loading…</div>
             ) : tasks.length === 0 ? (
@@ -339,6 +446,7 @@ function StudyPlanner() {
                                     : 'bg-white dark:bg-slate-800 border-gray-100 dark:border-slate-700 hover:shadow-md'
                             }`}
                         >
+                            {/* Status toggle */}
                             <button
                                 onClick={() => toggleStatus(task)}
                                 title="Toggle status"
@@ -348,12 +456,14 @@ function StudyPlanner() {
                                         : 'border-gray-300 dark:border-slate-600 hover:border-violet-500'
                                 }`}
                             >
-                                {task.status === 'Completed' && <span className="text-white text-xs leading-none flex items-center justify-center h-full">✓</span>}
+                                {task.status === 'Completed' && (
+                                    <span className="text-white text-xs leading-none flex items-center justify-center h-full">✓</span>
+                                )}
                             </button>
 
                             <div className="flex-1 min-w-0">
                                 <div className="flex flex-wrap items-center gap-2 mb-1">
-                                    <span className="font-bold text-gray-800 dark:text-white truncate">
+                                    <span className={`font-bold text-gray-800 dark:text-white truncate ${task.status === 'Completed' ? 'line-through' : ''}`}>
                                         {TYPE_ICONS[task.task_type]} {task.title}
                                     </span>
                                     <Badge text={task.priority} color={PRIORITY_COLORS[task.priority]} />
@@ -386,19 +496,20 @@ function StudyPlanner() {
     );
 }
 
-// ===== Main TeenDashboard =====
+// ─── Main TeenDashboard ─────────────────────────────────────────────────────
+
 export default function TeenDashboard() {
     const { user, token } = useAuth();
     const { canAccessInsights } = useSubscription();
     const navigate = useNavigate();
 
-    const [results, setResults]                   = useState([]);
-    const [loading, setLoading]                   = useState(true);
-    const [takingAssessment, setTakingAssessment] = useState(false);
+    const [results, setResults]                         = useState([]);
+    const [loading, setLoading]                         = useState(true);
+    const [takingAssessment, setTakingAssessment]       = useState(false);
     const [showAssessmentPrompt, setShowAssessmentPrompt] = useState(false);
 
     // Google Calendar connection state
-    const [googleConnected, setGoogleConnected] = useState(null);
+    const [googleConnected, setGoogleConnected]   = useState(null);
     const [connectingGoogle, setConnectingGoogle] = useState(false);
 
     useEffect(() => {
@@ -433,7 +544,6 @@ export default function TeenDashboard() {
         setConnectingGoogle(true);
         try {
             const res = await api.get('/users/google_oauth_url/');
-            // Store current path in sessionStorage to redirect back after OAuth
             sessionStorage.setItem('redirectAfterGoogle', '/dashboard/teen');
             window.location.href = res.data.url;
         } catch {
@@ -509,11 +619,11 @@ export default function TeenDashboard() {
                         </h2>
                         <div className="grid md:grid-cols-5 gap-4">
                             {[
-                                { label: 'Overall',   value: latestResult.final_score,    color: 'text-blue-600 dark:text-pink-500' },
-                                { label: 'Health',    value: latestResult.health_score,   color: 'text-green-600' },
-                                { label: 'Behavior',  value: latestResult.behavior_score, color: 'text-orange-600' },
-                                { label: 'Routine',   value: latestResult.routine_score,  color: 'text-purple-600' },
-                                { label: 'Emotional', value: latestResult.emotional_score,color: 'text-red-600' },
+                                { label: 'Overall',   value: latestResult.final_score,     color: 'text-blue-600 dark:text-pink-500' },
+                                { label: 'Health',    value: latestResult.health_score,    color: 'text-green-600' },
+                                { label: 'Behavior',  value: latestResult.behavior_score,  color: 'text-orange-600' },
+                                { label: 'Routine',   value: latestResult.routine_score,   color: 'text-purple-600' },
+                                { label: 'Emotional', value: latestResult.emotional_score, color: 'text-red-600' },
                             ].map(({ label, value, color }) => (
                                 <div key={label} className="text-center p-6 bg-gray-50 dark:bg-slate-800 rounded-2xl border border-gray-100 dark:border-slate-700/50 shadow-sm">
                                     <p className={`text-4xl font-black ${color} mb-1`}>{value}%</p>

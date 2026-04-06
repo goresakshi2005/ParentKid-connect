@@ -2399,123 +2399,15 @@ def extract_appointment_from_text(report_text: str) -> dict:
 FILE: backend/apps/reports/services/calendar_service.py
 ================================================
 from datetime import datetime, timedelta
+import logging
 
 import google.auth.transport.requests
 from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
 from django.conf import settings
+from django.utils import timezone
 
-
-def build_calendar_service(access_token: str, refresh_token: str):
-    """
-    Build and return an authenticated Google Calendar service.
-
-    âœ… FIX: Previously, the Credentials object was built with no `expiry` field,
-    so the library never knew the token was stale and never refreshed it.
-    Access tokens expire in ~1 hour â€” after that, every Calendar call silently
-    failed, was caught by the broad `except` in orchestrator.py, and the event
-    was skipped entirely (hence nothing appearing in Google Calendar).
-
-    Fix: force a refresh() call before building the service so we always have
-    a valid token. We also return the (possibly new) access token so the caller
-    can persist it back to the DB.
-
-    Returns:
-        (service, new_access_token) â€” the Calendar service and the refreshed token.
-    """
-    creds = Credentials(
-        token=access_token,
-        refresh_token=refresh_token,
-        token_uri="https://oauth2.googleapis.com/token",
-        client_id=settings.GOOGLE_CLIENT_ID,
-        client_secret=settings.GOOGLE_CLIENT_SECRET,
-        # expiry=None â†’ library treats the token as already expired â†’ triggers refresh
-        expiry=None,
-    )
-
-    # Force refresh so we always use a live access token
-    request = google.auth.transport.requests.Request()
-    if not creds.valid:
-        creds.refresh(request)
-
-    service = build("calendar", "v3", credentials=creds)
-
-    # Return the (possibly refreshed) access token alongside the service
-    return service, creds.token
-
-
-def create_appointment_event(
-    service,
-    appointment_datetime: datetime,
-    doctor: str,
-    parent_email: str,
-    timezone: str = "Asia/Kolkata",
-) -> str:
-    """
-    Creates a Google Calendar event for the appointment.
-
-    âœ… FIX: Added `colorId: "7"` (Peacock / blue) so the event appears as a
-    solid blue block in Google Calendar â€” matching the style shown in the
-    screenshot.  Without a colorId the event inherits the calendar's default
-    colour which can be hard to spot.
-
-    colorId reference:
-      1=Lavender  2=Sage      3=Grape    4=Flamingo  5=Banana
-      6=Tangerine 7=Peacock   8=Graphite 9=Blueberry 10=Basil  11=Tomato
-
-    Returns the created event ID.
-    """
-    end_datetime = appointment_datetime + timedelta(minutes=30)
-
-    description = "Auto-extracted from your uploaded pregnancy checkup report."
-    if doctor:
-        description += f"\nDoctor: {doctor}"
-
-    event = {
-        "summary": "ðŸ¤° Pregnancy Checkup Appointment",
-        "description": description,
-        # Peacock blue â€” visible and distinct in Google Calendar
-        "colorId": "7",
-        "start": {
-            "dateTime": appointment_datetime.isoformat(),
-            "timeZone": timezone,
-        },
-        "end": {
-            "dateTime": end_datetime.isoformat(),
-            "timeZone": timezone,
-        },
-        "attendees": [
-            {"email": parent_email},
-        ],
-        "reminders": {
-            "useDefault": False,
-            "overrides": [
-                {"method": "email", "minutes": 24 * 60},  # 1 day before
-                {"method": "popup", "minutes": 120},       # 2 hours before
-            ],
-        },
-    }
-
-    created_event = service.events().insert(
-        calendarId="primary",
-        body=event,
-        sendUpdates="all",
-    ).execute()
-
-    return created_event.get("id")
-
-
-def delete_calendar_event(service, event_id: str):
-    """Delete a calendar event by ID."""
-    service.events().delete(calendarId="primary", eventId=event_id).execute()
-
-
-from datetime import datetime, timedelta
-
-import google.auth.transport.requests
-from google.oauth2.credentials import Credentials
-from googleapiclient.discovery import build
-from django.conf import settings
+logger = logging.getLogger(__name__)
 
 
 def build_calendar_service(access_token: str, refresh_token: str):
@@ -2529,7 +2421,7 @@ def build_calendar_service(access_token: str, refresh_token: str):
         token_uri="https://oauth2.googleapis.com/token",
         client_id=settings.GOOGLE_CLIENT_ID,
         client_secret=settings.GOOGLE_CLIENT_SECRET,
-        expiry=None,
+        expiry=None,  # forces refresh if needed
     )
 
     request = google.auth.transport.requests.Request()
@@ -2545,7 +2437,7 @@ def create_appointment_event(
     appointment_datetime: datetime,
     doctor: str,
     parent_email: str,
-    timezone: str = "Asia/Kolkata",
+    timezone_str: str = "Asia/Kolkata",
 ) -> str:
     """
     Creates a Google Calendar event for a pregnancy appointment.
@@ -2563,11 +2455,11 @@ def create_appointment_event(
         "colorId": "7",   # Peacock blue
         "start": {
             "dateTime": appointment_datetime.isoformat(),
-            "timeZone": timezone,
+            "timeZone": timezone_str,
         },
         "end": {
             "dateTime": end_datetime.isoformat(),
-            "timeZone": timezone,
+            "timeZone": timezone_str,
         },
         "attendees": [{"email": parent_email}],
         "reminders": {
@@ -2588,11 +2480,11 @@ def delete_calendar_event(service, event_id: str):
     service.events().delete(calendarId="primary", eventId=event_id).execute()
 
 
-# ===== NEW: Study Task event creation =====
+# ===== Study Task event creation (fixed) =====
 def create_study_task_event(
     service,
     task,
-    timezone: str = "Asia/Kolkata",
+    timezone_str: str = "Asia/Kolkata",
 ) -> str:
     """
     Creates a Google Calendar event for a StudyTask.
@@ -2600,22 +2492,44 @@ def create_study_task_event(
     - If task.time is absent (deadline) â†’ all-day event
     Returns the created event ID.
     """
-    start_datetime = datetime.combine(task.date, task.time) if task.time else None
+    # Ensure we use a timezone-aware datetime for timed events
+    if task.time:
+        # Normalize date and time in case they are strings (e.g. from voice parsing)
+        if isinstance(task.date, str):
+            try:
+                date_obj = datetime.strptime(task.date, "%Y-%m-%d").date()
+            except Exception:
+                # best-effort fallback
+                date_obj = datetime.fromisoformat(task.date).date()
+        else:
+            date_obj = task.date
 
-    if start_datetime:
-        # Timed event
+        if isinstance(task.time, str):
+            try:
+                time_obj = datetime.strptime(task.time, "%H:%M").time()
+            except Exception:
+                # try parsing with seconds if present
+                time_obj = datetime.fromisoformat(task.time).time()
+        else:
+            time_obj = task.time
+
+        # Combine date and time, then make it timezone-aware
+        naive_dt = datetime.combine(date_obj, time_obj)
+        aware_dt = timezone.make_aware(naive_dt, timezone.get_current_timezone())
+        start_datetime = aware_dt
         end_datetime = start_datetime + timedelta(minutes=30)
+
         event_body = {
             "summary": f"ðŸ“š {task.title}",
             "description": f"Task type: {task.task_type}\nPriority: {task.priority}\nReminder: {task.reminder}",
             "colorId": "5",   # Banana yellow for study tasks
             "start": {
                 "dateTime": start_datetime.isoformat(),
-                "timeZone": timezone,
+                "timeZone": timezone_str,
             },
             "end": {
                 "dateTime": end_datetime.isoformat(),
-                "timeZone": timezone,
+                "timeZone": timezone_str,
             },
             "reminders": {
                 "useDefault": False,
@@ -2626,13 +2540,21 @@ def create_study_task_event(
             },
         }
     else:
-        # All-day deadline
-        end_date = task.date + timedelta(days=1)   # all-day events need exclusive end date
+        # All-day deadline â€” normalize date if it's a string
+        if isinstance(task.date, str):
+            try:
+                date_obj = datetime.strptime(task.date, "%Y-%m-%d").date()
+            except Exception:
+                date_obj = datetime.fromisoformat(task.date).date()
+        else:
+            date_obj = task.date
+
+        end_date = date_obj + timedelta(days=1)   # all-day events need exclusive end date
         event_body = {
             "summary": f"ðŸ“Œ DEADLINE: {task.title}",
             "description": f"Task type: {task.task_type}\nPriority: {task.priority}\nReminder: {task.reminder}",
             "colorId": "11",   # Tomato red for deadlines
-            "start": {"date": task.date.isoformat()},
+            "start": {"date": date_obj.isoformat()},
             "end": {"date": end_date.isoformat()},
             "reminders": {
                 "useDefault": False,
@@ -2644,7 +2566,9 @@ def create_study_task_event(
         }
 
     created_event = service.events().insert(calendarId="primary", body=event_body, sendUpdates="all").execute()
-    return created_event.get("id")
+    event_id = created_event.get("id")
+    logger.info(f"Created study task calendar event: {event_id} for task {task.id}")
+    return event_id
 
 
 ================================================
@@ -3610,6 +3534,7 @@ FILE: backend/apps/study_planner/views.py
 import json
 import re
 from datetime import date, timedelta, datetime
+import logging
 
 import google.generativeai as genai
 from django.conf import settings
@@ -3622,6 +3547,7 @@ from rest_framework.viewsets import ModelViewSet
 from .models import StudyTask
 from .serializers import StudyTaskSerializer, VoiceInputSerializer
 
+logger = logging.getLogger(__name__)
 genai.configure(api_key=settings.GEMINI_API_KEY)
 
 TODAY = date.today()
@@ -3681,7 +3607,6 @@ Voice input: "{voice_text}"
 
     # Ensure parsed is a dict, not a list
     if isinstance(parsed, list):
-        # If it's a list, take the first element if it's a dict, else fallback
         if parsed and isinstance(parsed[0], dict):
             parsed = parsed[0]
         else:
@@ -3723,6 +3648,7 @@ def _sync_with_google_calendar(task):
     """
     user = task.user
     if not user.google_access_token or not user.google_refresh_token:
+        logger.info(f"User {user.email} has no Google tokens. Skipping calendar sync.")
         return None
 
     try:
@@ -3732,12 +3658,13 @@ def _sync_with_google_calendar(task):
         if new_token and new_token != user.google_access_token:
             user.google_access_token = new_token
             user.save(update_fields=["google_access_token"])
+            logger.info(f"Refreshed Google access token for user {user.email}")
 
         event_id = create_study_task_event(service, task)
+        logger.info(f"Created Google Calendar event {event_id} for task {task.id} (user {user.email})")
         return event_id
     except Exception as e:
-        # Log error but don't fail the task creation
-        print(f"Google Calendar sync failed for task {task.id}: {str(e)}")
+        logger.error(f"Google Calendar sync failed for task {task.id}: {str(e)}", exc_info=True)
         return None
 
 
@@ -3758,7 +3685,7 @@ class StudyTaskViewSet(ModelViewSet):
 
     def perform_create(self, serializer):
         task = serializer.save(user=self.request.user)
-        # Sync to Google Calendar
+        # Sync to Google Calendar (for manually created tasks)
         event_id = _sync_with_google_calendar(task)
         if event_id:
             task.google_calendar_event_id = event_id
@@ -3845,7 +3772,7 @@ class StudyTaskViewSet(ModelViewSet):
             parsed_json=parsed,
         )
 
-        # Sync to Google Calendar
+        # Sync to Google Calendar (for voice-created tasks)
         event_id = _sync_with_google_calendar(task)
         if event_id:
             task.google_calendar_event_id = event_id
@@ -3884,8 +3811,9 @@ class StudyTaskViewSet(ModelViewSet):
                         user.google_access_token = new_token
                         user.save(update_fields=["google_access_token"])
                     delete_calendar_event(service, task.google_calendar_event_id)
+                    logger.info(f"Deleted Google Calendar event {task.google_calendar_event_id} for task {task.id}")
             except Exception as e:
-                print(f"Failed to delete calendar event for task {task.id}: {e}")
+                logger.error(f"Failed to delete calendar event for task {task.id}: {e}")
         return super().destroy(request, *args, **kwargs)
 
 

@@ -1,3 +1,13 @@
+"""
+backend/apps/study_planner/views.py
+
+Key change: voice input may contain MULTIPLE tasks in one paragraph.
+_parse_with_gemini now ALWAYS returns a LIST of task dicts.
+parse_voice  → returns { parsed: [task, task, ...] }
+add_from_voice → saves ALL tasks in the list, syncs each to Google Calendar,
+                 returns { created: true, tasks: [...], count: N }
+"""
+
 import json
 import re
 from datetime import date, timedelta, datetime
@@ -20,11 +30,18 @@ genai.configure(api_key=settings.GEMINI_API_KEY)
 TODAY = date.today()
 
 
-def _parse_with_gemini(voice_text: str) -> dict:
+# ---------------------------------------------------------------------------
+# AI PARSING — returns a LIST of task dicts (even for a single task)
+# ---------------------------------------------------------------------------
+
+def _parse_with_gemini(voice_text: str) -> list:
     """
-    Call Gemini to convert natural-language academic input into structured JSON.
-    Returns a dict with keys: title, type, date, time, deadline, reminder,
-    priority, calendar_event, missing_date.
+    Call Gemini to convert natural-language input (which may describe MULTIPLE
+    tasks in one paragraph) into a list of structured task dicts.
+
+    Each dict has keys:
+        title, type, date, time, deadline, reminder, priority,
+        calendar_event, missing_date
     """
     today_str = TODAY.isoformat()
 
@@ -32,7 +49,13 @@ def _parse_with_gemini(voice_text: str) -> dict:
 Today's date is {today_str}.
 You are an AI academic task parser for a teen student planner.
 
-From the following voice input, extract a JSON object with EXACTLY these keys:
+The user may describe ONE or MORE tasks in a single message
+(e.g. "I have a Math test on 10th April and I need to submit my Science project
+by 15th April, also a meeting with mentor tomorrow at 5 PM").
+
+Extract EVERY task mentioned and return a JSON ARRAY where each element is
+an object with EXACTLY these keys:
+
 - "title": short task title (string)
 - "type": one of ["Task", "Meeting", "Test/Exam", "Assignment/Deadline"]
 - "date": YYYY-MM-DD (convert relative dates like "tomorrow", "Sunday", "next Monday")
@@ -41,10 +64,11 @@ From the following voice input, extract a JSON object with EXACTLY these keys:
 - "reminder": "30 minutes before" if timed event, "2 days before" if deadline
 - "priority": "High" for exams/tests/deadlines, "Medium" for meetings, "Low" for general tasks
 - "calendar_event": {{ "create": true, "event_type": "timed" }} if time given,
-                    {{ "create": true, "event_type": "all-day deadline" }} if deadline
-- "missing_date": true if the date is completely absent and you cannot infer it, otherwise false
+                    {{ "create": true, "event_type": "all-day deadline" }} if deadline,
+                    {{ "create": false }} otherwise
+- "missing_date": true if the date is completely absent and cannot be inferred
 
-Respond ONLY with valid JSON. No explanation, no markdown.
+Respond ONLY with a valid JSON array. No explanation, no markdown backticks.
 
 Voice input: "{voice_text}"
 """
@@ -56,41 +80,7 @@ Voice input: "{voice_text}"
     raw = re.sub(r"^```(?:json)?\s*", "", raw)
     raw = re.sub(r"\s*```$", "", raw)
 
-    try:
-        parsed = json.loads(raw)
-    except json.JSONDecodeError:
-        # Fallback: return a minimal dict with missing_date=True
-        return {
-            "title": "",
-            "type": "Task",
-            "date": "",
-            "time": None,
-            "deadline": False,
-            "reminder": "30 minutes before",
-            "priority": "Medium",
-            "calendar_event": {"create": False},
-            "missing_date": True,
-        }
-
-    # Ensure parsed is a dict, not a list
-    if isinstance(parsed, list):
-        if parsed and isinstance(parsed[0], dict):
-            parsed = parsed[0]
-        else:
-            return {
-                "title": "",
-                "type": "Task",
-                "date": "",
-                "time": None,
-                "deadline": False,
-                "reminder": "30 minutes before",
-                "priority": "Medium",
-                "calendar_event": {"create": False},
-                "missing_date": True,
-            }
-
-    # Ensure all required keys exist with defaults
-    defaults = {
+    _default_task = {
         "title": "Untitled Task",
         "type": "Task",
         "date": today_str,
@@ -101,12 +91,33 @@ Voice input: "{voice_text}"
         "calendar_event": {"create": False},
         "missing_date": False,
     }
-    for key, default in defaults.items():
-        if key not in parsed:
-            parsed[key] = default
 
-    return parsed
+    try:
+        parsed = json.loads(raw)
+    except json.JSONDecodeError:
+        return [{**_default_task, "missing_date": True, "title": ""}]
 
+    # Normalise: always work with a list
+    if isinstance(parsed, dict):
+        parsed = [parsed]
+
+    if not isinstance(parsed, list) or not parsed:
+        return [{**_default_task, "missing_date": True, "title": ""}]
+
+    # Fill in missing keys for every task
+    result = []
+    for item in parsed:
+        if not isinstance(item, dict):
+            continue
+        task = {**_default_task, **item}
+        result.append(task)
+
+    return result if result else [{**_default_task, "missing_date": True, "title": ""}]
+
+
+# ---------------------------------------------------------------------------
+# GOOGLE CALENDAR SYNC
+# ---------------------------------------------------------------------------
 
 def _sync_with_google_calendar(task):
     """
@@ -135,6 +146,10 @@ def _sync_with_google_calendar(task):
         return None
 
 
+# ---------------------------------------------------------------------------
+# VIEWSET
+# ---------------------------------------------------------------------------
+
 class StudyTaskViewSet(ModelViewSet):
     serializer_class = StudyTaskSerializer
     permission_classes = [IsAuthenticated]
@@ -161,92 +176,124 @@ class StudyTaskViewSet(ModelViewSet):
     # ------------------------------------------------------------------
     @action(detail=False, methods=['post'], url_path='parse_voice')
     def parse_voice(self, request):
+        """
+        Preview only — parse the voice text and return all detected tasks
+        WITHOUT saving them.
+
+        Response shape:
+            { "parsed": [ task_dict, task_dict, ... ] }
+        or, if any task is missing a date:
+            { "needs_clarification": true, "question": "...", "partial": [...] }
+        """
         ser = VoiceInputSerializer(data=request.data)
         ser.is_valid(raise_exception=True)
         voice_text = ser.validated_data['voice_text']
 
         try:
-            parsed = _parse_with_gemini(voice_text)
+            tasks = _parse_with_gemini(voice_text)
         except Exception as e:
             return Response(
                 {'error': f'AI parsing failed: {str(e)}'},
                 status=status.HTTP_502_BAD_GATEWAY,
             )
 
-        if parsed.get('missing_date'):
+        # If ANY task is missing a date, ask for clarification
+        if any(t.get('missing_date') for t in tasks):
             return Response(
                 {
                     'needs_clarification': True,
-                    'question': 'Could you tell me the date for this task?',
-                    'partial': parsed,
+                    'question': 'Some tasks are missing a date. Could you provide the dates?',
+                    'partial': tasks,
                 },
                 status=status.HTTP_200_OK,
             )
 
-        return Response({'parsed': parsed}, status=status.HTTP_200_OK)
+        return Response({'parsed': tasks}, status=status.HTTP_200_OK)
 
     # ------------------------------------------------------------------
     @action(detail=False, methods=['post'], url_path='add_from_voice')
     def add_from_voice(self, request):
+        """
+        Parse the voice text, save ALL detected tasks (skipping duplicates),
+        and sync each one to Google Calendar.
+
+        Response shape:
+            {
+              "created": true,
+              "count": N,
+              "tasks": [ serialized_task, ... ],
+              "skipped_duplicates": [ title, ... ]   # tasks already in DB
+            }
+        """
         ser = VoiceInputSerializer(data=request.data)
         ser.is_valid(raise_exception=True)
         voice_text = ser.validated_data['voice_text']
 
         try:
-            parsed = _parse_with_gemini(voice_text)
+            parsed_tasks = _parse_with_gemini(voice_text)
         except Exception as e:
             return Response(
                 {'error': f'AI parsing failed: {str(e)}'},
                 status=status.HTTP_502_BAD_GATEWAY,
             )
 
-        if parsed.get('missing_date'):
+        # If any task is missing a date, ask for clarification before saving
+        if any(t.get('missing_date') for t in parsed_tasks):
             return Response(
                 {
                     'needs_clarification': True,
-                    'question': 'Could you tell me the date for this task?',
+                    'question': 'Some tasks are missing a date. Could you specify the dates?',
+                    'partial': parsed_tasks,
                 },
                 status=status.HTTP_200_OK,
             )
 
-        # Duplicate check
-        existing = StudyTask.objects.filter(
-            user=request.user,
-            title__iexact=parsed.get('title', ''),
-            date=parsed.get('date'),
-        ).first()
+        created_tasks = []
+        skipped = []
 
-        if existing:
-            return Response(
-                {
-                    'duplicate': True,
-                    'message': 'A task with this title and date already exists.',
-                    'task': StudyTaskSerializer(existing).data,
-                },
-                status=status.HTTP_200_OK,
+        for parsed in parsed_tasks:
+            title = parsed.get('title', 'Untitled Task')
+            task_date = parsed.get('date', TODAY.isoformat())
+
+            # Duplicate check per task
+            existing = StudyTask.objects.filter(
+                user=request.user,
+                title__iexact=title,
+                date=task_date,
+            ).first()
+
+            if existing:
+                skipped.append(title)
+                continue
+
+            task = StudyTask.objects.create(
+                user=request.user,
+                title=title,
+                task_type=parsed.get('type', 'Task'),
+                date=task_date,
+                time=parsed.get('time'),
+                deadline=parsed.get('deadline', False),
+                reminder=parsed.get('reminder', '30 minutes before'),
+                priority=parsed.get('priority', 'Medium'),
+                voice_input=voice_text,
+                parsed_json=parsed,
             )
 
-        task = StudyTask.objects.create(
-            user=request.user,
-            title=parsed.get('title', 'Untitled Task'),
-            task_type=parsed.get('type', 'Task'),
-            date=parsed.get('date', TODAY.isoformat()),
-            time=parsed.get('time'),
-            deadline=parsed.get('deadline', False),
-            reminder=parsed.get('reminder', '30 minutes before'),
-            priority=parsed.get('priority', 'Medium'),
-            voice_input=voice_text,
-            parsed_json=parsed,
-        )
+            # Sync to Google Calendar
+            event_id = _sync_with_google_calendar(task)
+            if event_id:
+                task.google_calendar_event_id = event_id
+                task.save(update_fields=["google_calendar_event_id"])
 
-        # Sync to Google Calendar (for voice-created tasks)
-        event_id = _sync_with_google_calendar(task)
-        if event_id:
-            task.google_calendar_event_id = event_id
-            task.save(update_fields=["google_calendar_event_id"])
+            created_tasks.append(task)
 
         return Response(
-            {'created': True, 'task': StudyTaskSerializer(task).data},
+            {
+                'created': True,
+                'count': len(created_tasks),
+                'tasks': StudyTaskSerializer(created_tasks, many=True).data,
+                'skipped_duplicates': skipped,
+            },
             status=status.HTTP_201_CREATED,
         )
 
