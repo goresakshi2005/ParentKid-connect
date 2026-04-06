@@ -1,15 +1,23 @@
+# backend/apps/screen_monitor/admin.py
+
 from django.contrib import admin
-from .models import ScreenSession, BehaviorAnalysis
+from .models import Device, AppUsage
 
 
-@admin.register(ScreenSession)
-class ScreenSessionAdmin(admin.ModelAdmin):
-    list_display = ('user', 'recorded_at', 'total_time', 'social_time', 'study_time', 'time_of_day')
-    list_filter = ('time_of_day',)
-    search_fields = ('user__email',)
+@admin.register(Device)
+class DeviceAdmin(admin.ModelAdmin):
+    list_display = ['device_name', 'device_id', 'user', 'registered_at', 'last_sync']
+    list_filter = ['registered_at']
+    search_fields = ['device_name', 'device_id', 'user__email']
 
 
-@admin.register(BehaviorAnalysis)
-class BehaviorAnalysisAdmin(admin.ModelAdmin):
-    list_display = ('session', 'detected_state', 'intensity', 'risk_level', 'parent_alert', 'analyzed_at')
-    list_filter = ('detected_state', 'risk_level', 'parent_alert')
+@admin.register(AppUsage)
+class AppUsageAdmin(admin.ModelAdmin):
+    list_display = ['app_name', 'package_name', 'usage_minutes', 'date', 'device']
+    list_filter = ['date', 'device']
+    search_fields = ['app_name', 'package_name']
+    ordering = ['-date', '-usage_time']
+
+    def usage_minutes(self, obj):
+        return f"{obj.usage_minutes} min"
+    usage_minutes.short_description = 'Usage (min)'
