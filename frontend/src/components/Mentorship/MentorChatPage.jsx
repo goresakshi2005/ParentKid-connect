@@ -74,6 +74,16 @@ export default function MentorChatPage({ stage }) {
         setAssignment(found || null);
     };
 
+    const meta = STAGE_META[stage] || { label: stage, emoji: '💬', color: 'gray' };
+
+    if (loading) {
+        return (
+            <div className="flex items-center justify-center min-h-[60vh]">
+                <div className="animate-spin rounded-full h-12 w-12 border-4 border-pink-500 border-t-transparent"></div>
+            </div>
+        );
+    }
+
     // If mentor role, show mentor dashboard
     if (isMentor) {
         return (
@@ -83,16 +93,6 @@ export default function MentorChatPage({ stage }) {
                 activeChat={activeChat}
                 onRefresh={loadAssignments}
             />
-        );
-    }
-
-    const meta = STAGE_META[stage] || { label: stage, emoji: '💬', color: 'gray' };
-
-    if (loading) {
-        return (
-            <div className="flex items-center justify-center min-h-[60vh]">
-                <div className="animate-spin rounded-full h-12 w-12 border-4 border-pink-500 border-t-transparent"></div>
-            </div>
         );
     }
 

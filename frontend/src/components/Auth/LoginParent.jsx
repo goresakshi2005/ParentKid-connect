@@ -26,6 +26,8 @@ function LoginParent() {
           } else {
             navigate('/dashboard/parent');
           }
+        } else if (user.role === 'mentor') {
+          navigate('/dashboard/mentor');
         } else {
           alert('Please use the teen login page.');
         }
@@ -38,7 +40,8 @@ function LoginParent() {
   return (
     <div className="max-w-md mx-auto py-24 px-4 transition-colors duration-300">
       <div className="bg-white dark:bg-slate-900 p-10 rounded-2xl shadow-2xl dark:shadow-pink-500/5 dark:border dark:border-slate-800">
-        <h2 className="text-3xl font-bold mb-8 dark:text-white text-center">Parent <span className="dark:text-pink-500">Login</span></h2>
+        <h2 className="text-3xl font-bold mb-2 dark:text-white text-center">Parent <span className="dark:text-pink-500">Login</span></h2>
+        <p className="text-center text-sm text-gray-400 dark:text-slate-500 mb-8">Parents &amp; Mentors sign in here</p>
 
         <form onSubmit={formik.handleSubmit} className="space-y-6">
           <div>

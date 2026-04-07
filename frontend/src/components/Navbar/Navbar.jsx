@@ -52,13 +52,22 @@ function Navbar() {
           ) : (
             <>
               <Link to="/" className="hover:text-blue-600 dark:text-gray-200 dark:hover:text-blue-400">Home</Link>
-              <Link
-                to={user.role === 'mentor' ? '/dashboard/mentor' : user.role === 'teen' ? '/mentor-chat/teen?stage=teen_age' : '/mentor-chat'}
-                className="hover:text-blue-600 dark:text-gray-200 dark:hover:text-blue-400 flex items-center gap-1"
-              >
-                💬 Mentor Chat
-              </Link>
-              <Link to="/pricing" className="hover:text-blue-600 dark:text-gray-200 dark:hover:text-blue-400">Upgrade</Link>
+              {/* Dashboard link based on role */}
+              {user.role === 'mentor' ? (
+                <Link to="/dashboard/mentor" className="hover:text-blue-600 dark:text-gray-200 dark:hover:text-blue-400 flex items-center gap-1">
+                  🧑‍🏫 My Dashboard
+                </Link>
+              ) : (
+                <>
+                  <Link
+                    to={user.role === 'teen' ? '/mentor-chat/teen?stage=teen_age' : '/mentor-chat'}
+                    className="hover:text-blue-600 dark:text-gray-200 dark:hover:text-blue-400 flex items-center gap-1"
+                  >
+                    💬 Mentor Chat
+                  </Link>
+                  <Link to="/pricing" className="hover:text-blue-600 dark:text-gray-200 dark:hover:text-blue-400">Upgrade</Link>
+                </>
+              )}
               <div className="flex gap-4 items-center">
                 <span className="text-sm text-gray-600 dark:text-gray-300">{user.email}</span>
                 <button
@@ -94,12 +103,18 @@ function Navbar() {
           <Link to="/" className="block hover:text-blue-600 dark:text-gray-200">Home</Link>
           <Link to="/pricing" className="block hover:text-blue-600 dark:text-gray-200">Pricing</Link>
           {user && (
-            <Link
-              to={user.role === 'mentor' ? '/dashboard/mentor' : user.role === 'teen' ? '/mentor-chat/teen?stage=teen_age' : '/mentor-chat'}
-              className="block hover:text-blue-600 dark:text-gray-200"
-            >
-              💬 Mentor Chat
-            </Link>
+            user.role === 'mentor' ? (
+              <Link to="/dashboard/mentor" className="block hover:text-blue-600 dark:text-gray-200">
+                🧑‍🏫 My Dashboard
+              </Link>
+            ) : (
+              <Link
+                to={user.role === 'teen' ? '/mentor-chat/teen?stage=teen_age' : '/mentor-chat'}
+                className="block hover:text-blue-600 dark:text-gray-200"
+              >
+                💬 Mentor Chat
+              </Link>
+            )
           )}
           {!user ? (
             <div className="space-y-2">

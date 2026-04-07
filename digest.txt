@@ -1,5 +1,24 @@
 Directory structure:
 └── parentkid-connect/
+    ├── android-app/
+    │   └── app/
+    │       └── src/
+    │           └── main/
+    │               ├── AndroidManifest.xml
+    │               ├── java/
+    │               │   └── com/
+    │               │       └── parentkid/
+    │               │           └── screenmonitor/
+    │               │               ├── MainActivity.kt
+    │               │               ├── ScreenTimeService.kt
+    │               │               ├── UsageStatsHelper.kt
+    │               │               └── api/
+    │               │                   ├── ApiModels.kt
+    │               │                   ├── ApiService.kt
+    │               │                   └── RetrofitClient.kt
+    │               └── res/
+    │                   └── layout/
+    │                       └── activity_main.xml
     ├── backend/
     │   ├── db.sqlite3
     │   ├── manage.py
@@ -94,6 +113,7 @@ Directory structure:
     │   │   │   ├── views.py
     │   │   │   └── migrations/
     │   │   │       ├── 0001_initial.py
+    │   │   │       ├── 0002_remove_appusage_unique_app_usage_per_day_and_more.py
     │   │   │       └── __init__.py
     │   │   ├── study_planner/
     │   │   │   ├── __init__.py
@@ -201,6 +221,9 @@ Directory structure:
             │   ├── Reports/
             │   │   ├── MaternalHealthGuide.jsx
             │   │   └── ReportUploader.jsx
+            │   ├── ScreenTime/
+            │   │   ├── DeviceManager.jsx
+            │   │   └── ScreenTimeDashboard.jsx
             │   ├── Teen/
             │   │   ├── AssessmentPrompt.jsx
             │   │   └── Dashboard.jsx
@@ -212,6 +235,7 @@ Directory structure:
             │   ├── SubscriptionContext.jsx
             │   └── ThemeContext.jsx
             ├── pages/
+            │   ├── DeviceManagerPage.jsx
             │   ├── GoogleCallback.jsx
             │   ├── HomePage.jsx
             │   ├── MentorChatPageWrapper.jsx
@@ -219,6 +243,7 @@ Directory structure:
             │   ├── ParentDashboard.jsx
             │   ├── PregnancyDashboard.jsx
             │   ├── PricingPage.jsx
+            │   ├── ScreenTimePage.jsx
             │   ├── TeenDashboard.jsx
             │   └── VoiceAssessmentPage.jsx
             ├── services/
@@ -228,6 +253,7 @@ Directory structure:
             │   ├── maternalHealthService.js
             │   ├── mentorshipService.js
             │   ├── reportService.js
+            │   ├── screenTimeService.js
             │   ├── studyPlannerService.js
             │   └── voiceAssessmentService.js
             ├── styles/
@@ -235,6 +261,616 @@ Directory structure:
             │   └── tailwind.css
             └── utils/
                 └── constants.js
+
+================================================
+FILE: android-app/app/src/main/AndroidManifest.xml
+================================================
+<?xml version="1.0" encoding="utf-8"?>
+<!-- android-app/app/src/main/AndroidManifest.xml -->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!-- Required to read app usage statistics -->
+    <uses-permission android:name="android.permission.PACKAGE_USAGE_STATS"
+        tools:ignore="ProtectedPermissions"
+        xmlns:tools="http://schemas.android.com/tools"/>
+
+    <!-- Internet access to send data to Django backend -->
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+
+    <application
+        android:allowBackup="true"
+        android:label="Screen Monitor"
+        android:theme="@style/Theme.AppCompat.Light.DarkActionBar"
+        android:usesCleartextTraffic="true">
+
+        <!-- usesCleartextTraffic=true allows HTTP (for dev with 10.0.2.2 or LAN IP).
+             Remove this in production and use HTTPS only. -->
+
+        <activity
+            android:name=".MainActivity"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+        <!-- Background sync service -->
+        <service
+            android:name=".ScreenTimeService"
+            android:exported="false" />
+
+    </application>
+
+</manifest>
+
+
+================================================
+FILE: android-app/app/src/main/java/com/parentkid/screenmonitor/MainActivity.kt
+================================================
+// android-app/app/src/main/java/com/parentkid/screenmonitor/MainActivity.kt
+
+package com.parentkid.screenmonitor
+
+import android.content.Intent
+import android.os.Bundle
+import android.provider.Settings
+import android.util.Log
+import android.widget.Button
+import android.widget.TextView
+import android.widget.Toast
+import androidx.appcompat.app.AppCompatActivity
+import androidx.lifecycle.lifecycleScope
+import com.parentkid.screenmonitor.api.LoginRequest
+import com.parentkid.screenmonitor.api.RegisterDeviceRequest
+import com.parentkid.screenmonitor.api.RetrofitClient
+import com.parentkid.screenmonitor.api.ScreenTimeUploadRequest
+import kotlinx.coroutines.launch
+import java.util.UUID
+
+class MainActivity : AppCompatActivity() {
+
+    // ──────────────────────────────────────────
+    // CONFIG — Change these for your setup
+    // ──────────────────────────────────────────
+    private val USERNAME = "testparent"       // Your Django user
+    private val PASSWORD = "testpass123"      // Your Django password
+    private val USE_DUMMY_DATA = true         // Set false on real device with permission
+    // ──────────────────────────────────────────
+
+    private var accessToken: String? = null
+    private val deviceId = getDeviceId()
+
+    private lateinit var statusText: TextView
+    private lateinit var btnSync: Button
+    private lateinit var btnPermission: Button
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        setContentView(R.layout.activity_main)
+
+        statusText = findViewById(R.id.statusText)
+        btnSync = findViewById(R.id.btnSync)
+        btnPermission = findViewById(R.id.btnPermission)
+
+        btnPermission.setOnClickListener {
+            // Opens Android's Usage Access settings screen
+            startActivity(Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS))
+        }
+
+        btnSync.setOnClickListener {
+            lifecycleScope.launch {
+                syncScreenTime()
+            }
+        }
+
+        // Auto-check permission
+        updatePermissionStatus()
+    }
+
+    private fun updatePermissionStatus() {
+        val hasPermission = UsageStatsHelper.hasUsagePermission(this)
+        btnPermission.isEnabled = !hasPermission
+        btnPermission.text = if (hasPermission) "✓ Permission Granted" else "Grant Usage Permission"
+    }
+
+    private suspend fun syncScreenTime() {
+        statusText.text = "Step 1/3: Logging in..."
+        btnSync.isEnabled = false
+
+        try {
+            // ── Step 1: Login ─────────────────────────
+            val loginResp = RetrofitClient.api.login(LoginRequest(USERNAME, PASSWORD))
+            if (!loginResp.isSuccessful) {
+                showError("Login failed: ${loginResp.code()} ${loginResp.errorBody()?.string()}")
+                return
+            }
+            accessToken = loginResp.body()!!.access
+            val authHeader = "Bearer $accessToken"
+            Log.d("ScreenMonitor", "Logged in. Token: $accessToken")
+
+            // ── Step 2: Register device ───────────────
+            statusText.text = "Step 2/3: Registering device..."
+            val deviceResp = RetrofitClient.api.registerDevice(
+                authHeader,
+                RegisterDeviceRequest(
+                    deviceId = deviceId,
+                    deviceName = "${android.os.Build.MANUFACTURER} ${android.os.Build.MODEL}"
+                )
+            )
+            if (!deviceResp.isSuccessful) {
+                showError("Device registration failed: ${deviceResp.errorBody()?.string()}")
+                return
+            }
+            Log.d("ScreenMonitor", "Device registered: ${deviceResp.body()}")
+
+            // ── Step 3: Collect & Upload usage ────────
+            statusText.text = "Step 3/3: Uploading screen time..."
+
+            val usages = if (USE_DUMMY_DATA) {
+                UsageStatsHelper.getDummyUsage()
+            } else {
+                if (!UsageStatsHelper.hasUsagePermission(this)) {
+                    showError("Please grant Usage Access permission first.")
+                    return
+                }
+                UsageStatsHelper.getTodayUsage(this)
+            }
+
+            Log.d("ScreenMonitor", "Sending ${usages.size} app usage records")
+
+            val uploadResp = RetrofitClient.api.uploadScreenTime(
+                authHeader,
+                ScreenTimeUploadRequest(deviceId = deviceId, usages = usages)
+            )
+
+            if (!uploadResp.isSuccessful) {
+                showError("Upload failed: ${uploadResp.errorBody()?.string()}")
+                return
+            }
+
+            val result = uploadResp.body()!!
+            statusText.text = "✓ Sync complete!\n" +
+                    "Apps synced: ${usages.size}\n" +
+                    "New records: ${result.created}\n" +
+                    "Updated: ${result.updated}"
+            Toast.makeText(this, "Screen time synced!", Toast.LENGTH_SHORT).show()
+
+        } catch (e: Exception) {
+            showError("Network error: ${e.message}\n\nMake sure Django is running on port 8000.")
+            Log.e("ScreenMonitor", "Sync error", e)
+        } finally {
+            btnSync.isEnabled = true
+            updatePermissionStatus()
+        }
+    }
+
+    private fun showError(msg: String) {
+        statusText.text = "❌ Error:\n$msg"
+        Toast.makeText(this, "Sync failed", Toast.LENGTH_LONG).show()
+    }
+
+    private fun getDeviceId(): String {
+        // Use Android ID as a stable device identifier
+        return try {
+            Settings.Secure.getString(
+                application.contentResolver,
+                Settings.Secure.ANDROID_ID
+            ) ?: UUID.randomUUID().toString()
+        } catch (e: Exception) {
+            UUID.randomUUID().toString()
+        }
+    }
+}
+
+
+================================================
+FILE: android-app/app/src/main/java/com/parentkid/screenmonitor/ScreenTimeService.kt
+================================================
+// android-app/app/src/main/java/com/parentkid/screenmonitor/ScreenTimeService.kt
+
+package com.parentkid.screenmonitor
+
+import android.app.Service
+import android.content.Intent
+import android.os.IBinder
+import android.util.Log
+import com.parentkid.screenmonitor.api.LoginRequest
+import com.parentkid.screenmonitor.api.RegisterDeviceRequest
+import com.parentkid.screenmonitor.api.RetrofitClient
+import com.parentkid.screenmonitor.api.ScreenTimeUploadRequest
+import kotlinx.coroutines.*
+
+/**
+ * Optional background service â€” syncs screen time data without user interaction.
+ *
+ * To start it from MainActivity:
+ *   startService(Intent(this, ScreenTimeService::class.java))
+ *
+ * For production use, replace this with WorkManager for reliable background execution.
+ */
+class ScreenTimeService : Service() {
+
+    private val serviceScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
+
+    // â”€â”€ Configure these to match MainActivity â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    private val USERNAME = "testparent"
+    private val PASSWORD = "testpass123"
+    private val USE_DUMMY = true
+    // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+
+    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        Log.d("ScreenTimeService", "Service started â€” beginning sync")
+        serviceScope.launch {
+            runSync()
+            stopSelf()
+        }
+        return START_NOT_STICKY
+    }
+
+    private suspend fun runSync() {
+        try {
+            val loginResp = RetrofitClient.api.login(LoginRequest(USERNAME, PASSWORD))
+            if (!loginResp.isSuccessful) {
+                Log.e("ScreenTimeService", "Login failed: ${loginResp.code()}")
+                return
+            }
+
+            val token = "Bearer ${loginResp.body()!!.access}"
+            val deviceId = getDeviceId()
+
+            RetrofitClient.api.registerDevice(
+                token,
+                RegisterDeviceRequest(
+                    deviceId = deviceId,
+                    deviceName = "${android.os.Build.MANUFACTURER} ${android.os.Build.MODEL}"
+                )
+            )
+
+            val usages = if (USE_DUMMY) {
+                UsageStatsHelper.getDummyUsage()
+            } else {
+                UsageStatsHelper.getTodayUsage(this@ScreenTimeService)
+            }
+
+            val uploadResp = RetrofitClient.api.uploadScreenTime(
+                token,
+                ScreenTimeUploadRequest(deviceId = deviceId, usages = usages)
+            )
+
+            if (uploadResp.isSuccessful) {
+                Log.d("ScreenTimeService", "Sync successful: ${uploadResp.body()?.message}")
+            } else {
+                Log.e("ScreenTimeService", "Upload failed: ${uploadResp.code()}")
+            }
+
+        } catch (e: Exception) {
+            Log.e("ScreenTimeService", "Sync error: ${e.message}", e)
+        }
+    }
+
+    private fun getDeviceId(): String {
+        return try {
+            android.provider.Settings.Secure.getString(
+                contentResolver,
+                android.provider.Settings.Secure.ANDROID_ID
+            ) ?: "unknown-device"
+        } catch (e: Exception) {
+            "unknown-device"
+        }
+    }
+
+    override fun onBind(intent: Intent?): IBinder? = null
+
+    override fun onDestroy() {
+        super.onDestroy()
+        serviceScope.cancel()
+    }
+}
+
+
+================================================
+FILE: android-app/app/src/main/java/com/parentkid/screenmonitor/UsageStatsHelper.kt
+================================================
+// android-app/app/src/main/java/com/parentkid/screenmonitor/UsageStatsHelper.kt
+
+package com.parentkid.screenmonitor
+
+import android.app.AppOpsManager
+import android.app.usage.UsageStatsManager
+import android.content.Context
+import android.content.pm.PackageManager
+import android.os.Process
+import com.parentkid.screenmonitor.api.AppUsageItem
+import java.text.SimpleDateFormat
+import java.util.*
+
+object UsageStatsHelper {
+
+    /**
+     * Check if the app has PACKAGE_USAGE_STATS permission.
+     * If not, you must send the user to Settings > Apps > Special app access > Usage access.
+     */
+    fun hasUsagePermission(context: Context): Boolean {
+        val appOps = context.getSystemService(Context.APP_OPS_SERVICE) as AppOpsManager
+        val mode = appOps.checkOpNoThrow(
+            AppOpsManager.OPSTR_GET_USAGE_STATS,
+            Process.myUid(),
+            context.packageName
+        )
+        return mode == AppOpsManager.MODE_ALLOWED
+    }
+
+    /**
+     * Collects today's app usage stats using UsageStatsManager.
+     * Returns a list of AppUsageItem ready to POST to the Django backend.
+     *
+     * Only includes apps with usage > 0 seconds.
+     * Skips system/launcher apps that are not meaningful.
+     */
+    fun getTodayUsage(context: Context): List<AppUsageItem> {
+        val usageStatsManager = context.getSystemService(Context.USAGE_STATS_SERVICE)
+                as UsageStatsManager
+
+        val cal = Calendar.getInstance()
+        val endTime = cal.timeInMillis
+
+        // Start of today (midnight)
+        cal.set(Calendar.HOUR_OF_DAY, 0)
+        cal.set(Calendar.MINUTE, 0)
+        cal.set(Calendar.SECOND, 0)
+        cal.set(Calendar.MILLISECOND, 0)
+        val startTime = cal.timeInMillis
+
+        val todayStr = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date())
+
+        val stats = usageStatsManager.queryUsageStats(
+            UsageStatsManager.INTERVAL_DAILY,
+            startTime,
+            endTime
+        )
+
+        val pm = context.packageManager
+        val skippedPackages = setOf(
+            "com.android.launcher",
+            "com.android.launcher2",
+            "com.android.launcher3",
+            "com.google.android.apps.nexuslauncher",
+            "com.android.systemui",
+            context.packageName  // Skip this app itself
+        )
+
+        return stats
+            .filter { it.totalTimeInForeground > 0 }
+            .filter { it.packageName !in skippedPackages }
+            .map { stat ->
+                val appName = try {
+                    pm.getApplicationLabel(
+                        pm.getApplicationInfo(stat.packageName, PackageManager.GET_META_DATA)
+                    ).toString()
+                } catch (e: PackageManager.NameNotFoundException) {
+                    stat.packageName  // fallback to package name if app not found
+                }
+
+                AppUsageItem(
+                    appName = appName,
+                    packageName = stat.packageName,
+                    usageTime = stat.totalTimeInForeground / 1000,  // ms â†’ seconds
+                    date = todayStr
+                )
+            }
+            .sortedByDescending { it.usageTime }
+    }
+
+    /**
+     * Returns DUMMY data for testing without a real Android device.
+     * Remove this once you test with a real device.
+     */
+    fun getDummyUsage(): List<AppUsageItem> {
+        val today = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date())
+        return listOf(
+            AppUsageItem("YouTube", "com.google.android.youtube", 3600, today),
+            AppUsageItem("Instagram", "com.instagram.android", 2700, today),
+            AppUsageItem("WhatsApp", "com.whatsapp", 1800, today),
+            AppUsageItem("Chrome", "com.android.chrome", 1200, today),
+            AppUsageItem("Minecraft", "com.mojang.minecraftpe", 900, today),
+            AppUsageItem("Spotify", "com.spotify.music", 600, today),
+        )
+    }
+}
+
+
+================================================
+FILE: android-app/app/src/main/java/com/parentkid/screenmonitor/api/ApiModels.kt
+================================================
+// android-app/app/src/main/java/com/parentkid/screenmonitor/api/ApiModels.kt
+
+package com.parentkid.screenmonitor.api
+
+import com.google.gson.annotations.SerializedName
+
+// â”€â”€ Request bodies â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+
+data class LoginRequest(
+    val username: String,
+    val password: String
+)
+
+data class RegisterDeviceRequest(
+    @SerializedName("device_id") val deviceId: String,
+    @SerializedName("device_name") val deviceName: String
+)
+
+data class AppUsageItem(
+    @SerializedName("app_name") val appName: String,
+    @SerializedName("package_name") val packageName: String,
+    @SerializedName("usage_time") val usageTime: Long,   // seconds
+    val date: String                                       // "YYYY-MM-DD"
+)
+
+data class ScreenTimeUploadRequest(
+    @SerializedName("device_id") val deviceId: String,
+    val usages: List<AppUsageItem>
+)
+
+// â”€â”€ Response bodies â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+
+data class LoginResponse(
+    val access: String,
+    val refresh: String,
+    val user: UserInfo
+)
+
+data class UserInfo(
+    val id: Int,
+    val username: String,
+    val email: String
+)
+
+data class DeviceResponse(
+    val id: Int,
+    @SerializedName("device_name") val deviceName: String,
+    @SerializedName("device_id") val deviceId: String,
+    @SerializedName("registered_at") val registeredAt: String
+)
+
+data class UploadResponse(
+    val message: String,
+    val created: Int,
+    val updated: Int
+)
+
+
+================================================
+FILE: android-app/app/src/main/java/com/parentkid/screenmonitor/api/ApiService.kt
+================================================
+// android-app/app/src/main/java/com/parentkid/screenmonitor/api/ApiService.kt
+
+package com.parentkid.screenmonitor.api
+
+import retrofit2.Response
+import retrofit2.http.Body
+import retrofit2.http.Header
+import retrofit2.http.POST
+
+interface ApiService {
+
+    @POST("api/login")
+    suspend fun login(
+        @Body request: LoginRequest
+    ): Response<LoginResponse>
+
+    @POST("api/register-device")
+    suspend fun registerDevice(
+        @Header("Authorization") token: String,
+        @Body request: RegisterDeviceRequest
+    ): Response<DeviceResponse>
+
+    @POST("api/upload-screen-time")
+    suspend fun uploadScreenTime(
+        @Header("Authorization") token: String,
+        @Body request: ScreenTimeUploadRequest
+    ): Response<UploadResponse>
+}
+
+
+================================================
+FILE: android-app/app/src/main/java/com/parentkid/screenmonitor/api/RetrofitClient.kt
+================================================
+// android-app/app/src/main/java/com/parentkid/screenmonitor/api/RetrofitClient.kt
+
+package com.parentkid.screenmonitor.api
+
+import okhttp3.OkHttpClient
+import okhttp3.logging.HttpLoggingInterceptor
+import retrofit2.Retrofit
+import retrofit2.converter.gson.GsonConverterFactory
+
+object RetrofitClient {
+
+    // ⚠️ IMPORTANT: Change this to your computer's IP when testing on a real device.
+    // Use 10.0.2.2 for Android emulator (it maps to your host machine's localhost).
+    // Use your LAN IP (e.g. 192.168.1.X) for a real device on the same Wi-Fi.
+    private const val BASE_URL = "http://10.0.2.2:8000/"
+
+    private val loggingInterceptor = HttpLoggingInterceptor().apply {
+        level = HttpLoggingInterceptor.Level.BODY
+    }
+
+    private val okHttpClient = OkHttpClient.Builder()
+        .addInterceptor(loggingInterceptor)
+        .build()
+
+    val api: ApiService by lazy {
+        Retrofit.Builder()
+            .baseUrl(BASE_URL)
+            .client(okHttpClient)
+            .addConverterFactory(GsonConverterFactory.create())
+            .build()
+            .create(ApiService::class.java)
+    }
+}
+
+
+================================================
+FILE: android-app/app/src/main/res/layout/activity_main.xml
+================================================
+<?xml version="1.0" encoding="utf-8"?>
+<!-- android-app/app/src/main/res/layout/activity_main.xml -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:padding="24dp"
+    android:gravity="center">
+
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="ðŸ“± Screen Monitor"
+        android:textSize="26sp"
+        android:textStyle="bold"
+        android:layout_marginBottom="8dp" />
+
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="ParentKid Connect"
+        android:textSize="14sp"
+        android:textColor="#888888"
+        android:layout_marginBottom="40dp" />
+
+    <Button
+        android:id="@+id/btnPermission"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Grant Usage Permission"
+        android:layout_marginBottom="16dp"
+        android:backgroundTint="#FF9800" />
+
+    <Button
+        android:id="@+id/btnSync"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="ðŸ”„ Sync Screen Time"
+        android:layout_marginBottom="32dp"
+        android:backgroundTint="#4CAF50" />
+
+    <TextView
+        android:id="@+id/statusText"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Tap Sync to upload screen time data to the dashboard."
+        android:textSize="15sp"
+        android:textColor="#333333"
+        android:gravity="center"
+        android:lineSpacingExtra="4dp"
+        android:padding="16dp"
+        android:background="#F5F5F5" />
+
+</LinearLayout>
+
 
 ================================================
 FILE: backend/db.sqlite3
@@ -3656,21 +4292,29 @@ def confirm_and_schedule(
 ================================================
 FILE: backend/apps/screen_monitor/admin.py
 ================================================
+# backend/apps/screen_monitor/admin.py
+
 from django.contrib import admin
-from .models import ScreenSession, BehaviorAnalysis
+from .models import Device, AppUsage
 
 
-@admin.register(ScreenSession)
-class ScreenSessionAdmin(admin.ModelAdmin):
-    list_display = ('user', 'recorded_at', 'total_time', 'social_time', 'study_time', 'time_of_day')
-    list_filter = ('time_of_day',)
-    search_fields = ('user__email',)
+@admin.register(Device)
+class DeviceAdmin(admin.ModelAdmin):
+    list_display = ['device_name', 'device_id', 'user', 'registered_at', 'last_sync']
+    list_filter = ['registered_at']
+    search_fields = ['device_name', 'device_id', 'user__email']
 
 
-@admin.register(BehaviorAnalysis)
-class BehaviorAnalysisAdmin(admin.ModelAdmin):
-    list_display = ('session', 'detected_state', 'intensity', 'risk_level', 'parent_alert', 'analyzed_at')
-    list_filter = ('detected_state', 'risk_level', 'parent_alert')
+@admin.register(AppUsage)
+class AppUsageAdmin(admin.ModelAdmin):
+    list_display = ['app_name', 'package_name', 'usage_minutes', 'date', 'device']
+    list_filter = ['date', 'device']
+    search_fields = ['app_name', 'package_name']
+    ordering = ['-date', '-usage_time']
+
+    def usage_minutes(self, obj):
+        return f"{obj.usage_minutes} min"
+    usage_minutes.short_description = 'Usage (min)'
 
 
 ================================================
@@ -3786,312 +4430,385 @@ def _fallback_result() -> dict:
 ================================================
 FILE: backend/apps/screen_monitor/models.py
 ================================================
+# backend/apps/screen_monitor/models.py
+
 from django.db import models
 from django.contrib.auth import get_user_model
 
 User = get_user_model()
 
 
-class ScreenSession(models.Model):
-    """
-    Automatically captured screen usage session for a teen user.
-    In production, this is populated by the device agent / browser extension.
-    For the demo, the frontend simulates real-time session data.
-    """
-    TIME_OF_DAY_CHOICES = [
-        ('morning', 'Morning'),
-        ('afternoon', 'Afternoon'),
-        ('evening', 'Evening'),
-        ('night', 'Night'),
-    ]
-
-    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='screen_sessions')
-    recorded_at = models.DateTimeField(auto_now_add=True)
-
-    # Automatically tracked metrics (minutes)
-    total_time = models.PositiveIntegerField(default=0)
-    social_time = models.PositiveIntegerField(default=0)
-    study_time = models.PositiveIntegerField(default=0)
-    continuous_usage = models.PositiveIntegerField(default=0)
-
-    time_of_day = models.CharField(max_length=20, choices=TIME_OF_DAY_CHOICES, default='evening')
-    apps_list = models.JSONField(default=list)  # ["Instagram", "YouTube", "Khan Academy"]
+class Device(models.Model):
+    """Represents a child's Android device registered by a parent."""
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='devices')
+    device_name = models.CharField(max_length=100)
+    device_id = models.CharField(max_length=255, unique=True)  # Android device ID
+    registered_at = models.DateTimeField(auto_now_add=True)
+    last_sync = models.DateTimeField(null=True, blank=True)
 
     class Meta:
-        ordering = ['-recorded_at']
+        ordering = ['-registered_at']
 
     def __str__(self):
-        return f"{self.user.email} | {self.recorded_at.date()} | {self.total_time}min"
+        return f"{self.device_name} ({self.user.email})"
 
 
-class BehaviorAnalysis(models.Model):
-    """
-    AI-generated analysis result for a ScreenSession.
-    Auto-triggered after each session is logged.
-    """
-    DETECTED_STATE_CHOICES = [
-        ('normal', 'Normal'),
-        ('stressed', 'Stressed'),
-        ('fatigued', 'Fatigued'),
-        ('distracted', 'Distracted'),
-        ('overuse', 'Overuse'),
-    ]
-    INTENSITY_CHOICES = [('low', 'Low'), ('medium', 'Medium'), ('high', 'High')]
-    RISK_CHOICES = [('none', 'None'), ('low', 'Low'), ('medium', 'Medium'), ('high', 'High')]
-    ACTION_CHOICES = [('focus_mode', 'Focus Mode'), ('digital_detox', 'Digital Detox'), ('rest_mode', 'Rest Mode'), ('none', 'None')]
-    PARENT_ALERT_CHOICES = [('none', 'None'), ('consider', 'Consider'), ('required', 'Required')]
-
-    session = models.OneToOneField(ScreenSession, on_delete=models.CASCADE, related_name='analysis')
-    analyzed_at = models.DateTimeField(auto_now_add=True)
-
-    detected_state = models.CharField(max_length=20, choices=DETECTED_STATE_CHOICES, default='normal')
-    intensity = models.CharField(max_length=10, choices=INTENSITY_CHOICES, default='low')
-    confidence = models.FloatField(default=0.5)
-    behavior_pattern = models.TextField(blank=True)
-    risk_level = models.CharField(max_length=10, choices=RISK_CHOICES, default='none')
-
-    # Auto-action
-    action_type = models.CharField(max_length=20, choices=ACTION_CHOICES, default='none')
-    action_description = models.TextField(blank=True)
-    action_duration = models.CharField(max_length=50, blank=True)
-
-    system_changes = models.JSONField(default=list)
-    user_message = models.TextField(blank=True)
-    parent_alert = models.CharField(max_length=10, choices=PARENT_ALERT_CHOICES, default='none')
-
-    # Raw JSON from AI
-    raw_result = models.JSONField(default=dict)
+class AppUsage(models.Model):
+    """Stores per-app screen time usage data uploaded from the Android device."""
+    device = models.ForeignKey(Device, on_delete=models.CASCADE, related_name='app_usages')
+    app_name = models.CharField(max_length=255)          # e.g. "YouTube"
+    package_name = models.CharField(max_length=255)      # e.g. "com.google.android.youtube"
+    usage_time = models.PositiveIntegerField()            # in seconds
+    date = models.DateField()                             # which day this usage belongs to
+    timestamp = models.DateTimeField(auto_now_add=True)  # when it was uploaded
 
     class Meta:
-        ordering = ['-analyzed_at']
+        ordering = ['-date', '-usage_time']
+        # Prevent duplicate entries for same app on same day for same device
+        unique_together = ('device', 'package_name', 'date')
 
     def __str__(self):
-        return f"{self.session.user.email} | {self.detected_state} ({self.intensity})"
+        mins = self.usage_time // 60
+        return f"{self.app_name} â€” {mins}m on {self.date}"
+
+    @property
+    def usage_minutes(self):
+        return round(self.usage_time / 60, 1)
 
 
 ================================================
 FILE: backend/apps/screen_monitor/serializers.py
 ================================================
+# backend/apps/screen_monitor/serializers.py
+
 from rest_framework import serializers
-from .models import ScreenSession, BehaviorAnalysis
+from .models import Device, AppUsage
 
 
-class BehaviorAnalysisSerializer(serializers.ModelSerializer):
+class DeviceSerializer(serializers.ModelSerializer):
     class Meta:
-        model = BehaviorAnalysis
-        fields = [
-            'id', 'analyzed_at', 'detected_state', 'intensity', 'confidence',
-            'behavior_pattern', 'risk_level', 'action_type', 'action_description',
-            'action_duration', 'system_changes', 'user_message', 'parent_alert',
-        ]
+        model = Device
+        fields = ['id', 'device_name', 'device_id', 'registered_at', 'last_sync']
+        read_only_fields = ['id', 'registered_at', 'last_sync']
 
 
-class ScreenSessionSerializer(serializers.ModelSerializer):
-    analysis = BehaviorAnalysisSerializer(read_only=True)
+class AppUsageSerializer(serializers.ModelSerializer):
+    usage_minutes = serializers.ReadOnlyField()
 
     class Meta:
-        model = ScreenSession
+        model = AppUsage
         fields = [
-            'id', 'recorded_at', 'total_time', 'social_time', 'study_time',
-            'continuous_usage', 'time_of_day', 'apps_list', 'analysis',
+            'id', 'app_name', 'package_name',
+            'usage_time', 'usage_minutes', 'date', 'timestamp'
         ]
-        read_only_fields = ['recorded_at']
+        read_only_fields = ['id', 'timestamp', 'usage_minutes']
 
 
-class ScreenSessionCreateSerializer(serializers.ModelSerializer):
-    """Used when the device agent POSTs a new session."""
-    class Meta:
-        model = ScreenSession
-        fields = [
-            'total_time', 'social_time', 'study_time',
-            'continuous_usage', 'time_of_day', 'apps_list',
-        ]
+class AppUsageUploadItemSerializer(serializers.Serializer):
+    """Used for each item in the batch upload from Android."""
+    app_name = serializers.CharField(max_length=255)
+    package_name = serializers.CharField(max_length=255)
+    usage_time = serializers.IntegerField(min_value=0)  # seconds
+    date = serializers.DateField()
+
+
+class ScreenTimeUploadSerializer(serializers.Serializer):
+    """Top-level payload sent by the Android app."""
+    device_id = serializers.CharField(max_length=255)
+    usages = AppUsageUploadItemSerializer(many=True)
+
+
+class DailySummarySerializer(serializers.Serializer):
+    """Aggregated daily summary returned to the React frontend."""
+    date = serializers.DateField()
+    total_seconds = serializers.IntegerField()
+    total_minutes = serializers.FloatField()
+    app_count = serializers.IntegerField()
+    apps = AppUsageSerializer(many=True)
 
 
 ================================================
 FILE: backend/apps/screen_monitor/urls.py
 ================================================
+# backend/apps/screen_monitor/urls.py
+
 from django.urls import path
 from . import views
 
 urlpatterns = [
-    path('session/', views.log_session, name='screen-log-session'),
-    path('sessions/', views.list_sessions, name='screen-list-sessions'),
-    path('latest/', views.latest_analysis, name='screen-latest-analysis'),
-    path('summary/', views.weekly_summary, name='screen-weekly-summary'),
+    # Auth
+    path('register', views.register, name='sm-register'),
+    path('login', views.login_view, name='sm-login'),
+
+    # Device management
+    path('register-device', views.register_device, name='sm-register-device'),
+    path('devices', views.list_devices, name='sm-list-devices'),
+
+    # Screen time data
+    path('upload-screen-time', views.upload_screen_time, name='sm-upload'),
+    path('get-usage', views.get_usage, name='sm-get-usage'),
 ]
 
 
 ================================================
 FILE: backend/apps/screen_monitor/views.py
 ================================================
-"""
-screen_monitor/views.py
+# backend/apps/screen_monitor/views.py
 
-Endpoints:
-  POST /screen-monitor/session/   â€“ device agent logs a new session (auto-triggers AI)
-  GET  /screen-monitor/sessions/  â€“ teen/parent fetches session history + analyses
-  GET  /screen-monitor/latest/    â€“ latest analysis for the logged-in teen
-  GET  /screen-monitor/summary/   â€“ aggregated weekly summary
-"""
 from django.utils import timezone
+from django.db.models import Sum
 from rest_framework import status
 from rest_framework.decorators import api_view, permission_classes
-from rest_framework.permissions import IsAuthenticated
+from rest_framework.permissions import IsAuthenticated, AllowAny
 from rest_framework.response import Response
+from rest_framework_simplejwt.tokens import RefreshToken
+from django.contrib.auth import get_user_model, authenticate
+from collections import defaultdict
 
-from .ai_service import analyze_session
-from .models import BehaviorAnalysis, ScreenSession
+from .models import Device, AppUsage
 from .serializers import (
-    BehaviorAnalysisSerializer,
-    ScreenSessionCreateSerializer,
-    ScreenSessionSerializer,
+    DeviceSerializer,
+    AppUsageSerializer,
+    ScreenTimeUploadSerializer,
+    DailySummarySerializer,
 )
+
+User = get_user_model()
+
+
+# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# AUTH
+# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+
+@api_view(['POST'])
+@permission_classes([AllowAny])
+def register(request):
+    """
+    POST /api/register
+    Body: { "username": "...", "email": "...", "password": "..." }
+    """
+    username = request.data.get('username', '').strip()
+    email = request.data.get('email', '').strip()
+    password = request.data.get('password', '')
+
+    if not username or not email or not password:
+        return Response(
+            {'error': 'username, email and password are required.'},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+
+    if User.objects.filter(username=username).exists():
+        return Response(
+            {'error': 'Username already taken.'},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+
+    user = User.objects.create_user(username=username, email=email, password=password)
+    refresh = RefreshToken.for_user(user)
+
+    return Response({
+        'message': 'Account created successfully.',
+        'access': str(refresh.access_token),
+        'refresh': str(refresh),
+        'user': {'id': user.id, 'username': user.username, 'email': user.email},
+    }, status=status.HTTP_201_CREATED)
 
 
 @api_view(['POST'])
+@permission_classes([AllowAny])
+def login_view(request):
+    """
+    POST /api/login
+    Body: { "username": "...", "password": "..." }
+    Returns JWT access + refresh tokens.
+    """
+    username = request.data.get('username', '')
+    password = request.data.get('password', '')
+
+    user = authenticate(request, username=username, password=password)
+    if user is None:
+        return Response(
+            {'error': 'Invalid credentials.'},
+            status=status.HTTP_401_UNAUTHORIZED
+        )
+
+    refresh = RefreshToken.for_user(user)
+    return Response({
+        'access': str(refresh.access_token),
+        'refresh': str(refresh),
+        'user': {'id': user.id, 'username': user.username, 'email': user.email},
+    })
+
+
+# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# DEVICE MANAGEMENT
+# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+
+@api_view(['POST'])
 @permission_classes([IsAuthenticated])
-def log_session(request):
+def register_device(request):
     """
-    Called automatically by the device agent / browser extension.
-    Creates a ScreenSession, runs AI analysis, stores BehaviorAnalysis.
+    POST /api/register-device
+    Body: { "device_name": "Aarav's Phone", "device_id": "abc123xyz" }
+    Creates or returns the device linked to the logged-in parent.
     """
-    serializer = ScreenSessionCreateSerializer(data=request.data)
+    device_id = request.data.get('device_id', '').strip()
+    device_name = request.data.get('device_name', 'My Device').strip()
+
+    if not device_id:
+        return Response({'error': 'device_id is required.'}, status=status.HTTP_400_BAD_REQUEST)
+
+    device, created = Device.objects.get_or_create(
+        device_id=device_id,
+        defaults={'user': request.user, 'device_name': device_name}
+    )
+
+    return Response(
+        DeviceSerializer(device).data,
+        status=status.HTTP_201_CREATED if created else status.HTTP_200_OK
+    )
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def list_devices(request):
+    """
+    GET /api/devices
+    Returns all devices registered by the logged-in parent.
+    """
+    devices = Device.objects.filter(user=request.user)
+    return Response(DeviceSerializer(devices, many=True).data)
+
+
+# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# SCREEN TIME UPLOAD (called by Android)
+# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def upload_screen_time(request):
+    """
+    POST /api/upload-screen-time
+    Body:
+    {
+      "device_id": "abc123xyz",
+      "usages": [
+        { "app_name": "YouTube", "package_name": "com.google.youtube", "usage_time": 3600, "date": "2025-01-15" },
+        ...
+      ]
+    }
+    """
+    serializer = ScreenTimeUploadSerializer(data=request.data)
     if not serializer.is_valid():
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
-    session = serializer.save(user=request.user)
+    device_id = serializer.validated_data['device_id']
+    usages_data = serializer.validated_data['usages']
 
-    # Fetch recent sessions for context (last 5, excluding this one)
-    recent_qs = (
-        ScreenSession.objects
-        .filter(user=request.user)
-        .exclude(pk=session.pk)
-        .prefetch_related('analysis')
-        .order_by('-recorded_at')[:5]
-    )
-    recent_logs = []
-    for s in recent_qs:
-        entry = {
-            'recorded_at': s.recorded_at.isoformat(),
-            'total_time': s.total_time,
-            'social_time': s.social_time,
-            'study_time': s.study_time,
-            'continuous_usage': s.continuous_usage,
-            'time_of_day': s.time_of_day,
-        }
-        if hasattr(s, 'analysis'):
-            entry['detected_state'] = s.analysis.detected_state
-        recent_logs.append(entry)
-
-    # Run AI analysis
-    session_data = {
-        'total_time': session.total_time,
-        'social_time': session.social_time,
-        'study_time': session.study_time,
-        'continuous_usage': session.continuous_usage,
-        'time_of_day': session.time_of_day,
-        'apps_list': session.apps_list,
-    }
-    result = analyze_session(session_data, recent_logs)
-
-    auto_action = result.get('auto_action', {})
-    BehaviorAnalysis.objects.create(
-        session=session,
-        detected_state=result.get('detected_state', 'normal'),
-        intensity=result.get('intensity', 'low'),
-        confidence=result.get('confidence', 0.5),
-        behavior_pattern=result.get('behavior_pattern', ''),
-        risk_level=result.get('risk_level', 'none'),
-        action_type=auto_action.get('action_type', 'none'),
-        action_description=auto_action.get('description', ''),
-        action_duration=auto_action.get('duration', ''),
-        system_changes=result.get('system_changes', []),
-        user_message=result.get('user_message', ''),
-        parent_alert=result.get('parent_alert', 'none'),
-        raw_result=result,
-    )
-
-    return Response(ScreenSessionSerializer(session).data, status=status.HTTP_201_CREATED)
-
-
-@api_view(['GET'])
-@permission_classes([IsAuthenticated])
-def list_sessions(request):
-    """Return last 20 sessions with analyses for the logged-in teen."""
-    sessions = (
-        ScreenSession.objects
-        .filter(user=request.user)
-        .prefetch_related('analysis')
-        .order_by('-recorded_at')[:20]
-    )
-    return Response(ScreenSessionSerializer(sessions, many=True).data)
-
-
-@api_view(['GET'])
-@permission_classes([IsAuthenticated])
-def latest_analysis(request):
-    """Return the most recent BehaviorAnalysis for the logged-in teen."""
+    # Find device belonging to this user
     try:
-        session = (
-            ScreenSession.objects
-            .filter(user=request.user)
-            .prefetch_related('analysis')
-            .latest('recorded_at')
+        device = Device.objects.get(device_id=device_id, user=request.user)
+    except Device.DoesNotExist:
+        return Response(
+            {'error': 'Device not found. Register the device first.'},
+            status=status.HTTP_404_NOT_FOUND
         )
-        analysis = session.analysis
-        return Response(BehaviorAnalysisSerializer(analysis).data)
-    except (ScreenSession.DoesNotExist, BehaviorAnalysis.DoesNotExist):
-        return Response({'detail': 'No analysis yet.'}, status=status.HTTP_404_NOT_FOUND)
 
+    created_count = 0
+    updated_count = 0
 
-@api_view(['GET'])
-@permission_classes([IsAuthenticated])
-def weekly_summary(request):
-    """Aggregated stats for the past 7 days."""
-    from django.db.models import Avg, Count, Sum
-    from datetime import timedelta
+    for item in usages_data:
+        obj, created = AppUsage.objects.update_or_create(
+            device=device,
+            package_name=item['package_name'],
+            date=item['date'],
+            defaults={
+                'app_name': item['app_name'],
+                'usage_time': item['usage_time'],
+            }
+        )
+        if created:
+            created_count += 1
+        else:
+            updated_count += 1
 
-    seven_days_ago = timezone.now() - timedelta(days=7)
-    sessions = ScreenSession.objects.filter(
-        user=request.user,
-        recorded_at__gte=seven_days_ago,
-    )
-
-    agg = sessions.aggregate(
-        total_sessions=Count('id'),
-        avg_total=Avg('total_time'),
-        avg_social=Avg('social_time'),
-        avg_study=Avg('study_time'),
-        total_screen=Sum('total_time'),
-    )
-
-    # Count risk levels from analyses
-    from django.db.models import Q
-    risk_counts = {
-        'none': BehaviorAnalysis.objects.filter(session__in=sessions, risk_level='none').count(),
-        'low': BehaviorAnalysis.objects.filter(session__in=sessions, risk_level='low').count(),
-        'medium': BehaviorAnalysis.objects.filter(session__in=sessions, risk_level='medium').count(),
-        'high': BehaviorAnalysis.objects.filter(session__in=sessions, risk_level='high').count(),
-    }
-
-    state_counts = {}
-    for state in ['normal', 'stressed', 'fatigued', 'distracted', 'overuse']:
-        state_counts[state] = BehaviorAnalysis.objects.filter(
-            session__in=sessions, detected_state=state
-        ).count()
+    # Update last_sync timestamp
+    device.last_sync = timezone.now()
+    device.save(update_fields=['last_sync'])
 
     return Response({
-        **agg,
-        'risk_counts': risk_counts,
-        'state_counts': state_counts,
+        'message': 'Screen time data uploaded successfully.',
+        'created': created_count,
+        'updated': updated_count,
+    }, status=status.HTTP_200_OK)
+
+
+# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# GET USAGE (called by React frontend)
+# â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def get_usage(request):
+    """
+    GET /api/get-usage?device_id=abc123xyz&days=7
+    Returns daily summaries of screen time for the specified device.
+    Query params:
+      - device_id (required)
+      - days      (optional, default=7)
+    """
+    device_id = request.query_params.get('device_id')
+    days = int(request.query_params.get('days', 7))
+
+    if not device_id:
+        # If no device_id, return data for all user's devices
+        devices = Device.objects.filter(user=request.user)
+    else:
+        devices = Device.objects.filter(device_id=device_id, user=request.user)
+
+    if not devices.exists():
+        return Response({'error': 'No devices found.'}, status=status.HTTP_404_NOT_FOUND)
+
+    from datetime import date, timedelta
+    cutoff = date.today() - timedelta(days=days)
+
+    usages = AppUsage.objects.filter(
+        device__in=devices,
+        date__gte=cutoff
+    ).order_by('-date', '-usage_time')
+
+    # Group by date
+    by_date = defaultdict(list)
+    for u in usages:
+        by_date[str(u.date)].append(u)
+
+    summaries = []
+    for day_str in sorted(by_date.keys(), reverse=True):
+        day_usages = by_date[day_str]
+        total_secs = sum(u.usage_time for u in day_usages)
+        summaries.append({
+            'date': day_str,
+            'total_seconds': total_secs,
+            'total_minutes': round(total_secs / 60, 1),
+            'app_count': len(day_usages),
+            'apps': AppUsageSerializer(day_usages, many=True).data,
+        })
+
+    # Also compute overall totals
+    total_overall = usages.aggregate(total=Sum('usage_time'))['total'] or 0
+
+    return Response({
+        'device_count': devices.count(),
+        'days_requested': days,
+        'total_minutes_overall': round(total_overall / 60, 1),
+        'daily_summaries': summaries,
     })
 
 
 ================================================
 FILE: backend/apps/screen_monitor/migrations/0001_initial.py
 ================================================
-# Generated by Django 4.2 on 2026-04-03 16:44
+# backend/apps/screen_monitor/migrations/0001_initial.py
 
 from django.conf import settings
 from django.db import migrations, models
@@ -4108,44 +4825,70 @@ class Migration(migrations.Migration):
 
     operations = [
         migrations.CreateModel(
-            name='ScreenSession',
+            name='Device',
             fields=[
                 ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
-                ('recorded_at', models.DateTimeField(auto_now_add=True)),
-                ('total_time', models.PositiveIntegerField(default=0)),
-                ('social_time', models.PositiveIntegerField(default=0)),
-                ('study_time', models.PositiveIntegerField(default=0)),
-                ('continuous_usage', models.PositiveIntegerField(default=0)),
-                ('time_of_day', models.CharField(choices=[('morning', 'Morning'), ('afternoon', 'Afternoon'), ('evening', 'Evening'), ('night', 'Night')], default='evening', max_length=20)),
-                ('apps_list', models.JSONField(default=list)),
-                ('user', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='screen_sessions', to=settings.AUTH_USER_MODEL)),
+                ('device_name', models.CharField(max_length=100)),
+                ('device_id', models.CharField(max_length=255, unique=True)),
+                ('registered_at', models.DateTimeField(auto_now_add=True)),
+                ('last_sync', models.DateTimeField(blank=True, null=True)),
+                ('user', models.ForeignKey(
+                    on_delete=django.db.models.deletion.CASCADE,
+                    related_name='devices',
+                    to=settings.AUTH_USER_MODEL,
+                )),
             ],
-            options={
-                'ordering': ['-recorded_at'],
-            },
+            options={'ordering': ['-registered_at']},
         ),
         migrations.CreateModel(
-            name='BehaviorAnalysis',
+            name='AppUsage',
             fields=[
                 ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
-                ('analyzed_at', models.DateTimeField(auto_now_add=True)),
-                ('detected_state', models.CharField(choices=[('normal', 'Normal'), ('stressed', 'Stressed'), ('fatigued', 'Fatigued'), ('distracted', 'Distracted'), ('overuse', 'Overuse')], default='normal', max_length=20)),
-                ('intensity', models.CharField(choices=[('low', 'Low'), ('medium', 'Medium'), ('high', 'High')], default='low', max_length=10)),
-                ('confidence', models.FloatField(default=0.5)),
-                ('behavior_pattern', models.TextField(blank=True)),
-                ('risk_level', models.CharField(choices=[('none', 'None'), ('low', 'Low'), ('medium', 'Medium'), ('high', 'High')], default='none', max_length=10)),
-                ('action_type', models.CharField(choices=[('focus_mode', 'Focus Mode'), ('digital_detox', 'Digital Detox'), ('rest_mode', 'Rest Mode'), ('none', 'None')], default='none', max_length=20)),
-                ('action_description', models.TextField(blank=True)),
-                ('action_duration', models.CharField(blank=True, max_length=50)),
-                ('system_changes', models.JSONField(default=list)),
-                ('user_message', models.TextField(blank=True)),
-                ('parent_alert', models.CharField(choices=[('none', 'None'), ('consider', 'Consider'), ('required', 'Required')], default='none', max_length=10)),
-                ('raw_result', models.JSONField(default=dict)),
-                ('session', models.OneToOneField(on_delete=django.db.models.deletion.CASCADE, related_name='analysis', to='screen_monitor.screensession')),
+                ('app_name', models.CharField(max_length=255)),
+                ('package_name', models.CharField(max_length=255)),
+                ('usage_time', models.PositiveIntegerField()),
+                ('date', models.DateField()),
+                ('timestamp', models.DateTimeField(auto_now_add=True)),
+                ('device', models.ForeignKey(
+                    on_delete=django.db.models.deletion.CASCADE,
+                    related_name='app_usages',
+                    to='screen_monitor.device',
+                )),
             ],
-            options={
-                'ordering': ['-analyzed_at'],
-            },
+            options={'ordering': ['-date', '-usage_time']},
+        ),
+        migrations.AddConstraint(
+            model_name='appusage',
+            constraint=models.UniqueConstraint(
+                fields=['device', 'package_name', 'date'],
+                name='unique_app_usage_per_day'
+            ),
+        ),
+    ]
+
+
+================================================
+FILE: backend/apps/screen_monitor/migrations/0002_remove_appusage_unique_app_usage_per_day_and_more.py
+================================================
+# Generated by Django 4.2 on 2026-04-06 07:28
+
+from django.db import migrations
+
+
+class Migration(migrations.Migration):
+
+    dependencies = [
+        ('screen_monitor', '0001_initial'),
+    ]
+
+    operations = [
+        migrations.RemoveConstraint(
+            model_name='appusage',
+            name='unique_app_usage_per_day',
+        ),
+        migrations.AlterUniqueTogether(
+            name='appusage',
+            unique_together={('device', 'package_name', 'date')},
         ),
     ]
 
@@ -6072,11 +6815,12 @@ INSTALLED_APPS = [
     'apps.voice_assessments',
     'apps.study_planner',
     'apps.mentorship',
+    'apps.screen_monitor',
 ]
 
 MIDDLEWARE = [
-    'django.middleware.security.SecurityMiddleware',
     'corsheaders.middleware.CorsMiddleware',
+    'django.middleware.security.SecurityMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
@@ -6156,6 +6900,8 @@ CORS_ALLOWED_ORIGINS = [
     "http://127.0.0.1:3000",
 ]
 
+CORS_ALLOW_ALL_ORIGINS = True
+
 # AI & Payment keys
 GEMINI_API_KEY = config('GEMINI_API_KEY', default='')
 RAZORPAY_KEY_ID = config('RAZORPAY_KEY_ID', default='')
@@ -6198,6 +6944,7 @@ urlpatterns = [
     path('api/voice-assessments/', include('apps.voice_assessments.urls')),
     path('api/', include('apps.study_planner.urls')),
     path('api/mentorship/', include('apps.mentorship.urls')),
+    path('api/', include('apps.screen_monitor.urls')),
 ]
 
 if settings.DEBUG:
@@ -6357,6 +7104,9 @@ import GoogleCallback from './pages/GoogleCallback';
 import VoiceAssessmentPage from './pages/VoiceAssessmentPage';
 import MentorChatPageWrapper from './pages/MentorChatPageWrapper';
 import { useAuth } from './context/AuthContext';
+
+import ScreenTimePage from './pages/ScreenTimePage';
+import DeviceManagerPage from './pages/DeviceManagerPage';
 
 function App() {
   const { user, loading } = useAuth();
@@ -10106,6 +10856,788 @@ function convertTo24(timeStr) {
 
 
 ================================================
+FILE: frontend/src/components/ScreenTime/DeviceManager.jsx
+================================================
+// frontend/src/components/ScreenTime/DeviceManager.jsx
+
+import { useState, useEffect } from 'react';
+import { getDevices, registerDevice } from '../../services/screenTimeService';
+
+export default function DeviceManager() {
+    const [devices, setDevices] = useState([]);
+    const [loading, setLoading] = useState(true);
+    const [form, setForm] = useState({ device_id: '', device_name: '' });
+    const [msg, setMsg] = useState('');
+    const [submitting, setSubmitting] = useState(false);
+
+    const fetchDevices = async () => {
+        setLoading(true);
+        try {
+            const res = await getDevices();
+            setDevices(res.data);
+        } catch (e) {
+            setMsg('Failed to load devices.');
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    useEffect(() => { fetchDevices(); }, []);
+
+    const handleSubmit = async () => {
+        if (!form.device_id.trim() || !form.device_name.trim()) {
+            setMsg('Both Device ID and Device Name are required.');
+            return;
+        }
+        setSubmitting(true);
+        setMsg('');
+        try {
+            await registerDevice(form.device_id.trim(), form.device_name.trim());
+            setMsg('✓ Device registered successfully!');
+            setForm({ device_id: '', device_name: '' });
+            fetchDevices();
+        } catch (e) {
+            setMsg('❌ ' + (e?.response?.data?.error || 'Failed to register device.'));
+        } finally {
+            setSubmitting(false);
+        }
+    };
+
+    return (
+        <div style={{
+            maxWidth: 600, margin: '0 auto', padding: '32px 20px',
+            fontFamily: "'Inter', system-ui, sans-serif",
+        }}>
+            <h2 style={{ fontSize: 22, fontWeight: 800, color: '#0f172a', marginBottom: 6 }}>
+                📱 Manage Devices
+            </h2>
+            <p style={{ color: '#64748b', fontSize: 14, marginBottom: 28 }}>
+                Register your child's Android device to start tracking screen time.
+            </p>
+
+            {/* Register Form */}
+            <div style={{
+                background: 'white', borderRadius: 18, padding: 24,
+                boxShadow: '0 2px 16px rgba(0,0,0,0.06)', marginBottom: 28,
+            }}>
+                <h3 style={{ margin: '0 0 16px', fontSize: 16, fontWeight: 700, color: '#374151' }}>
+                    Register New Device
+                </h3>
+
+                <div style={{ marginBottom: 14 }}>
+                    <label style={{ display: 'block', fontSize: 13, fontWeight: 600, color: '#374151', marginBottom: 6 }}>
+                        Device Name
+                    </label>
+                    <input
+                        type="text"
+                        placeholder="e.g. Aarav's Samsung"
+                        value={form.device_name}
+                        onChange={e => setForm(f => ({ ...f, device_name: e.target.value }))}
+                        style={inputStyle}
+                    />
+                </div>
+
+                <div style={{ marginBottom: 20 }}>
+                    <label style={{ display: 'block', fontSize: 13, fontWeight: 600, color: '#374151', marginBottom: 6 }}>
+                        Device ID
+                    </label>
+                    <input
+                        type="text"
+                        placeholder="e.g. android-abc123xyz (from Android app)"
+                        value={form.device_id}
+                        onChange={e => setForm(f => ({ ...f, device_id: e.target.value }))}
+                        style={inputStyle}
+                    />
+                    <div style={{ fontSize: 12, color: '#94a3b8', marginTop: 4 }}>
+                        Find this in the Android app's Settings screen, or use any unique string for testing.
+                    </div>
+                </div>
+
+                {msg && (
+                    <div style={{
+                        fontSize: 13, fontWeight: 600, marginBottom: 14,
+                        color: msg.startsWith('✓') ? '#10b981' : '#ef4444',
+                    }}>
+                        {msg}
+                    </div>
+                )}
+
+                <button
+                    onClick={handleSubmit}
+                    disabled={submitting}
+                    style={{
+                        padding: '10px 22px', borderRadius: 10, border: 'none',
+                        background: submitting ? '#c7d2fe' : '#6366f1',
+                        color: 'white', fontWeight: 700, fontSize: 14,
+                        cursor: submitting ? 'not-allowed' : 'pointer',
+                        fontFamily: 'inherit',
+                    }}
+                >
+                    {submitting ? 'Registering...' : '+ Register Device'}
+                </button>
+            </div>
+
+            {/* Existing Devices */}
+            <h3 style={{ fontSize: 16, fontWeight: 700, color: '#374151', marginBottom: 14 }}>
+                Registered Devices ({devices.length})
+            </h3>
+
+            {loading ? (
+                <div style={{ color: '#94a3b8', fontSize: 14 }}>Loading...</div>
+            ) : devices.length === 0 ? (
+                <div style={{
+                    background: '#f8fafc', borderRadius: 14, padding: 32,
+                    textAlign: 'center', color: '#94a3b8', fontSize: 14,
+                }}>
+                    No devices registered yet.
+                </div>
+            ) : (
+                devices.map(device => (
+                    <div key={device.id} style={{
+                        background: 'white', borderRadius: 14, padding: '16px 20px',
+                        boxShadow: '0 2px 10px rgba(0,0,0,0.05)', marginBottom: 12,
+                        display: 'flex', alignItems: 'center', gap: 14,
+                    }}>
+                        <div style={{ fontSize: 28 }}>📱</div>
+                        <div style={{ flex: 1 }}>
+                            <div style={{ fontWeight: 700, color: '#1e293b', fontSize: 15 }}>
+                                {device.device_name}
+                            </div>
+                            <div style={{ fontSize: 12, color: '#94a3b8', marginTop: 2 }}>
+                                ID: {device.device_id}
+                            </div>
+                            <div style={{ fontSize: 12, color: '#94a3b8', marginTop: 2 }}>
+                                Last sync: {device.last_sync
+                                    ? new Date(device.last_sync).toLocaleString()
+                                    : 'Never'}
+                            </div>
+                        </div>
+                        <div style={{
+                            background: '#d1fae5', color: '#065f46',
+                            borderRadius: 99, padding: '4px 12px',
+                            fontSize: 12, fontWeight: 600,
+                        }}>
+                            Active
+                        </div>
+                    </div>
+                ))
+            )}
+        </div>
+    );
+}
+
+const inputStyle = {
+    width: '100%', padding: '10px 14px',
+    borderRadius: 10, border: '1.5px solid #e2e8f0',
+    fontSize: 14, color: '#374151', outline: 'none',
+    fontFamily: 'inherit', boxSizing: 'border-box',
+};
+
+
+================================================
+FILE: frontend/src/components/ScreenTime/ScreenTimeDashboard.jsx
+================================================
+// frontend/src/components/ScreenTime/ScreenTimeDashboard.jsx
+
+import { useState, useEffect, useCallback } from 'react';
+import { getUsage, getDevices } from '../../services/screenTimeService';
+
+// ─────────────────────────────────────────────────────
+// Helpers
+// ─────────────────────────────────────────────────────
+const fmtTime = (mins) => {
+    if (!mins || mins <= 0) return '0m';
+    if (mins < 60) return `${Math.round(mins)}m`;
+    const h = Math.floor(mins / 60);
+    const m = Math.round(mins % 60);
+    return m > 0 ? `${h}h ${m}m` : `${h}h`;
+};
+
+const APP_COLORS = [
+    '#6366f1', '#f59e0b', '#10b981', '#ef4444', '#3b82f6',
+    '#ec4899', '#8b5cf6', '#14b8a6', '#f97316', '#06b6d4',
+];
+
+const getRiskLevel = (mins) => {
+    if (mins < 60) return { label: 'Healthy', color: '#10b981', bg: '#d1fae5' };
+    if (mins < 180) return { label: 'Moderate', color: '#f59e0b', bg: '#fef3c7' };
+    return { label: 'High', color: '#ef4444', bg: '#fee2e2' };
+};
+
+// ─────────────────────────────────────────────────────
+// Sub-components
+// ─────────────────────────────────────────────────────
+
+function StatCard({ label, value, icon, sub, accent }) {
+    return (
+        <div style={{
+            background: 'white',
+            borderRadius: 18,
+            padding: '22px 24px',
+            boxShadow: '0 2px 16px rgba(0,0,0,0.06)',
+            flex: 1,
+            minWidth: 140,
+            borderTop: `4px solid ${accent || '#6366f1'}`,
+        }}>
+            <div style={{ fontSize: 30, marginBottom: 6 }}>{icon}</div>
+            <div style={{ fontSize: 28, fontWeight: 800, color: '#0f172a', lineHeight: 1 }}>{value}</div>
+            <div style={{ fontSize: 13, color: '#64748b', marginTop: 6, fontWeight: 500 }}>{label}</div>
+            {sub && <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 4 }}>{sub}</div>}
+        </div>
+    );
+}
+
+function AppBar({ app, index, maxTime }) {
+    const pct = maxTime > 0 ? (app.usage_time / maxTime) * 100 : 0;
+    const color = APP_COLORS[index % APP_COLORS.length];
+    const mins = app.usage_minutes ?? Math.round(app.usage_time / 60);
+
+    return (
+        <div style={{
+            display: 'flex', alignItems: 'center', gap: 14,
+            padding: '10px 0', borderBottom: '1px solid #f1f5f9',
+        }}>
+            {/* App icon placeholder */}
+            <div style={{
+                width: 40, height: 40, borderRadius: 10,
+                background: color + '22',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                fontSize: 18, flexShrink: 0,
+                color: color, fontWeight: 800,
+            }}>
+                {app.app_name?.[0]?.toUpperCase() || '?'}
+            </div>
+
+            <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 5 }}>
+                    <span style={{ fontWeight: 600, fontSize: 14, color: '#1e293b', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '65%' }}>
+                        {app.app_name}
+                    </span>
+                    <span style={{ fontSize: 13, color: '#475569', fontWeight: 600 }}>
+                        {fmtTime(mins)}
+                    </span>
+                </div>
+                <div style={{ background: '#f1f5f9', borderRadius: 99, height: 7, overflow: 'hidden' }}>
+                    <div style={{
+                        width: `${pct}%`, height: '100%',
+                        background: color, borderRadius: 99,
+                        transition: 'width 0.7s cubic-bezier(0.4,0,0.2,1)',
+                    }} />
+                </div>
+                <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 3 }}>
+                    {app.package_name}
+                </div>
+            </div>
+        </div>
+    );
+}
+
+function DayTab({ day, isSelected, onClick }) {
+    const risk = getRiskLevel(day.total_minutes);
+    return (
+        <button
+            onClick={onClick}
+            style={{
+                padding: '10px 16px',
+                borderRadius: 12,
+                border: `2px solid ${isSelected ? '#6366f1' : '#e2e8f0'}`,
+                cursor: 'pointer',
+                fontSize: 12,
+                fontWeight: 600,
+                background: isSelected ? '#6366f1' : 'white',
+                color: isSelected ? 'white' : '#475569',
+                transition: 'all 0.2s',
+                textAlign: 'center',
+                minWidth: 88,
+            }}
+        >
+            <div>{day.date?.slice(5)}</div>
+            <div style={{
+                marginTop: 4, fontSize: 13,
+                color: isSelected ? 'rgba(255,255,255,0.9)' : risk.color,
+                fontWeight: 700,
+            }}>
+                {fmtTime(day.total_minutes)}
+            </div>
+        </button>
+    );
+}
+
+function DeviceCard({ device, isSelected, onClick }) {
+    const lastSync = device.last_sync
+        ? new Date(device.last_sync).toLocaleString()
+        : 'Never synced';
+    return (
+        <button
+            onClick={onClick}
+            style={{
+                background: isSelected ? '#ede9fe' : 'white',
+                border: `2px solid ${isSelected ? '#6366f1' : '#e2e8f0'}`,
+                borderRadius: 14,
+                padding: '12px 16px',
+                cursor: 'pointer',
+                textAlign: 'left',
+                transition: 'all 0.2s',
+                minWidth: 160,
+            }}
+        >
+            <div style={{ fontSize: 20, marginBottom: 4 }}>📱</div>
+            <div style={{
+                fontWeight: 700, fontSize: 14,
+                color: isSelected ? '#4f46e5' : '#1e293b',
+            }}>
+                {device.device_name}
+            </div>
+            <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 3 }}>
+                Synced: {lastSync}
+            </div>
+        </button>
+    );
+}
+
+// ─────────────────────────────────────────────────────
+// TestDataUploader — lets you add dummy data from the browser
+// ─────────────────────────────────────────────────────
+function TestDataUploader({ onUploaded }) {
+    const [loading, setLoading] = useState(false);
+    const [msg, setMsg] = useState('');
+
+    const uploadDummy = async () => {
+        setLoading(true);
+        setMsg('');
+        const today = new Date().toISOString().slice(0, 10);
+        const yesterday = new Date(Date.now() - 86400000).toISOString().slice(0, 10);
+
+        const dummyPayload = {
+            device_id: 'web-test-device-001',
+            usages: [
+                // Today
+                { app_name: 'YouTube', package_name: 'com.google.android.youtube', usage_time: 5400, date: today },
+                { app_name: 'Instagram', package_name: 'com.instagram.android', usage_time: 3600, date: today },
+                { app_name: 'WhatsApp', package_name: 'com.whatsapp', usage_time: 2700, date: today },
+                { app_name: 'Chrome', package_name: 'com.android.chrome', usage_time: 1800, date: today },
+                { app_name: 'Minecraft', package_name: 'com.mojang.minecraftpe', usage_time: 4500, date: today },
+                { app_name: 'Spotify', package_name: 'com.spotify.music', usage_time: 2100, date: today },
+                { app_name: 'TikTok', package_name: 'com.zhiliaoapp.musically', usage_time: 3200, date: today },
+                // Yesterday
+                { app_name: 'YouTube', package_name: 'com.google.android.youtube', usage_time: 7200, date: yesterday },
+                { app_name: 'WhatsApp', package_name: 'com.whatsapp', usage_time: 1200, date: yesterday },
+                { app_name: 'Minecraft', package_name: 'com.mojang.minecraftpe', usage_time: 5400, date: yesterday },
+                { app_name: 'Chrome', package_name: 'com.android.chrome', usage_time: 900, date: yesterday },
+            ],
+        };
+
+        try {
+            // Register device first
+            const devRes = await fetch('/api/register-device', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    Authorization: `Bearer ${localStorage.getItem('access_token')}`,
+                },
+                body: JSON.stringify({ device_id: 'web-test-device-001', device_name: "Test Child's Phone" }),
+            });
+            if (!devRes.ok) throw new Error('Device registration failed');
+
+            // Upload usage
+            const res = await fetch('/api/upload-screen-time', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    Authorization: `Bearer ${localStorage.getItem('access_token')}`,
+                },
+                body: JSON.stringify(dummyPayload),
+            });
+            if (!res.ok) throw new Error('Upload failed');
+            const data = await res.json();
+            setMsg(`✓ Uploaded! ${data.created} new + ${data.updated} updated records.`);
+            onUploaded();
+        } catch (e) {
+            setMsg(`❌ ${e.message} — make sure you are logged in.`);
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    return (
+        <div style={{
+            background: '#fafaf9',
+            border: '1.5px dashed #d1d5db',
+            borderRadius: 14,
+            padding: '16px 20px',
+            marginBottom: 24,
+            display: 'flex',
+            alignItems: 'center',
+            gap: 14,
+            flexWrap: 'wrap',
+        }}>
+            <span style={{ fontSize: 20 }}>🧪</span>
+            <div style={{ flex: 1, minWidth: 200 }}>
+                <div style={{ fontWeight: 600, fontSize: 14, color: '#374151' }}>
+                    No Android device yet?
+                </div>
+                <div style={{ fontSize: 13, color: '#6b7280' }}>
+                    Load dummy data to preview the dashboard.
+                </div>
+            </div>
+            <button
+                onClick={uploadDummy}
+                disabled={loading}
+                style={{
+                    padding: '9px 18px', borderRadius: 10,
+                    border: 'none', background: '#f59e0b',
+                    color: 'white', fontWeight: 700, fontSize: 13,
+                    cursor: loading ? 'not-allowed' : 'pointer',
+                    opacity: loading ? 0.7 : 1,
+                }}
+            >
+                {loading ? 'Loading...' : '⚡ Load Test Data'}
+            </button>
+            {msg && <div style={{ width: '100%', fontSize: 13, color: msg.startsWith('✓') ? '#10b981' : '#ef4444', fontWeight: 500 }}>{msg}</div>}
+        </div>
+    );
+}
+
+// ─────────────────────────────────────────────────────
+// Main Dashboard
+// ─────────────────────────────────────────────────────
+export default function ScreenTimeDashboard() {
+    const [data, setData] = useState(null);
+    const [devices, setDevices] = useState([]);
+    const [selectedDevice, setSelectedDevice] = useState('');
+    const [days, setDays] = useState(7);
+    const [selectedDay, setSelectedDay] = useState(0);
+    const [loading, setLoading] = useState(true);
+    const [error, setError] = useState('');
+
+    const fetchDevices = useCallback(async () => {
+        try {
+            const res = await getDevices();
+            setDevices(res.data);
+        } catch (e) {
+            // silently ignore — no devices yet
+        }
+    }, []);
+
+    const fetchData = useCallback(async () => {
+        setLoading(true);
+        setError('');
+        try {
+            const res = await getUsage(selectedDevice, days);
+            setData(res.data);
+            setSelectedDay(0);
+        } catch (e) {
+            setError(
+                e?.response?.status === 401
+                    ? 'Not authenticated. Please log in first.'
+                    : 'Failed to load data. Is Django running on port 8000?'
+            );
+        } finally {
+            setLoading(false);
+        }
+    }, [selectedDevice, days]);
+
+    useEffect(() => { fetchDevices(); }, [fetchDevices]);
+    useEffect(() => { fetchData(); }, [fetchData]);
+
+    const summary = data?.daily_summaries?.[selectedDay];
+    const maxApp = summary ? Math.max(...summary.apps.map(a => a.usage_time), 1) : 1;
+    const risk = summary ? getRiskLevel(summary.total_minutes) : null;
+
+    return (
+        <div style={{
+            maxWidth: 860,
+            margin: '0 auto',
+            padding: '36px 20px 60px',
+            fontFamily: "'Inter', 'Segoe UI', system-ui, sans-serif",
+        }}>
+            {/* Header */}
+            <div style={{ marginBottom: 32 }}>
+                <h1 style={{
+                    fontSize: 30, fontWeight: 800, color: '#0f172a',
+                    margin: 0, letterSpacing: '-0.5px',
+                }}>
+                    📱 Screen Time Monitor
+                </h1>
+                <p style={{ color: '#64748b', marginTop: 6, fontSize: 15 }}>
+                    Track your child's daily app usage in real time.
+                </p>
+            </div>
+
+            {/* Test Data Helper */}
+            <TestDataUploader onUploaded={() => { fetchDevices(); fetchData(); }} />
+
+            {/* Controls Row */}
+            <div style={{ display: 'flex', gap: 12, marginBottom: 28, flexWrap: 'wrap', alignItems: 'center' }}>
+                <select
+                    value={selectedDevice}
+                    onChange={e => setSelectedDevice(e.target.value)}
+                    style={selectStyle}
+                >
+                    <option value="">All Devices</option>
+                    {devices.map(d => (
+                        <option key={d.device_id} value={d.device_id}>
+                            {d.device_name}
+                        </option>
+                    ))}
+                </select>
+
+                <select
+                    value={days}
+                    onChange={e => setDays(Number(e.target.value))}
+                    style={selectStyle}
+                >
+                    <option value={1}>Today only</option>
+                    <option value={7}>Last 7 days</option>
+                    <option value={14}>Last 14 days</option>
+                    <option value={30}>Last 30 days</option>
+                </select>
+
+                <button onClick={fetchData} style={btnStyle}>
+                    🔄 Refresh
+                </button>
+            </div>
+
+            {/* Devices Row */}
+            {devices.length > 0 && (
+                <div style={{ display: 'flex', gap: 12, marginBottom: 28, flexWrap: 'wrap' }}>
+                    <DeviceCard
+                        device={{ device_id: '', device_name: 'All Devices' }}
+                        isSelected={selectedDevice === ''}
+                        onClick={() => setSelectedDevice('')}
+                    />
+                    {devices.map(d => (
+                        <DeviceCard
+                            key={d.device_id}
+                            device={d}
+                            isSelected={selectedDevice === d.device_id}
+                            onClick={() => setSelectedDevice(d.device_id)}
+                        />
+                    ))}
+                </div>
+            )}
+
+            {/* Error */}
+            {error && (
+                <div style={{
+                    background: '#fef2f2', border: '1px solid #fecaca',
+                    borderRadius: 14, padding: '14px 18px',
+                    color: '#dc2626', marginBottom: 24, fontSize: 14,
+                }}>
+                    ⚠️ {error}
+                </div>
+            )}
+
+            {/* Loading */}
+            {loading && (
+                <div style={{
+                    textAlign: 'center', padding: 72,
+                    color: '#94a3b8', fontSize: 16,
+                }}>
+                    <div style={{ fontSize: 36, marginBottom: 12 }}>⏳</div>
+                    Loading screen time data...
+                </div>
+            )}
+
+            {/* Dashboard content */}
+            {!loading && data && (
+                <>
+                    {/* Stat Cards */}
+                    <div style={{ display: 'flex', gap: 16, marginBottom: 32, flexWrap: 'wrap' }}>
+                        <StatCard
+                            icon="⏱️"
+                            label="Total Screen Time"
+                            value={fmtTime(data.total_minutes_overall)}
+                            sub={`Last ${data.days_requested} day(s)`}
+                            accent="#6366f1"
+                        />
+                        <StatCard
+                            icon="📱"
+                            label="Devices Tracked"
+                            value={data.device_count}
+                            sub="Registered Android devices"
+                            accent="#10b981"
+                        />
+                        <StatCard
+                            icon="📅"
+                            label="Days with Data"
+                            value={data.daily_summaries?.length ?? 0}
+                            sub="Days recorded"
+                            accent="#f59e0b"
+                        />
+                    </div>
+
+                    {/* Day Tabs */}
+                    {data.daily_summaries?.length > 0 ? (
+                        <>
+                            <h2 style={{ fontSize: 16, fontWeight: 700, color: '#374151', marginBottom: 14 }}>
+                                Select a Day
+                            </h2>
+                            <div style={{
+                                display: 'flex', gap: 10, marginBottom: 28,
+                                flexWrap: 'wrap',
+                            }}>
+                                {data.daily_summaries.map((day, i) => (
+                                    <DayTab
+                                        key={day.date}
+                                        day={day}
+                                        isSelected={i === selectedDay}
+                                        onClick={() => setSelectedDay(i)}
+                                    />
+                                ))}
+                            </div>
+
+                            {/* Day Detail Card */}
+                            {summary && (
+                                <div style={{
+                                    background: 'white',
+                                    borderRadius: 22,
+                                    padding: 28,
+                                    boxShadow: '0 4px 28px rgba(0,0,0,0.08)',
+                                }}>
+                                    {/* Day header */}
+                                    <div style={{
+                                        display: 'flex',
+                                        justifyContent: 'space-between',
+                                        alignItems: 'flex-start',
+                                        marginBottom: 24,
+                                        flexWrap: 'wrap',
+                                        gap: 12,
+                                    }}>
+                                        <div>
+                                            <h2 style={{
+                                                margin: 0, fontSize: 22,
+                                                fontWeight: 800, color: '#0f172a',
+                                            }}>
+                                                {new Date(summary.date + 'T00:00:00').toLocaleDateString('en-US', {
+                                                    weekday: 'long', month: 'long', day: 'numeric',
+                                                })}
+                                            </h2>
+                                            <p style={{ margin: '6px 0 0', color: '#64748b', fontSize: 14 }}>
+                                                {summary.app_count} apps used
+                                            </p>
+                                        </div>
+
+                                        {/* Risk badge + total */}
+                                        <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
+                                            <span style={{
+                                                background: risk.bg,
+                                                color: risk.color,
+                                                borderRadius: 99,
+                                                padding: '5px 14px',
+                                                fontSize: 13,
+                                                fontWeight: 700,
+                                            }}>
+                                                {risk.label}
+                                            </span>
+                                            <div style={{
+                                                background: '#f8fafc',
+                                                borderRadius: 14,
+                                                padding: '10px 20px',
+                                                textAlign: 'center',
+                                            }}>
+                                                <div style={{
+                                                    fontSize: 26, fontWeight: 800,
+                                                    color: '#0f172a', lineHeight: 1,
+                                                }}>
+                                                    {fmtTime(summary.total_minutes)}
+                                                </div>
+                                                <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 4 }}>
+                                                    total screen time
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    {/* Usage bar (total vs 6h limit) */}
+                                    <div style={{ marginBottom: 28 }}>
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, color: '#94a3b8', marginBottom: 6 }}>
+                                            <span>Daily usage</span>
+                                            <span>6h recommended limit</span>
+                                        </div>
+                                        <div style={{ background: '#f1f5f9', borderRadius: 99, height: 10, overflow: 'hidden' }}>
+                                            <div style={{
+                                                width: `${Math.min((summary.total_minutes / 360) * 100, 100)}%`,
+                                                height: '100%',
+                                                background: risk.color,
+                                                borderRadius: 99,
+                                                transition: 'width 0.8s ease',
+                                            }} />
+                                        </div>
+                                    </div>
+
+                                    {/* App list */}
+                                    <h3 style={{
+                                        fontSize: 15, fontWeight: 700,
+                                        color: '#374151', marginBottom: 8,
+                                    }}>
+                                        App Breakdown
+                                    </h3>
+
+                                    {summary.apps.length === 0 ? (
+                                        <div style={{ textAlign: 'center', padding: 32, color: '#94a3b8' }}>
+                                            No app data for this day.
+                                        </div>
+                                    ) : (
+                                        summary.apps.map((app, i) => (
+                                            <AppBar
+                                                key={app.package_name || i}
+                                                app={app}
+                                                index={i}
+                                                maxTime={maxApp}
+                                            />
+                                        ))
+                                    )}
+                                </div>
+                            )}
+                        </>
+                    ) : (
+                        <div style={{
+                            textAlign: 'center', padding: 72,
+                            background: 'white', borderRadius: 22,
+                            color: '#94a3b8',
+                        }}>
+                            <div style={{ fontSize: 48, marginBottom: 16 }}>📭</div>
+                            <div style={{ fontSize: 18, fontWeight: 600, color: '#64748b' }}>
+                                No screen time data yet
+                            </div>
+                            <div style={{ fontSize: 14, marginTop: 8 }}>
+                                Use the "Load Test Data" button above, or sync the Android app.
+                            </div>
+                        </div>
+                    )}
+                </>
+            )}
+        </div>
+    );
+}
+
+const selectStyle = {
+    padding: '9px 14px',
+    borderRadius: 10,
+    border: '1.5px solid #e2e8f0',
+    fontSize: 14,
+    color: '#374151',
+    background: 'white',
+    cursor: 'pointer',
+    outline: 'none',
+    fontFamily: 'inherit',
+};
+
+const btnStyle = {
+    padding: '9px 18px',
+    borderRadius: 10,
+    border: 'none',
+    background: '#6366f1',
+    color: 'white',
+    fontWeight: 700,
+    fontSize: 14,
+    cursor: 'pointer',
+    fontFamily: 'inherit',
+};
+
+
+================================================
 FILE: frontend/src/components/Teen/AssessmentPrompt.jsx
 ================================================
 import React, { useState } from 'react';
@@ -10637,6 +12169,17 @@ export const useTheme = () => {
   return context;
 };
 
+
+
+================================================
+FILE: frontend/src/pages/DeviceManagerPage.jsx
+================================================
+// frontend/src/pages/DeviceManagerPage.jsx
+import DeviceManager from '../components/ScreenTime/DeviceManager';
+
+export default function DeviceManagerPage() {
+    return <DeviceManager />;
+}
 
 
 ================================================
@@ -11826,6 +13369,17 @@ export default PricingPage;
 
 
 ================================================
+FILE: frontend/src/pages/ScreenTimePage.jsx
+================================================
+// frontend/src/pages/ScreenTimePage.jsx
+import ScreenTimeDashboard from '../components/ScreenTime/ScreenTimeDashboard';
+
+export default function ScreenTimePage() {
+    return <ScreenTimeDashboard />;
+}
+
+
+================================================
 FILE: frontend/src/pages/TeenDashboard.jsx
 ================================================
 // frontend/src/pages/TeenDashboard.jsx
@@ -12756,6 +14310,49 @@ export default mentorshipService;
 FILE: frontend/src/services/reportService.js
 ================================================
 
+
+
+================================================
+FILE: frontend/src/services/screenTimeService.js
+================================================
+// frontend/src/services/screenTimeService.js
+import api from './api';
+
+/**
+ * Fetch screen time usage data.
+ * @param {string} deviceId - Optional device ID to filter by
+ * @param {number} days - Number of days to look back (default 7)
+ */
+export const getUsage = (deviceId = '', days = 7) =>
+    api.get('/api/get-usage', {
+        params: {
+            ...(deviceId ? { device_id: deviceId } : {}),
+            days,
+        },
+    });
+
+/**
+ * Get all devices registered by the logged-in parent.
+ */
+export const getDevices = () => api.get('/api/devices');
+
+/**
+ * Register a new child device.
+ */
+export const registerDevice = (deviceId, deviceName) =>
+    api.post('/api/register-device', {
+        device_id: deviceId,
+        device_name: deviceName,
+    });
+
+/**
+ * Upload screen time data (used by Android app, kept here for web-based testing).
+ */
+export const uploadScreenTime = (deviceId, usages) =>
+    api.post('/api/upload-screen-time', {
+        device_id: deviceId,
+        usages,
+    });
 
 
 ================================================
