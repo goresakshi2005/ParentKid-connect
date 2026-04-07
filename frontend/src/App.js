@@ -18,6 +18,9 @@ import VoiceAssessmentPage from './pages/VoiceAssessmentPage';
 import MentorChatPageWrapper from './pages/MentorChatPageWrapper';
 import { useAuth } from './context/AuthContext';
 
+import ScreenTimePage from './pages/ScreenTimePage';
+import DeviceManagerPage from './pages/DeviceManagerPage';
+
 function App() {
   const { user, loading } = useAuth();
 

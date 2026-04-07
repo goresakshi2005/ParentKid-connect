@@ -1,9 +1,18 @@
+# backend/apps/screen_monitor/urls.py
+
 from django.urls import path
 from . import views
 
 urlpatterns = [
-    path('session/', views.log_session, name='screen-log-session'),
-    path('sessions/', views.list_sessions, name='screen-list-sessions'),
-    path('latest/', views.latest_analysis, name='screen-latest-analysis'),
-    path('summary/', views.weekly_summary, name='screen-weekly-summary'),
+    # Auth
+    path('register', views.register, name='sm-register'),
+    path('login', views.login_view, name='sm-login'),
+
+    # Device management
+    path('register-device', views.register_device, name='sm-register-device'),
+    path('devices', views.list_devices, name='sm-list-devices'),
+
+    # Screen time data
+    path('upload-screen-time', views.upload_screen_time, name='sm-upload'),
+    path('get-usage', views.get_usage, name='sm-get-usage'),
 ]
