@@ -1,6 +1,7 @@
 // frontend/src/components/ScreenTime/ScreenTimeDashboard.jsx
 
 import { useState, useEffect, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { getUsage, getDevices } from '../../services/screenTimeService';
 
 // ─────────────────────────────────────────────────────
@@ -263,6 +264,7 @@ function TestDataUploader({ onUploaded }) {
 // Main Dashboard
 // ─────────────────────────────────────────────────────
 export default function ScreenTimeDashboard() {
+    const navigate = useNavigate();
     const [data, setData] = useState(null);
     const [devices, setDevices] = useState([]);
     const [selectedDevice, setSelectedDevice] = useState('');
@@ -312,6 +314,21 @@ export default function ScreenTimeDashboard() {
             padding: '36px 20px 60px',
             fontFamily: "'Inter', 'Segoe UI', system-ui, sans-serif",
         }}>
+            {/* Back to Dashboard */}
+            <button
+                onClick={() => navigate('/dashboard/parent')}
+                style={{
+                    background: 'none', border: 'none', cursor: 'pointer',
+                    color: '#6366f1', fontSize: 14, fontWeight: 600,
+                    display: 'flex', alignItems: 'center', gap: 6,
+                    marginBottom: 16, padding: 0, fontFamily: 'inherit',
+                }}
+                onMouseOver={e => e.currentTarget.style.textDecoration = 'underline'}
+                onMouseOut={e => e.currentTarget.style.textDecoration = 'none'}
+            >
+                ← Back to Dashboard
+            </button>
+
             {/* Header */}
             <div style={{ marginBottom: 32 }}>
                 <h1 style={{

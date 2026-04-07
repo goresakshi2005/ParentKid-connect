@@ -1,9 +1,11 @@
 // frontend/src/components/ScreenTime/DeviceManager.jsx
 
 import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { getDevices, registerDevice } from '../../services/screenTimeService';
 
 export default function DeviceManager() {
+    const navigate = useNavigate();
     const [devices, setDevices] = useState([]);
     const [loading, setLoading] = useState(true);
     const [form, setForm] = useState({ device_id: '', device_name: '' });
@@ -48,6 +50,19 @@ export default function DeviceManager() {
             maxWidth: 600, margin: '0 auto', padding: '32px 20px',
             fontFamily: "'Inter', system-ui, sans-serif",
         }}>
+            <button
+                onClick={() => navigate('/dashboard/parent')}
+                style={{
+                    background: 'none', border: 'none', cursor: 'pointer',
+                    color: '#6366f1', fontSize: 14, fontWeight: 600,
+                    display: 'flex', alignItems: 'center', gap: 6,
+                    marginBottom: 16, padding: 0, fontFamily: 'inherit',
+                }}
+                onMouseOver={e => e.currentTarget.style.textDecoration = 'underline'}
+                onMouseOut={e => e.currentTarget.style.textDecoration = 'none'}
+            >
+                ← Back to Dashboard
+            </button>
             <h2 style={{ fontSize: 22, fontWeight: 800, color: '#0f172a', marginBottom: 6 }}>
                 📱 Manage Devices
             </h2>

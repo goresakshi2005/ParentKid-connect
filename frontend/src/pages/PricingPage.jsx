@@ -22,8 +22,18 @@ function PricingPage() {
     </div>
   );
 
+  const dashboardPath = user?.role === 'teen' ? '/dashboard/teen'
+    : user?.is_expecting ? '/dashboard/pregnancy'
+    : '/dashboard/parent';
+
   return (
     <div className="max-w-7xl mx-auto px-4 pt-10 pb-24 transition-colors duration-300">
+      <button
+        onClick={() => navigate(dashboardPath)}
+        className="mb-6 text-blue-600 dark:text-pink-400 hover:underline flex items-center gap-2 text-sm font-medium transition-colors"
+      >
+        ← Back to Dashboard
+      </button>
       <div className="text-center mb-16">
         <h1 className="text-5xl font-extrabold mb-4 dark:text-white tracking-tight">Simple, <span className="dark:text-pink-500">Transparent</span> Pricing</h1>
         <p className="text-xl text-gray-600 dark:text-slate-400 max-w-2xl mx-auto">Choose the perfect plan to unlock your child's full potential and track their growth journey with precision.</p>

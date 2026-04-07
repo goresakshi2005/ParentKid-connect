@@ -12,7 +12,7 @@ const VoiceAssessmentPage = () => {
 
     return (
         <div className="min-h-screen bg-gradient-to-b from-pink-50 to-white dark:from-slate-900 dark:to-slate-950 py-12 px-4">
-            <button onClick={() => navigate(-1)} className="mb-6 text-pink-600 dark:text-pink-400 hover:underline">← Back</button>
+            <button onClick={() => navigate('/dashboard/pregnancy')} className="mb-6 text-pink-600 dark:text-pink-400 hover:underline flex items-center gap-2 text-sm font-medium transition-colors">← Back to Dashboard</button>
             <VoiceAssessmentFlow onComplete={handleComplete} onClose={() => navigate('/dashboard/pregnancy')} />
         </div>
     );

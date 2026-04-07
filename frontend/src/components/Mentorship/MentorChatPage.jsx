@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import mentorshipService from '../../services/mentorshipService';
 import MentorDashboard from './MentorDashboard';
@@ -14,6 +15,7 @@ const STAGE_META = {
 
 export default function MentorChatPage({ stage }) {
     const { user } = useAuth();
+    const navigate = useNavigate();
     const [assignment, setAssignment] = useState(null);
     const [assignments, setAssignments] = useState([]);
     const [activeChat, setActiveChat] = useState(null);

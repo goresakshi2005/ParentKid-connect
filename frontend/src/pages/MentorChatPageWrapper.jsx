@@ -1,6 +1,14 @@
 import React from 'react';
+import { useNavigate } from 'react-router-dom';
 import MentorChatPage from '../components/Mentorship/MentorChatPage';
 import { useAuth } from '../context/AuthContext';
+
+function getDashboardPath(user) {
+    if (user?.role === 'mentor') return '/dashboard/mentor';
+    if (user?.role === 'teen') return '/dashboard/teen';
+    if (user?.is_expecting) return '/dashboard/pregnancy';
+    return '/dashboard/parent';
+}
 
 /**
  * Standalone page for mentor chat.
@@ -9,6 +17,7 @@ import { useAuth } from '../context/AuthContext';
  */
 export default function MentorChatPageWrapper() {
     const { user } = useAuth();
+    const navigate = useNavigate();
     const params = new URLSearchParams(window.location.search);
     let stage = params.get('stage');
 
@@ -32,7 +41,19 @@ export default function MentorChatPageWrapper() {
         return <StageSelector />;
     }
 
-    return <MentorChatPage stage={stage} />;
+    return (
+        <div>
+            <div className="max-w-5xl mx-auto px-4 pt-6">
+                <button
+                    onClick={() => navigate(getDashboardPath(user))}
+                    className="mb-2 text-blue-600 dark:text-pink-400 hover:underline flex items-center gap-2 text-sm font-medium transition-colors"
+                >
+                    ← Back to Dashboard
+                </button>
+            </div>
+            <MentorChatPage stage={stage} />
+        </div>
+    );
 }
 
 function StageSelector() {
@@ -43,8 +64,17 @@ function StageSelector() {
         { value: 'teen_age', label: 'Teenager', emoji: '🧑‍🎓', desc: 'Guidance for ages 13-21', gradient: 'from-purple-500 to-violet-600' },
     ];
 
+    const navigate = useNavigate();
+    const { user } = useAuth();
+
     return (
         <div className="max-w-4xl mx-auto px-4 py-12">
+            <button
+                onClick={() => navigate(getDashboardPath(user))}
+                className="mb-6 text-blue-600 dark:text-pink-400 hover:underline flex items-center gap-2 text-sm font-medium transition-colors"
+            >
+                ← Back to Dashboard
+            </button>
             <div className="text-center mb-10">
                 <h1 className="text-3xl font-extrabold dark:text-white tracking-tight">
                     Choose Your <span className="dark:text-pink-500 text-blue-600">Stage</span>
