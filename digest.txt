@@ -7708,6 +7708,8 @@ function LoginParent() {
           } else {
             navigate('/dashboard/parent');
           }
+        } else if (user.role === 'mentor') {
+          navigate('/dashboard/mentor');
         } else {
           alert('Please use the teen login page.');
         }
@@ -7720,7 +7722,8 @@ function LoginParent() {
   return (
     <div className="max-w-md mx-auto py-24 px-4 transition-colors duration-300">
       <div className="bg-white dark:bg-slate-900 p-10 rounded-2xl shadow-2xl dark:shadow-pink-500/5 dark:border dark:border-slate-800">
-        <h2 className="text-3xl font-bold mb-8 dark:text-white text-center">Parent <span className="dark:text-pink-500">Login</span></h2>
+        <h2 className="text-3xl font-bold mb-2 dark:text-white text-center">Parent <span className="dark:text-pink-500">Login</span></h2>
+        <p className="text-center text-sm text-gray-400 dark:text-slate-500 mb-8">Parents &amp; Mentors sign in here</p>
 
         <form onSubmit={formik.handleSubmit} className="space-y-6">
           <div>
@@ -8899,6 +8902,7 @@ export { default as MentorDashboard } from './MentorDashboard';
 FILE: frontend/src/components/Mentorship/MentorChatPage.jsx
 ================================================
 import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import mentorshipService from '../../services/mentorshipService';
 import MentorDashboard from './MentorDashboard';
@@ -8914,6 +8918,7 @@ const STAGE_META = {
 
 export default function MentorChatPage({ stage }) {
     const { user } = useAuth();
+    const navigate = useNavigate();
     const [assignment, setAssignment] = useState(null);
     const [assignments, setAssignments] = useState([]);
     const [activeChat, setActiveChat] = useState(null);
@@ -8974,6 +8979,16 @@ export default function MentorChatPage({ stage }) {
         setAssignment(found || null);
     };
 
+    const meta = STAGE_META[stage] || { label: stage, emoji: '💬', color: 'gray' };
+
+    if (loading) {
+        return (
+            <div className="flex items-center justify-center min-h-[60vh]">
+                <div className="animate-spin rounded-full h-12 w-12 border-4 border-pink-500 border-t-transparent"></div>
+            </div>
+        );
+    }
+
     // If mentor role, show mentor dashboard
     if (isMentor) {
         return (
@@ -8983,16 +8998,6 @@ export default function MentorChatPage({ stage }) {
                 activeChat={activeChat}
                 onRefresh={loadAssignments}
             />
-        );
-    }
-
-    const meta = STAGE_META[stage] || { label: stage, emoji: '💬', color: 'gray' };
-
-    if (loading) {
-        return (
-            <div className="flex items-center justify-center min-h-[60vh]">
-                <div className="animate-spin rounded-full h-12 w-12 border-4 border-pink-500 border-t-transparent"></div>
-            </div>
         );
     }
 
@@ -9349,13 +9354,22 @@ function Navbar() {
           ) : (
             <>
               <Link to="/" className="hover:text-blue-600 dark:text-gray-200 dark:hover:text-blue-400">Home</Link>
-              <Link
-                to={user.role === 'mentor' ? '/dashboard/mentor' : user.role === 'teen' ? '/mentor-chat/teen?stage=teen_age' : '/mentor-chat'}
-                className="hover:text-blue-600 dark:text-gray-200 dark:hover:text-blue-400 flex items-center gap-1"
-              >
-                ðŸ’¬ Mentor Chat
-              </Link>
-              <Link to="/pricing" className="hover:text-blue-600 dark:text-gray-200 dark:hover:text-blue-400">Upgrade</Link>
+              {/* Dashboard link based on role */}
+              {user.role === 'mentor' ? (
+                <Link to="/dashboard/mentor" className="hover:text-blue-600 dark:text-gray-200 dark:hover:text-blue-400 flex items-center gap-1">
+                  🧑‍🏫 My Dashboard
+                </Link>
+              ) : (
+                <>
+                  <Link
+                    to={user.role === 'teen' ? '/mentor-chat/teen?stage=teen_age' : '/mentor-chat'}
+                    className="hover:text-blue-600 dark:text-gray-200 dark:hover:text-blue-400 flex items-center gap-1"
+                  >
+                    💬 Mentor Chat
+                  </Link>
+                  <Link to="/pricing" className="hover:text-blue-600 dark:text-gray-200 dark:hover:text-blue-400">Upgrade</Link>
+                </>
+              )}
               <div className="flex gap-4 items-center">
                 <span className="text-sm text-gray-600 dark:text-gray-300">{user.email}</span>
                 <button
@@ -9391,12 +9405,18 @@ function Navbar() {
           <Link to="/" className="block hover:text-blue-600 dark:text-gray-200">Home</Link>
           <Link to="/pricing" className="block hover:text-blue-600 dark:text-gray-200">Pricing</Link>
           {user && (
-            <Link
-              to={user.role === 'mentor' ? '/dashboard/mentor' : user.role === 'teen' ? '/mentor-chat/teen?stage=teen_age' : '/mentor-chat'}
-              className="block hover:text-blue-600 dark:text-gray-200"
-            >
-              ðŸ’¬ Mentor Chat
-            </Link>
+            user.role === 'mentor' ? (
+              <Link to="/dashboard/mentor" className="block hover:text-blue-600 dark:text-gray-200">
+                🧑‍🏫 My Dashboard
+              </Link>
+            ) : (
+              <Link
+                to={user.role === 'teen' ? '/mentor-chat/teen?stage=teen_age' : '/mentor-chat'}
+                className="block hover:text-blue-600 dark:text-gray-200"
+              >
+                💬 Mentor Chat
+              </Link>
+            )
           )}
           {!user ? (
             <div className="space-y-2">
@@ -10861,9 +10881,11 @@ FILE: frontend/src/components/ScreenTime/DeviceManager.jsx
 // frontend/src/components/ScreenTime/DeviceManager.jsx
 
 import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { getDevices, registerDevice } from '../../services/screenTimeService';
 
 export default function DeviceManager() {
+    const navigate = useNavigate();
     const [devices, setDevices] = useState([]);
     const [loading, setLoading] = useState(true);
     const [form, setForm] = useState({ device_id: '', device_name: '' });
@@ -10908,6 +10930,19 @@ export default function DeviceManager() {
             maxWidth: 600, margin: '0 auto', padding: '32px 20px',
             fontFamily: "'Inter', system-ui, sans-serif",
         }}>
+            <button
+                onClick={() => navigate('/dashboard/parent')}
+                style={{
+                    background: 'none', border: 'none', cursor: 'pointer',
+                    color: '#6366f1', fontSize: 14, fontWeight: 600,
+                    display: 'flex', alignItems: 'center', gap: 6,
+                    marginBottom: 16, padding: 0, fontFamily: 'inherit',
+                }}
+                onMouseOver={e => e.currentTarget.style.textDecoration = 'underline'}
+                onMouseOut={e => e.currentTarget.style.textDecoration = 'none'}
+            >
+                ← Back to Dashboard
+            </button>
             <h2 style={{ fontSize: 22, fontWeight: 800, color: '#0f172a', marginBottom: 6 }}>
                 📱 Manage Devices
             </h2>
@@ -11040,6 +11075,7 @@ FILE: frontend/src/components/ScreenTime/ScreenTimeDashboard.jsx
 // frontend/src/components/ScreenTime/ScreenTimeDashboard.jsx
 
 import { useState, useEffect, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { getUsage, getDevices } from '../../services/screenTimeService';
 
 // ─────────────────────────────────────────────────────
@@ -11302,6 +11338,7 @@ function TestDataUploader({ onUploaded }) {
 // Main Dashboard
 // ─────────────────────────────────────────────────────
 export default function ScreenTimeDashboard() {
+    const navigate = useNavigate();
     const [data, setData] = useState(null);
     const [devices, setDevices] = useState([]);
     const [selectedDevice, setSelectedDevice] = useState('');
@@ -11351,6 +11388,21 @@ export default function ScreenTimeDashboard() {
             padding: '36px 20px 60px',
             fontFamily: "'Inter', 'Segoe UI', system-ui, sans-serif",
         }}>
+            {/* Back to Dashboard */}
+            <button
+                onClick={() => navigate('/dashboard/parent')}
+                style={{
+                    background: 'none', border: 'none', cursor: 'pointer',
+                    color: '#6366f1', fontSize: 14, fontWeight: 600,
+                    display: 'flex', alignItems: 'center', gap: 6,
+                    marginBottom: 16, padding: 0, fontFamily: 'inherit',
+                }}
+                onMouseOver={e => e.currentTarget.style.textDecoration = 'underline'}
+                onMouseOut={e => e.currentTarget.style.textDecoration = 'none'}
+            >
+                ← Back to Dashboard
+            </button>
+
             {/* Header */}
             <div style={{ marginBottom: 32 }}>
                 <h1 style={{
@@ -11648,7 +11700,17 @@ function AssessmentPrompt({ onComplete, onDismiss }) {
 
     if (takingAssessment) {
         // Explicitly request teen self-assessment
-        return <AssessmentView assessmentType="teen" onComplete={onComplete} />;
+        return (
+            <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
+                <button 
+                    onClick={() => setTakingAssessment(false)}
+                    className="mb-6 text-blue-600 dark:text-pink-400 hover:underline flex items-center gap-2 text-sm font-medium transition-colors"
+                >
+                    ← Exit Assessment
+                </button>
+                <AssessmentView assessmentType="teen" onComplete={onComplete} />
+            </div>
+        );
     }
 
     return (
@@ -12383,8 +12445,16 @@ export default HomePage;
 FILE: frontend/src/pages/MentorChatPageWrapper.jsx
 ================================================
 import React from 'react';
+import { useNavigate } from 'react-router-dom';
 import MentorChatPage from '../components/Mentorship/MentorChatPage';
 import { useAuth } from '../context/AuthContext';
+
+function getDashboardPath(user) {
+    if (user?.role === 'mentor') return '/dashboard/mentor';
+    if (user?.role === 'teen') return '/dashboard/teen';
+    if (user?.is_expecting) return '/dashboard/pregnancy';
+    return '/dashboard/parent';
+}
 
 /**
  * Standalone page for mentor chat.
@@ -12393,6 +12463,7 @@ import { useAuth } from '../context/AuthContext';
  */
 export default function MentorChatPageWrapper() {
     const { user } = useAuth();
+    const navigate = useNavigate();
     const params = new URLSearchParams(window.location.search);
     let stage = params.get('stage');
 
@@ -12416,7 +12487,19 @@ export default function MentorChatPageWrapper() {
         return <StageSelector />;
     }
 
-    return <MentorChatPage stage={stage} />;
+    return (
+        <div>
+            <div className="max-w-5xl mx-auto px-4 pt-6">
+                <button
+                    onClick={() => navigate(getDashboardPath(user))}
+                    className="mb-2 text-blue-600 dark:text-pink-400 hover:underline flex items-center gap-2 text-sm font-medium transition-colors"
+                >
+                    ← Back to Dashboard
+                </button>
+            </div>
+            <MentorChatPage stage={stage} />
+        </div>
+    );
 }
 
 function StageSelector() {
@@ -12427,8 +12510,17 @@ function StageSelector() {
         { value: 'teen_age', label: 'Teenager', emoji: '🧑‍🎓', desc: 'Guidance for ages 13-21', gradient: 'from-purple-500 to-violet-600' },
     ];
 
+    const navigate = useNavigate();
+    const { user } = useAuth();
+
     return (
         <div className="max-w-4xl mx-auto px-4 py-12">
+            <button
+                onClick={() => navigate(getDashboardPath(user))}
+                className="mb-6 text-blue-600 dark:text-pink-400 hover:underline flex items-center gap-2 text-sm font-medium transition-colors"
+            >
+                ← Back to Dashboard
+            </button>
             <div className="text-center mb-10">
                 <h1 className="text-3xl font-extrabold dark:text-white tracking-tight">
                     Choose Your <span className="dark:text-pink-500 text-blue-600">Stage</span>
@@ -13349,8 +13441,18 @@ function PricingPage() {
     </div>
   );
 
+  const dashboardPath = user?.role === 'teen' ? '/dashboard/teen'
+    : user?.is_expecting ? '/dashboard/pregnancy'
+    : '/dashboard/parent';
+
   return (
     <div className="max-w-7xl mx-auto px-4 pt-10 pb-24 transition-colors duration-300">
+      <button
+        onClick={() => navigate(dashboardPath)}
+        className="mb-6 text-blue-600 dark:text-pink-400 hover:underline flex items-center gap-2 text-sm font-medium transition-colors"
+      >
+        ← Back to Dashboard
+      </button>
       <div className="text-center mb-16">
         <h1 className="text-5xl font-extrabold mb-4 dark:text-white tracking-tight">Simple, <span className="dark:text-pink-500">Transparent</span> Pricing</h1>
         <p className="text-xl text-gray-600 dark:text-slate-400 max-w-2xl mx-auto">Choose the perfect plan to unlock your child's full potential and track their growth journey with precision.</p>
@@ -13953,6 +14055,12 @@ export default function TeenDashboard() {
     if (takingAssessment) {
         return (
             <div className="max-w-4xl mx-auto px-4 py-8">
+                <button 
+                    onClick={() => setTakingAssessment(false)} 
+                    className="mb-6 text-blue-600 dark:text-pink-400 hover:underline flex items-center gap-2 text-sm font-medium transition-colors"
+                >
+                    ← Back to Dashboard
+                </button>
                 <AssessmentPrompt
                     onComplete={handleAssessmentComplete}
                     onDismiss={() => setTakingAssessment(false)}
@@ -14136,7 +14244,7 @@ const VoiceAssessmentPage = () => {
 
     return (
         <div className="min-h-screen bg-gradient-to-b from-pink-50 to-white dark:from-slate-900 dark:to-slate-950 py-12 px-4">
-            <button onClick={() => navigate(-1)} className="mb-6 text-pink-600 dark:text-pink-400 hover:underline">← Back</button>
+            <button onClick={() => navigate('/dashboard/pregnancy')} className="mb-6 text-pink-600 dark:text-pink-400 hover:underline flex items-center gap-2 text-sm font-medium transition-colors">← Back to Dashboard</button>
             <VoiceAssessmentFlow onComplete={handleComplete} onClose={() => navigate('/dashboard/pregnancy')} />
         </div>
     );
