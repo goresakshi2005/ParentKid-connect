@@ -569,6 +569,12 @@ export default function TeenDashboard() {
     if (takingAssessment) {
         return (
             <div className="max-w-4xl mx-auto px-4 py-8">
+                <button 
+                    onClick={() => setTakingAssessment(false)} 
+                    className="mb-6 text-blue-600 dark:text-pink-400 hover:underline flex items-center gap-2 text-sm font-medium transition-colors"
+                >
+                    ← Back to Dashboard
+                </button>
                 <AssessmentPrompt
                     onComplete={handleAssessmentComplete}
                     onDismiss={() => setTakingAssessment(false)}

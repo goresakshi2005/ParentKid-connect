@@ -6,7 +6,17 @@ function AssessmentPrompt({ onComplete, onDismiss }) {
 
     if (takingAssessment) {
         // Explicitly request teen self-assessment
-        return <AssessmentView assessmentType="teen" onComplete={onComplete} />;
+        return (
+            <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
+                <button 
+                    onClick={() => setTakingAssessment(false)}
+                    className="mb-6 text-blue-600 dark:text-pink-400 hover:underline flex items-center gap-2 text-sm font-medium transition-colors"
+                >
+                    ← Exit Assessment
+                </button>
+                <AssessmentView assessmentType="teen" onComplete={onComplete} />
+            </div>
+        );
     }
 
     return (
