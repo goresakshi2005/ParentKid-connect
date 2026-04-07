@@ -24,6 +24,7 @@ urlpatterns = [
     path('api/', include('apps.reports.urls')),
     path('api/voice-assessments/', include('apps.voice_assessments.urls')),
     path('api/', include('apps.study_planner.urls')),
+    path('api/mentorship/', include('apps.mentorship.urls')),
 ]
 
 if settings.DEBUG:

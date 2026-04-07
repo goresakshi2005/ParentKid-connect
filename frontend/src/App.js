@@ -15,6 +15,7 @@ import NotFound from './pages/NotFound';
 import ParentRouter from './components/ParentRouter';
 import GoogleCallback from './pages/GoogleCallback';
 import VoiceAssessmentPage from './pages/VoiceAssessmentPage';
+import MentorChatPageWrapper from './pages/MentorChatPageWrapper';
 import { useAuth } from './context/AuthContext';
 
 function App() {
@@ -71,6 +72,32 @@ function App() {
             element={
               <AuthGuard role="teen">
                 <TeenDashboard />
+              </AuthGuard>
+            }
+          />
+
+          {/* Mentor Chat — accessible to parents, teens, and mentors */}
+          <Route
+            path="/mentor-chat"
+            element={
+              <AuthGuard role="parent">
+                <MentorChatPageWrapper />
+              </AuthGuard>
+            }
+          />
+          <Route
+            path="/mentor-chat/teen"
+            element={
+              <AuthGuard role="teen">
+                <MentorChatPageWrapper />
+              </AuthGuard>
+            }
+          />
+          <Route
+            path="/dashboard/mentor"
+            element={
+              <AuthGuard role="mentor">
+                <MentorChatPageWrapper />
               </AuthGuard>
             }
           />

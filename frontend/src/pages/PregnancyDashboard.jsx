@@ -409,7 +409,7 @@ function PregnancyDashboard() {
             )}
 
             {/* Quick-action cards */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-8">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-8">
                 <button onClick={() => setShowHealthGuide(true)} className="group bg-gradient-to-br from-rose-50 to-pink-50 dark:from-rose-900/20 dark:to-pink-900/20 border border-rose-200 dark:border-rose-800 rounded-2xl p-5 text-left hover:shadow-lg hover:border-rose-400 dark:hover:border-rose-600 transition-all">
                     <div className="text-3xl mb-3">🌸</div>
                     <h3 className="text-base font-bold text-rose-700 dark:text-rose-300 mb-1">Maternal Health Guide</h3>
@@ -422,6 +422,12 @@ function PregnancyDashboard() {
                     <p className="text-sm text-gray-500 dark:text-slate-400">Upload your report and we'll automatically extract your next appointment and add it to Google Calendar.</p>
                     <span className="mt-3 inline-block text-xs font-semibold text-blue-600 dark:text-blue-400 group-hover:underline">Upload report →</span>
                 </button>
+                <a href="/mentor-chat?stage=pregnancy" className="group bg-gradient-to-br from-purple-50 to-violet-50 dark:from-purple-900/20 dark:to-violet-900/20 border border-purple-200 dark:border-purple-800 rounded-2xl p-5 text-left hover:shadow-lg hover:border-purple-400 dark:hover:border-purple-600 transition-all">
+                    <div className="text-3xl mb-3">💬</div>
+                    <h3 className="text-base font-bold text-purple-700 dark:text-purple-300 mb-1">Chat with Mentor</h3>
+                    <p className="text-sm text-gray-500 dark:text-slate-400">Get one-on-one guidance from an expert pregnancy mentor for diet, wellness, and emotional support.</p>
+                    <span className="mt-3 inline-block text-xs font-semibold text-purple-600 dark:text-purple-400 group-hover:underline">Open chat →</span>
+                </a>
             </div>
 
             {/* Next appointment */}

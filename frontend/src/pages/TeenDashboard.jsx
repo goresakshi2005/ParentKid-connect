@@ -609,6 +609,29 @@ export default function TeenDashboard() {
             {/* Study Planner (always visible) */}
             <StudyPlanner />
 
+            {/* Mentor Chat Section */}
+            <a
+                href="/mentor-chat/teen?stage=teen_age"
+                className="block bg-gradient-to-r from-purple-50 to-pink-50 dark:from-slate-800 dark:to-slate-900 p-6 rounded-2xl border border-purple-200 dark:border-slate-700 hover:shadow-lg transition-all group"
+            >
+                <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-4">
+                        <div className="w-14 h-14 bg-purple-600 dark:bg-pink-600 rounded-xl flex items-center justify-center text-2xl group-hover:scale-110 transition-transform">
+                            💬
+                        </div>
+                        <div>
+                            <h3 className="text-lg font-bold text-gray-800 dark:text-white">Chat with Your Mentor</h3>
+                            <p className="text-sm text-gray-500 dark:text-slate-400">
+                                Get guidance on studies, goals, and personal growth
+                            </p>
+                        </div>
+                    </div>
+                    <span className="text-purple-600 dark:text-pink-400 font-medium text-sm group-hover:translate-x-1 transition-transform">
+                        Open Chat →
+                    </span>
+                </div>
+            </a>
+
             {/* Assessment Results */}
             {latestResult ? (
                 <>

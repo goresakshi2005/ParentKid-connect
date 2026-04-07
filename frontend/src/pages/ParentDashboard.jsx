@@ -159,6 +159,31 @@ function ParentDashboard() {
                 </p>
             </div>
 
+            {/* Mentor Chat Section */}
+            <div className="mb-10">
+                <a
+                    href="/mentor-chat"
+                    className="block bg-gradient-to-r from-blue-50 to-purple-50 dark:from-slate-800 dark:to-slate-900 p-6 rounded-2xl border border-blue-200 dark:border-slate-700 hover:shadow-lg transition-all group"
+                >
+                    <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-4">
+                            <div className="w-14 h-14 bg-blue-600 dark:bg-pink-600 rounded-xl flex items-center justify-center text-2xl group-hover:scale-110 transition-transform">
+                                💬
+                            </div>
+                            <div>
+                                <h3 className="text-lg font-bold text-gray-800 dark:text-white">Chat with a Mentor</h3>
+                                <p className="text-sm text-gray-500 dark:text-slate-400">
+                                    Get one-on-one guidance from an expert mentor
+                                </p>
+                            </div>
+                        </div>
+                        <span className="text-blue-600 dark:text-pink-400 font-medium text-sm group-hover:translate-x-1 transition-transform">
+                            Open Chat →
+                        </span>
+                    </div>
+                </a>
+            </div>
+
             {/* Children Section */}
             <h2 className="text-2xl font-bold mb-6 dark:text-white">Your Children</h2>
             {children.length === 0 ? (

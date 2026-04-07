@@ -50,6 +50,22 @@ Directory structure:
     │   │   │       ├── 0001_initial.py
     │   │   │       ├── 0002_initial.py
     │   │   │       └── __init__.py
+    │   │   ├── mentorship/
+    │   │   │   ├── __init__.py
+    │   │   │   ├── admin.py
+    │   │   │   ├── apps.py
+    │   │   │   ├── models.py
+    │   │   │   ├── serializers.py
+    │   │   │   ├── urls.py
+    │   │   │   ├── views.py
+    │   │   │   ├── management/
+    │   │   │   │   ├── __init__.py
+    │   │   │   │   └── commands/
+    │   │   │   │       ├── __init__.py
+    │   │   │   │       └── seed_mentors.py
+    │   │   │   └── migrations/
+    │   │   │       ├── 0001_initial.py
+    │   │   │       └── __init__.py
     │   │   ├── reports/
     │   │   │   ├── __init__.py
     │   │   │   ├── admin.py
@@ -114,6 +130,7 @@ Directory structure:
     │   │   │       ├── 0001_initial.py
     │   │   │       ├── 0002_customuser_is_expecting.py
     │   │   │       ├── 0003_customuser_google_tokens.py
+    │   │   │       ├── 0004_alter_customuser_role.py
     │   │   │       └── __init__.py
     │   │   └── voice_assessments/
     │   │       ├── __init__.py
@@ -163,6 +180,12 @@ Directory structure:
             │   ├── Common/
             │   │   ├── Loading.jsx
             │   │   └── ProgressBar.jsx
+            │   ├── Mentorship/
+            │   │   ├── ChangeMentorModal.jsx
+            │   │   ├── ChatWindow.jsx
+            │   │   ├── index.js
+            │   │   ├── MentorChatPage.jsx
+            │   │   └── MentorDashboard.jsx
             │   ├── Navbar/
             │   │   └── Navbar.jsx
             │   ├── Parent/
@@ -191,6 +214,7 @@ Directory structure:
             ├── pages/
             │   ├── GoogleCallback.jsx
             │   ├── HomePage.jsx
+            │   ├── MentorChatPageWrapper.jsx
             │   ├── NotFound.jsx
             │   ├── ParentDashboard.jsx
             │   ├── PregnancyDashboard.jsx
@@ -202,6 +226,7 @@ Directory structure:
             │   ├── assessmentService.js
             │   ├── authService.js
             │   ├── maternalHealthService.js
+            │   ├── mentorshipService.js
             │   ├── reportService.js
             │   ├── studyPlannerService.js
             │   └── voiceAssessmentService.js
@@ -1751,6 +1776,721 @@ class Migration(migrations.Migration):
 
 ================================================
 FILE: backend/apps/insights/migrations/__init__.py
+================================================
+
+
+
+================================================
+FILE: backend/apps/mentorship/__init__.py
+================================================
+# Mentorship app
+
+
+
+================================================
+FILE: backend/apps/mentorship/admin.py
+================================================
+from django.contrib import admin
+from .models import Mentor, MentorAssignment, ChatMessage
+
+
+@admin.register(Mentor)
+class MentorAdmin(admin.ModelAdmin):
+    list_display = [
+        'user', 'specialization', 'is_available',
+        'max_clients', 'active_client_count', 'created_at',
+    ]
+    list_filter = ['specialization', 'is_available']
+    search_fields = ['user__first_name', 'user__last_name', 'user__email']
+
+    def active_client_count(self, obj):
+        return obj.active_client_count
+    active_client_count.short_description = 'Active Clients'
+
+
+@admin.register(MentorAssignment)
+class MentorAssignmentAdmin(admin.ModelAdmin):
+    list_display = ['user', 'mentor', 'stage', 'is_active', 'assigned_at']
+    list_filter = ['stage', 'is_active']
+    search_fields = [
+        'user__first_name', 'user__last_name',
+        'mentor__user__first_name', 'mentor__user__last_name',
+    ]
+
+
+@admin.register(ChatMessage)
+class ChatMessageAdmin(admin.ModelAdmin):
+    list_display = ['sender', 'receiver', 'short_message', 'timestamp', 'is_read']
+    list_filter = ['is_read', 'timestamp']
+    search_fields = ['message', 'sender__first_name', 'receiver__first_name']
+
+    def short_message(self, obj):
+        return obj.message[:60]
+    short_message.short_description = 'Message'
+
+
+
+================================================
+FILE: backend/apps/mentorship/apps.py
+================================================
+from django.apps import AppConfig
+
+
+class MentorshipConfig(AppConfig):
+    default_auto_field = 'django.db.models.BigAutoField'
+    name = 'apps.mentorship'
+    verbose_name = 'Mentorship & Chat'
+
+
+
+================================================
+FILE: backend/apps/mentorship/models.py
+================================================
+from django.db import models
+from django.conf import settings
+
+
+class Mentor(models.Model):
+    """
+    Mentor profile â€” linked to a CustomUser with role='mentor'.
+    Each mentor can specialise in one or more stages.
+    """
+    STAGE_CHOICES = (
+        ('pregnancy', 'Before Birth / Pregnancy'),
+        ('early_childhood', 'Early Childhood (0-5)'),
+        ('growing_stage', 'Growing Stage (6-12)'),
+        ('teen_age', 'Teenager (13-21)'),
+    )
+
+    user = models.OneToOneField(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name='mentor_profile',
+    )
+    specialization = models.CharField(
+        max_length=20,
+        choices=STAGE_CHOICES,
+        help_text='Primary stage this mentor covers',
+    )
+    bio = models.TextField(blank=True)
+    is_available = models.BooleanField(default=True)
+    max_clients = models.PositiveIntegerField(default=10)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['user__first_name']
+
+    def __str__(self):
+        return f"Mentor: {self.user.get_full_name()} ({self.get_specialization_display()})"
+
+    @property
+    def active_client_count(self):
+        return self.assignments.filter(is_active=True).count()
+
+    @property
+    def has_capacity(self):
+        return self.active_client_count < self.max_clients
+
+
+class MentorAssignment(models.Model):
+    """
+    Links a user (parent/teen) to a mentor.
+    Stage is stored so we can match the right mentor.
+    """
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name='mentor_assignments',
+    )
+    mentor = models.ForeignKey(
+        Mentor,
+        on_delete=models.CASCADE,
+        related_name='assignments',
+    )
+    stage = models.CharField(max_length=20, choices=Mentor.STAGE_CHOICES)
+    is_active = models.BooleanField(default=True)
+    assigned_at = models.DateTimeField(auto_now_add=True)
+    deactivated_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ['-assigned_at']
+
+    def __str__(self):
+        return f"{self.user.get_full_name()} â†’ {self.mentor.user.get_full_name()}"
+
+
+class ChatMessage(models.Model):
+    """
+    One-to-one messages between user and mentor.
+    """
+    assignment = models.ForeignKey(
+        MentorAssignment,
+        on_delete=models.CASCADE,
+        related_name='messages',
+    )
+    sender = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name='sent_messages',
+    )
+    receiver = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name='received_messages',
+    )
+    message = models.TextField()
+    timestamp = models.DateTimeField(auto_now_add=True)
+    is_read = models.BooleanField(default=False)
+
+    class Meta:
+        ordering = ['timestamp']
+
+    def __str__(self):
+        preview = self.message[:40] + ('â€¦' if len(self.message) > 40 else '')
+        return f"{self.sender.first_name} â†’ {self.receiver.first_name}: {preview}"
+
+
+
+================================================
+FILE: backend/apps/mentorship/serializers.py
+================================================
+from rest_framework import serializers
+from django.contrib.auth import get_user_model
+from .models import Mentor, MentorAssignment, ChatMessage
+
+User = get_user_model()
+
+
+class MentorUserSerializer(serializers.ModelSerializer):
+    """Minimal user info embedded in mentor responses."""
+    class Meta:
+        model = User
+        fields = ['id', 'first_name', 'last_name', 'email', 'avatar']
+
+
+class MentorSerializer(serializers.ModelSerializer):
+    user = MentorUserSerializer(read_only=True)
+    active_client_count = serializers.IntegerField(read_only=True)
+    specialization_display = serializers.CharField(
+        source='get_specialization_display', read_only=True
+    )
+
+    class Meta:
+        model = Mentor
+        fields = [
+            'id', 'user', 'specialization', 'specialization_display',
+            'bio', 'is_available', 'max_clients', 'active_client_count',
+            'created_at',
+        ]
+
+
+class MentorAssignmentSerializer(serializers.ModelSerializer):
+    mentor_detail = MentorSerializer(source='mentor', read_only=True)
+    user_detail = MentorUserSerializer(source='user', read_only=True)
+    last_message = serializers.SerializerMethodField()
+    unread_count = serializers.SerializerMethodField()
+
+    class Meta:
+        model = MentorAssignment
+        fields = [
+            'id', 'user', 'mentor', 'mentor_detail', 'user_detail',
+            'stage', 'is_active', 'assigned_at',
+            'last_message', 'unread_count',
+        ]
+
+    def get_last_message(self, obj):
+        msg = obj.messages.order_by('-timestamp').first()
+        if msg:
+            return {
+                'id': msg.id,
+                'message': msg.message[:80],
+                'sender_id': msg.sender_id,
+                'timestamp': msg.timestamp.isoformat(),
+                'is_read': msg.is_read,
+            }
+        return None
+
+    def get_unread_count(self, obj):
+        request = self.context.get('request')
+        if request and request.user:
+            return obj.messages.filter(
+                is_read=False
+            ).exclude(sender=request.user).count()
+        return 0
+
+
+class ChatMessageSerializer(serializers.ModelSerializer):
+    sender_name = serializers.SerializerMethodField()
+
+    class Meta:
+        model = ChatMessage
+        fields = [
+            'id', 'assignment', 'sender', 'receiver',
+            'message', 'timestamp', 'is_read', 'sender_name',
+        ]
+        read_only_fields = ['sender', 'receiver', 'timestamp', 'is_read']
+
+    def get_sender_name(self, obj):
+        return obj.sender.get_full_name() or obj.sender.email
+
+
+class SendMessageSerializer(serializers.Serializer):
+    """Input serializer for sending a message."""
+    assignment_id = serializers.IntegerField()
+    message = serializers.CharField(max_length=5000)
+
+
+
+================================================
+FILE: backend/apps/mentorship/urls.py
+================================================
+from django.urls import path, include
+from rest_framework.routers import DefaultRouter
+from .views import MentorViewSet, MentorAssignmentViewSet, ChatViewSet
+
+router = DefaultRouter()
+router.register(r'mentors', MentorViewSet, basename='mentor')
+router.register(r'assignments', MentorAssignmentViewSet, basename='mentor-assignment')
+router.register(r'chat', ChatViewSet, basename='mentor-chat')
+
+urlpatterns = [
+    path('', include(router.urls)),
+]
+
+
+
+================================================
+FILE: backend/apps/mentorship/views.py
+================================================
+from rest_framework import viewsets, status
+from rest_framework.decorators import action
+from rest_framework.response import Response
+from rest_framework.permissions import IsAuthenticated
+from django.utils import timezone
+from django.db.models import Q, Count
+
+from .models import Mentor, MentorAssignment, ChatMessage
+from .serializers import (
+    MentorSerializer,
+    MentorAssignmentSerializer,
+    ChatMessageSerializer,
+    SendMessageSerializer,
+)
+
+
+class MentorViewSet(viewsets.ViewSet):
+    """List mentors and browse by specialization."""
+    permission_classes = [IsAuthenticated]
+
+    def list(self, request):
+        """GET /api/mentorship/mentors/ â€” list all available mentors."""
+        stage = request.query_params.get('stage')
+        qs = Mentor.objects.filter(is_available=True)
+        if stage:
+            qs = qs.filter(specialization=stage)
+        serializer = MentorSerializer(qs, many=True)
+        return Response(serializer.data)
+
+
+class MentorAssignmentViewSet(viewsets.ViewSet):
+    """Assign / change / list mentor assignments."""
+    permission_classes = [IsAuthenticated]
+
+    def list(self, request):
+        """
+        GET /api/mentorship/assignments/
+        Returns the logged-in user's active assignments.
+        If user is a mentor, also returns their client assignments.
+        """
+        user = request.user
+        qs = MentorAssignment.objects.filter(
+            Q(user=user) | Q(mentor__user=user),
+            is_active=True,
+        ).select_related('mentor__user', 'user')
+        serializer = MentorAssignmentSerializer(
+            qs, many=True, context={'request': request}
+        )
+        return Response(serializer.data)
+
+    @action(detail=False, methods=['post'])
+    def auto_assign(self, request):
+        """
+        POST /api/mentorship/assignments/auto_assign/
+        Body: { "stage": "pregnancy" | "early_childhood" | ... }
+        Auto-assigns the best mentor for the given stage.
+        """
+        stage = request.data.get('stage')
+        if not stage:
+            return Response(
+                {'error': 'stage is required'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # Check if user already has an active assignment for this stage
+        existing = MentorAssignment.objects.filter(
+            user=request.user, stage=stage, is_active=True
+        ).first()
+        if existing:
+            return Response(
+                MentorAssignmentSerializer(
+                    existing, context={'request': request}
+                ).data
+            )
+
+        # Find mentors for this stage, ordered by least workload
+        mentors = (
+            Mentor.objects
+            .filter(specialization=stage, is_available=True)
+            .annotate(client_count=Count(
+                'assignments',
+                filter=Q(assignments__is_active=True),
+            ))
+            .order_by('client_count')
+        )
+
+        mentor = None
+        for m in mentors:
+            if m.client_count < m.max_clients:
+                mentor = m
+                break
+
+        if not mentor:
+            return Response(
+                {'error': 'No mentors available for this stage right now.'},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        assignment = MentorAssignment.objects.create(
+            user=request.user,
+            mentor=mentor,
+            stage=stage,
+        )
+        return Response(
+            MentorAssignmentSerializer(
+                assignment, context={'request': request}
+            ).data,
+            status=status.HTTP_201_CREATED,
+        )
+
+    @action(detail=False, methods=['post'])
+    def change_mentor(self, request):
+        """
+        POST /api/mentorship/assignments/change_mentor/
+        Body: { "assignment_id": 1, "new_mentor_id": 5 }
+        Deactivates old assignment and creates a new one.
+        """
+        assignment_id = request.data.get('assignment_id')
+        new_mentor_id = request.data.get('new_mentor_id')
+
+        try:
+            old = MentorAssignment.objects.get(
+                id=assignment_id, user=request.user, is_active=True
+            )
+        except MentorAssignment.DoesNotExist:
+            return Response(
+                {'error': 'Assignment not found'},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        try:
+            new_mentor = Mentor.objects.get(
+                id=new_mentor_id, is_available=True
+            )
+        except Mentor.DoesNotExist:
+            return Response(
+                {'error': 'Mentor not found or unavailable'},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        if not new_mentor.has_capacity:
+            return Response(
+                {'error': 'This mentor has reached their client limit.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # Deactivate old
+        old.is_active = False
+        old.deactivated_at = timezone.now()
+        old.save()
+
+        # Create new
+        new_assignment = MentorAssignment.objects.create(
+            user=request.user,
+            mentor=new_mentor,
+            stage=old.stage,
+        )
+        return Response(
+            MentorAssignmentSerializer(
+                new_assignment, context={'request': request}
+            ).data,
+            status=status.HTTP_201_CREATED,
+        )
+
+
+class ChatViewSet(viewsets.ViewSet):
+    """Send / receive messages and mark-as-read."""
+    permission_classes = [IsAuthenticated]
+
+    @action(detail=False, methods=['get'], url_path='history/(?P<assignment_id>[0-9]+)')
+    def history(self, request, assignment_id=None):
+        """
+        GET /api/mentorship/chat/history/<assignment_id>/
+        Returns all messages for an assignment, oldest first.
+        """
+        try:
+            assignment = MentorAssignment.objects.get(
+                id=assignment_id,
+            )
+        except MentorAssignment.DoesNotExist:
+            return Response(
+                {'error': 'Assignment not found'},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        # Only the user or mentor should see messages
+        if request.user != assignment.user and request.user != assignment.mentor.user:
+            return Response(
+                {'error': 'Forbidden'},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        messages = assignment.messages.order_by('timestamp')
+        serializer = ChatMessageSerializer(messages, many=True)
+        return Response(serializer.data)
+
+    @action(detail=False, methods=['post'])
+    def send(self, request):
+        """
+        POST /api/mentorship/chat/send/
+        Body: { "assignment_id": 1, "message": "Hello mentor!" }
+        """
+        ser = SendMessageSerializer(data=request.data)
+        ser.is_valid(raise_exception=True)
+
+        try:
+            assignment = MentorAssignment.objects.get(
+                id=ser.validated_data['assignment_id'],
+                is_active=True,
+            )
+        except MentorAssignment.DoesNotExist:
+            return Response(
+                {'error': 'Assignment not found or inactive'},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        # Determine sender / receiver
+        sender = request.user
+        if sender == assignment.user:
+            receiver = assignment.mentor.user
+        elif sender == assignment.mentor.user:
+            receiver = assignment.user
+        else:
+            return Response(
+                {'error': 'You are not part of this assignment'},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        msg = ChatMessage.objects.create(
+            assignment=assignment,
+            sender=sender,
+            receiver=receiver,
+            message=ser.validated_data['message'],
+        )
+        return Response(
+            ChatMessageSerializer(msg).data,
+            status=status.HTTP_201_CREATED,
+        )
+
+    @action(detail=False, methods=['post'])
+    def mark_read(self, request):
+        """
+        POST /api/mentorship/chat/mark_read/
+        Body: { "assignment_id": 1 }
+        Marks all messages sent TO the current user as read.
+        """
+        assignment_id = request.data.get('assignment_id')
+        updated = ChatMessage.objects.filter(
+            assignment_id=assignment_id,
+            receiver=request.user,
+            is_read=False,
+        ).update(is_read=True)
+        return Response({'marked_read': updated})
+
+
+
+================================================
+FILE: backend/apps/mentorship/management/__init__.py
+================================================
+# management init
+
+
+
+================================================
+FILE: backend/apps/mentorship/management/commands/__init__.py
+================================================
+# commands init
+
+
+
+================================================
+FILE: backend/apps/mentorship/management/commands/seed_mentors.py
+================================================
+"""
+Management command to create demo mentor users.
+Usage:  python manage.py seed_mentors
+"""
+from django.core.management.base import BaseCommand
+from django.contrib.auth import get_user_model
+from apps.mentorship.models import Mentor
+
+User = get_user_model()
+
+DEMO_MENTORS = [
+    {
+        'email': 'mentor.pregnancy@demo.com',
+        'first_name': 'Dr. Sarah',
+        'last_name': 'Williams',
+        'specialization': 'pregnancy',
+        'bio': 'Certified prenatal counsellor with 12 years of experience supporting expecting parents through every stage of pregnancy.',
+    },
+    {
+        'email': 'mentor.earlychildhood@demo.com',
+        'first_name': 'Emily',
+        'last_name': 'Johnson',
+        'specialization': 'early_childhood',
+        'bio': 'Child development specialist focused on early learning, motor skills, and emotional growth for children 0-5.',
+    },
+    {
+        'email': 'mentor.growing@demo.com',
+        'first_name': 'Michael',
+        'last_name': 'Chen',
+        'specialization': 'growing_stage',
+        'bio': 'Expert in cognitive development, peer relationships, and academic growth for ages 6-12.',
+    },
+    {
+        'email': 'mentor.teen@demo.com',
+        'first_name': 'Priya',
+        'last_name': 'Sharma',
+        'specialization': 'teen_age',
+        'bio': 'Adolescent counsellor specializing in identity, career guidance, and parent-teen communication.',
+    },
+]
+
+
+class Command(BaseCommand):
+    help = 'Create demo mentor accounts for each stage'
+
+    def handle(self, *args, **options):
+        created_count = 0
+        for m in DEMO_MENTORS:
+            user, user_created = User.objects.get_or_create(
+                email=m['email'],
+                defaults={
+                    'username': m['email'],
+                    'first_name': m['first_name'],
+                    'last_name': m['last_name'],
+                    'role': 'mentor',
+                },
+            )
+            if user_created:
+                user.set_password('demo1234')
+                user.save()
+
+            mentor, mentor_created = Mentor.objects.get_or_create(
+                user=user,
+                defaults={
+                    'specialization': m['specialization'],
+                    'bio': m['bio'],
+                    'is_available': True,
+                    'max_clients': 10,
+                },
+            )
+            if mentor_created:
+                created_count += 1
+                self.stdout.write(self.style.SUCCESS(
+                    f'  ✅ Created mentor: {user.get_full_name()} ({m["specialization"]})'
+                ))
+            else:
+                self.stdout.write(f'  ⏭  Mentor already exists: {user.email}')
+
+        self.stdout.write(self.style.SUCCESS(
+            f'\nDone! Created {created_count} new mentor(s).'
+        ))
+
+
+
+================================================
+FILE: backend/apps/mentorship/migrations/0001_initial.py
+================================================
+# Generated by Django 4.2 on 2026-04-07 02:29
+
+from django.conf import settings
+from django.db import migrations, models
+import django.db.models.deletion
+
+
+class Migration(migrations.Migration):
+
+    initial = True
+
+    dependencies = [
+        migrations.swappable_dependency(settings.AUTH_USER_MODEL),
+    ]
+
+    operations = [
+        migrations.CreateModel(
+            name='Mentor',
+            fields=[
+                ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
+                ('specialization', models.CharField(choices=[('pregnancy', 'Before Birth / Pregnancy'), ('early_childhood', 'Early Childhood (0-5)'), ('growing_stage', 'Growing Stage (6-12)'), ('teen_age', 'Teenager (13-21)')], help_text='Primary stage this mentor covers', max_length=20)),
+                ('bio', models.TextField(blank=True)),
+                ('is_available', models.BooleanField(default=True)),
+                ('max_clients', models.PositiveIntegerField(default=10)),
+                ('created_at', models.DateTimeField(auto_now_add=True)),
+                ('updated_at', models.DateTimeField(auto_now=True)),
+                ('user', models.OneToOneField(on_delete=django.db.models.deletion.CASCADE, related_name='mentor_profile', to=settings.AUTH_USER_MODEL)),
+            ],
+            options={
+                'ordering': ['user__first_name'],
+            },
+        ),
+        migrations.CreateModel(
+            name='MentorAssignment',
+            fields=[
+                ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
+                ('stage', models.CharField(choices=[('pregnancy', 'Before Birth / Pregnancy'), ('early_childhood', 'Early Childhood (0-5)'), ('growing_stage', 'Growing Stage (6-12)'), ('teen_age', 'Teenager (13-21)')], max_length=20)),
+                ('is_active', models.BooleanField(default=True)),
+                ('assigned_at', models.DateTimeField(auto_now_add=True)),
+                ('deactivated_at', models.DateTimeField(blank=True, null=True)),
+                ('mentor', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='assignments', to='mentorship.mentor')),
+                ('user', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='mentor_assignments', to=settings.AUTH_USER_MODEL)),
+            ],
+            options={
+                'ordering': ['-assigned_at'],
+            },
+        ),
+        migrations.CreateModel(
+            name='ChatMessage',
+            fields=[
+                ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
+                ('message', models.TextField()),
+                ('timestamp', models.DateTimeField(auto_now_add=True)),
+                ('is_read', models.BooleanField(default=False)),
+                ('assignment', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='messages', to='mentorship.mentorassignment')),
+                ('receiver', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='received_messages', to=settings.AUTH_USER_MODEL)),
+                ('sender', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='sent_messages', to=settings.AUTH_USER_MODEL)),
+            ],
+            options={
+                'ordering': ['timestamp'],
+            },
+        ),
+    ]
+
+
+
+================================================
+FILE: backend/apps/mentorship/migrations/__init__.py
 ================================================
 
 
@@ -3531,6 +4271,16 @@ urlpatterns = [
 ================================================
 FILE: backend/apps/study_planner/views.py
 ================================================
+"""
+backend/apps/study_planner/views.py
+
+Key change: voice input may contain MULTIPLE tasks in one paragraph.
+_parse_with_gemini now ALWAYS returns a LIST of task dicts.
+parse_voice  â†’ returns { parsed: [task, task, ...] }
+add_from_voice â†’ saves ALL tasks in the list, syncs each to Google Calendar,
+                 returns { created: true, tasks: [...], count: N }
+"""
+
 import json
 import re
 from datetime import date, timedelta, datetime
@@ -3553,11 +4303,18 @@ genai.configure(api_key=settings.GEMINI_API_KEY)
 TODAY = date.today()
 
 
-def _parse_with_gemini(voice_text: str) -> dict:
+# ---------------------------------------------------------------------------
+# AI PARSING â€” returns a LIST of task dicts (even for a single task)
+# ---------------------------------------------------------------------------
+
+def _parse_with_gemini(voice_text: str) -> list:
     """
-    Call Gemini to convert natural-language academic input into structured JSON.
-    Returns a dict with keys: title, type, date, time, deadline, reminder,
-    priority, calendar_event, missing_date.
+    Call Gemini to convert natural-language input (which may describe MULTIPLE
+    tasks in one paragraph) into a list of structured task dicts.
+
+    Each dict has keys:
+        title, type, date, time, deadline, reminder, priority,
+        calendar_event, missing_date
     """
     today_str = TODAY.isoformat()
 
@@ -3565,7 +4322,13 @@ def _parse_with_gemini(voice_text: str) -> dict:
 Today's date is {today_str}.
 You are an AI academic task parser for a teen student planner.
 
-From the following voice input, extract a JSON object with EXACTLY these keys:
+The user may describe ONE or MORE tasks in a single message
+(e.g. "I have a Math test on 10th April and I need to submit my Science project
+by 15th April, also a meeting with mentor tomorrow at 5 PM").
+
+Extract EVERY task mentioned and return a JSON ARRAY where each element is
+an object with EXACTLY these keys:
+
 - "title": short task title (string)
 - "type": one of ["Task", "Meeting", "Test/Exam", "Assignment/Deadline"]
 - "date": YYYY-MM-DD (convert relative dates like "tomorrow", "Sunday", "next Monday")
@@ -3574,10 +4337,11 @@ From the following voice input, extract a JSON object with EXACTLY these keys:
 - "reminder": "30 minutes before" if timed event, "2 days before" if deadline
 - "priority": "High" for exams/tests/deadlines, "Medium" for meetings, "Low" for general tasks
 - "calendar_event": {{ "create": true, "event_type": "timed" }} if time given,
-                    {{ "create": true, "event_type": "all-day deadline" }} if deadline
-- "missing_date": true if the date is completely absent and you cannot infer it, otherwise false
+                    {{ "create": true, "event_type": "all-day deadline" }} if deadline,
+                    {{ "create": false }} otherwise
+- "missing_date": true if the date is completely absent and cannot be inferred
 
-Respond ONLY with valid JSON. No explanation, no markdown.
+Respond ONLY with a valid JSON array. No explanation, no markdown backticks.
 
 Voice input: "{voice_text}"
 """
@@ -3589,41 +4353,7 @@ Voice input: "{voice_text}"
     raw = re.sub(r"^```(?:json)?\s*", "", raw)
     raw = re.sub(r"\s*```$", "", raw)
 
-    try:
-        parsed = json.loads(raw)
-    except json.JSONDecodeError:
-        # Fallback: return a minimal dict with missing_date=True
-        return {
-            "title": "",
-            "type": "Task",
-            "date": "",
-            "time": None,
-            "deadline": False,
-            "reminder": "30 minutes before",
-            "priority": "Medium",
-            "calendar_event": {"create": False},
-            "missing_date": True,
-        }
-
-    # Ensure parsed is a dict, not a list
-    if isinstance(parsed, list):
-        if parsed and isinstance(parsed[0], dict):
-            parsed = parsed[0]
-        else:
-            return {
-                "title": "",
-                "type": "Task",
-                "date": "",
-                "time": None,
-                "deadline": False,
-                "reminder": "30 minutes before",
-                "priority": "Medium",
-                "calendar_event": {"create": False},
-                "missing_date": True,
-            }
-
-    # Ensure all required keys exist with defaults
-    defaults = {
+    _default_task = {
         "title": "Untitled Task",
         "type": "Task",
         "date": today_str,
@@ -3634,12 +4364,33 @@ Voice input: "{voice_text}"
         "calendar_event": {"create": False},
         "missing_date": False,
     }
-    for key, default in defaults.items():
-        if key not in parsed:
-            parsed[key] = default
 
-    return parsed
+    try:
+        parsed = json.loads(raw)
+    except json.JSONDecodeError:
+        return [{**_default_task, "missing_date": True, "title": ""}]
 
+    # Normalise: always work with a list
+    if isinstance(parsed, dict):
+        parsed = [parsed]
+
+    if not isinstance(parsed, list) or not parsed:
+        return [{**_default_task, "missing_date": True, "title": ""}]
+
+    # Fill in missing keys for every task
+    result = []
+    for item in parsed:
+        if not isinstance(item, dict):
+            continue
+        task = {**_default_task, **item}
+        result.append(task)
+
+    return result if result else [{**_default_task, "missing_date": True, "title": ""}]
+
+
+# ---------------------------------------------------------------------------
+# GOOGLE CALENDAR SYNC
+# ---------------------------------------------------------------------------
 
 def _sync_with_google_calendar(task):
     """
@@ -3668,6 +4419,10 @@ def _sync_with_google_calendar(task):
         return None
 
 
+# ---------------------------------------------------------------------------
+# VIEWSET
+# ---------------------------------------------------------------------------
+
 class StudyTaskViewSet(ModelViewSet):
     serializer_class = StudyTaskSerializer
     permission_classes = [IsAuthenticated]
@@ -3694,92 +4449,124 @@ class StudyTaskViewSet(ModelViewSet):
     # ------------------------------------------------------------------
     @action(detail=False, methods=['post'], url_path='parse_voice')
     def parse_voice(self, request):
+        """
+        Preview only â€” parse the voice text and return all detected tasks
+        WITHOUT saving them.
+
+        Response shape:
+            { "parsed": [ task_dict, task_dict, ... ] }
+        or, if any task is missing a date:
+            { "needs_clarification": true, "question": "...", "partial": [...] }
+        """
         ser = VoiceInputSerializer(data=request.data)
         ser.is_valid(raise_exception=True)
         voice_text = ser.validated_data['voice_text']
 
         try:
-            parsed = _parse_with_gemini(voice_text)
+            tasks = _parse_with_gemini(voice_text)
         except Exception as e:
             return Response(
                 {'error': f'AI parsing failed: {str(e)}'},
                 status=status.HTTP_502_BAD_GATEWAY,
             )
 
-        if parsed.get('missing_date'):
+        # If ANY task is missing a date, ask for clarification
+        if any(t.get('missing_date') for t in tasks):
             return Response(
                 {
                     'needs_clarification': True,
-                    'question': 'Could you tell me the date for this task?',
-                    'partial': parsed,
+                    'question': 'Some tasks are missing a date. Could you provide the dates?',
+                    'partial': tasks,
                 },
                 status=status.HTTP_200_OK,
             )
 
-        return Response({'parsed': parsed}, status=status.HTTP_200_OK)
+        return Response({'parsed': tasks}, status=status.HTTP_200_OK)
 
     # ------------------------------------------------------------------
     @action(detail=False, methods=['post'], url_path='add_from_voice')
     def add_from_voice(self, request):
+        """
+        Parse the voice text, save ALL detected tasks (skipping duplicates),
+        and sync each one to Google Calendar.
+
+        Response shape:
+            {
+              "created": true,
+              "count": N,
+              "tasks": [ serialized_task, ... ],
+              "skipped_duplicates": [ title, ... ]   # tasks already in DB
+            }
+        """
         ser = VoiceInputSerializer(data=request.data)
         ser.is_valid(raise_exception=True)
         voice_text = ser.validated_data['voice_text']
 
         try:
-            parsed = _parse_with_gemini(voice_text)
+            parsed_tasks = _parse_with_gemini(voice_text)
         except Exception as e:
             return Response(
                 {'error': f'AI parsing failed: {str(e)}'},
                 status=status.HTTP_502_BAD_GATEWAY,
             )
 
-        if parsed.get('missing_date'):
+        # If any task is missing a date, ask for clarification before saving
+        if any(t.get('missing_date') for t in parsed_tasks):
             return Response(
                 {
                     'needs_clarification': True,
-                    'question': 'Could you tell me the date for this task?',
+                    'question': 'Some tasks are missing a date. Could you specify the dates?',
+                    'partial': parsed_tasks,
                 },
                 status=status.HTTP_200_OK,
             )
 
-        # Duplicate check
-        existing = StudyTask.objects.filter(
-            user=request.user,
-            title__iexact=parsed.get('title', ''),
-            date=parsed.get('date'),
-        ).first()
+        created_tasks = []
+        skipped = []
 
-        if existing:
-            return Response(
-                {
-                    'duplicate': True,
-                    'message': 'A task with this title and date already exists.',
-                    'task': StudyTaskSerializer(existing).data,
-                },
-                status=status.HTTP_200_OK,
+        for parsed in parsed_tasks:
+            title = parsed.get('title', 'Untitled Task')
+            task_date = parsed.get('date', TODAY.isoformat())
+
+            # Duplicate check per task
+            existing = StudyTask.objects.filter(
+                user=request.user,
+                title__iexact=title,
+                date=task_date,
+            ).first()
+
+            if existing:
+                skipped.append(title)
+                continue
+
+            task = StudyTask.objects.create(
+                user=request.user,
+                title=title,
+                task_type=parsed.get('type', 'Task'),
+                date=task_date,
+                time=parsed.get('time'),
+                deadline=parsed.get('deadline', False),
+                reminder=parsed.get('reminder', '30 minutes before'),
+                priority=parsed.get('priority', 'Medium'),
+                voice_input=voice_text,
+                parsed_json=parsed,
             )
 
-        task = StudyTask.objects.create(
-            user=request.user,
-            title=parsed.get('title', 'Untitled Task'),
-            task_type=parsed.get('type', 'Task'),
-            date=parsed.get('date', TODAY.isoformat()),
-            time=parsed.get('time'),
-            deadline=parsed.get('deadline', False),
-            reminder=parsed.get('reminder', '30 minutes before'),
-            priority=parsed.get('priority', 'Medium'),
-            voice_input=voice_text,
-            parsed_json=parsed,
-        )
+            # Sync to Google Calendar
+            event_id = _sync_with_google_calendar(task)
+            if event_id:
+                task.google_calendar_event_id = event_id
+                task.save(update_fields=["google_calendar_event_id"])
 
-        # Sync to Google Calendar (for voice-created tasks)
-        event_id = _sync_with_google_calendar(task)
-        if event_id:
-            task.google_calendar_event_id = event_id
-            task.save(update_fields=["google_calendar_event_id"])
+            created_tasks.append(task)
 
         return Response(
-            {'created': True, 'task': StudyTaskSerializer(task).data},
+            {
+                'created': True,
+                'count': len(created_tasks),
+                'tasks': StudyTaskSerializer(created_tasks, many=True).data,
+                'skipped_duplicates': skipped,
+            },
             status=status.HTTP_201_CREATED,
         )
 
@@ -4276,6 +5063,8 @@ class CustomUser(AbstractUser):
     ROLE_CHOICES = (
         ('parent', 'Parent'),
         ('teen', 'Teen'),
+        ('mentor', 'Mentor'),
+        ('admin', 'Admin'),
     )
     
     role = models.CharField(max_length=10, choices=ROLE_CHOICES)
@@ -4713,6 +5502,30 @@ class Migration(migrations.Migration):
             field=models.TextField(blank=True, null=True),
         ),
     ]
+
+
+================================================
+FILE: backend/apps/users/migrations/0004_alter_customuser_role.py
+================================================
+# Generated by Django 4.2 on 2026-04-07 04:41
+
+from django.db import migrations, models
+
+
+class Migration(migrations.Migration):
+
+    dependencies = [
+        ('users', '0003_customuser_google_tokens'),
+    ]
+
+    operations = [
+        migrations.AlterField(
+            model_name='customuser',
+            name='role',
+            field=models.CharField(choices=[('parent', 'Parent'), ('teen', 'Teen'), ('mentor', 'Mentor'), ('admin', 'Admin')], max_length=10),
+        ),
+    ]
+
 
 
 ================================================
@@ -5258,6 +6071,7 @@ INSTALLED_APPS = [
     'apps.reports',
     'apps.voice_assessments',
     'apps.study_planner',
+    'apps.mentorship',
 ]
 
 MIDDLEWARE = [
@@ -5383,6 +6197,7 @@ urlpatterns = [
     path('api/', include('apps.reports.urls')),
     path('api/voice-assessments/', include('apps.voice_assessments.urls')),
     path('api/', include('apps.study_planner.urls')),
+    path('api/mentorship/', include('apps.mentorship.urls')),
 ]
 
 if settings.DEBUG:
@@ -5540,6 +6355,7 @@ import NotFound from './pages/NotFound';
 import ParentRouter from './components/ParentRouter';
 import GoogleCallback from './pages/GoogleCallback';
 import VoiceAssessmentPage from './pages/VoiceAssessmentPage';
+import MentorChatPageWrapper from './pages/MentorChatPageWrapper';
 import { useAuth } from './context/AuthContext';
 
 function App() {
@@ -5596,6 +6412,32 @@ function App() {
             element={
               <AuthGuard role="teen">
                 <TeenDashboard />
+              </AuthGuard>
+            }
+          />
+
+          {/* Mentor Chat â€” accessible to parents, teens, and mentors */}
+          <Route
+            path="/mentor-chat"
+            element={
+              <AuthGuard role="parent">
+                <MentorChatPageWrapper />
+              </AuthGuard>
+            }
+          />
+          <Route
+            path="/mentor-chat/teen"
+            element={
+              <AuthGuard role="teen">
+                <MentorChatPageWrapper />
+              </AuthGuard>
+            }
+          />
+          <Route
+            path="/dashboard/mentor"
+            element={
+              <AuthGuard role="mentor">
+                <MentorChatPageWrapper />
               </AuthGuard>
             }
           />
@@ -6071,7 +6913,8 @@ function AuthGuard({ children, role }) {
   }
 
   if (!user) {
-    return <Navigate to={`/login/${role}`} />;
+    const loginRole = role === 'mentor' ? 'parent' : role;
+    return <Navigate to={`/login/${loginRole}`} />;
   }
 
   if (user.role !== role) {
@@ -6961,6 +7804,745 @@ export default ProgressBar;
 
 
 ================================================
+FILE: frontend/src/components/Mentorship/ChangeMentorModal.jsx
+================================================
+import React, { useState, useEffect } from 'react';
+import mentorshipService from '../../services/mentorshipService';
+
+export default function ChangeMentorModal({ assignment, stage, onClose, onChanged }) {
+    const [mentors, setMentors] = useState([]);
+    const [loading, setLoading] = useState(true);
+    const [changing, setChanging] = useState(false);
+    const [error, setError] = useState('');
+
+    useEffect(() => {
+        loadMentors();
+    }, [stage]);
+
+    const loadMentors = async () => {
+        try {
+            const res = await mentorshipService.getMentors(stage);
+            // Filter out current mentor
+            const filtered = res.data.filter(
+                m => m.id !== assignment.mentor_detail?.id
+            );
+            setMentors(filtered);
+        } catch (err) {
+            console.error('Failed to load mentors:', err);
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const handleChange = async (mentorId) => {
+        setChanging(true);
+        setError('');
+        try {
+            await mentorshipService.changeMentor(assignment.id, mentorId);
+            onChanged();
+        } catch (err) {
+            setError(err.response?.data?.error || 'Failed to change mentor.');
+        } finally {
+            setChanging(false);
+        }
+    };
+
+    return (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+            {/* Backdrop */}
+            <div
+                className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+                onClick={onClose}
+            ></div>
+
+            {/* Modal */}
+            <div className="relative bg-white dark:bg-slate-900 rounded-2xl shadow-2xl dark:shadow-black/50 border dark:border-slate-800 w-full max-w-lg max-h-[80vh] overflow-hidden animate-[fadeIn_0.2s_ease]">
+                {/* Header */}
+                <div className="px-6 py-5 border-b dark:border-slate-800">
+                    <div className="flex items-center justify-between">
+                        <h3 className="text-xl font-bold dark:text-white">Change Mentor</h3>
+                        <button
+                            onClick={onClose}
+                            className="w-8 h-8 rounded-full bg-gray-100 dark:bg-slate-800 flex items-center justify-center hover:bg-gray-200 dark:hover:bg-slate-700 transition text-gray-500 dark:text-slate-400"
+                        >
+                            âœ•
+                        </button>
+                    </div>
+                    <p className="text-sm text-gray-500 dark:text-slate-400 mt-1">
+                        Select a new mentor for this stage
+                    </p>
+                </div>
+
+                {/* Body */}
+                <div className="p-6 overflow-y-auto" style={{ maxHeight: '50vh' }}>
+                    {error && (
+                        <div className="mb-4 p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-xl text-red-600 dark:text-red-400 text-sm">
+                            {error}
+                        </div>
+                    )}
+
+                    {loading ? (
+                        <div className="flex justify-center py-12">
+                            <div className="animate-spin rounded-full h-8 w-8 border-3 border-pink-500 border-t-transparent"></div>
+                        </div>
+                    ) : mentors.length === 0 ? (
+                        <div className="text-center py-12">
+                            <p className="text-gray-400 dark:text-slate-500">
+                                No other mentors available for this stage right now.
+                            </p>
+                        </div>
+                    ) : (
+                        <div className="space-y-3">
+                            {mentors.map((mentor) => (
+                                <div
+                                    key={mentor.id}
+                                    className="p-4 rounded-xl border dark:border-slate-700 bg-gray-50 dark:bg-slate-800/50 hover:bg-blue-50 dark:hover:bg-slate-800 transition group"
+                                >
+                                    <div className="flex items-center gap-4">
+                                        <div className="w-12 h-12 rounded-full bg-blue-600 dark:bg-pink-600 flex items-center justify-center text-lg font-bold text-white shrink-0">
+                                            {mentor.user?.first_name?.charAt(0) || 'M'}
+                                        </div>
+                                        <div className="flex-1 min-w-0">
+                                            <h4 className="font-bold dark:text-white text-sm">
+                                                {mentor.user?.first_name} {mentor.user?.last_name}
+                                            </h4>
+                                            <p className="text-xs text-gray-500 dark:text-slate-400 truncate">
+                                                {mentor.bio?.substring(0, 80)}...
+                                            </p>
+                                            <p className="text-xs text-gray-400 dark:text-slate-500 mt-1">
+                                                {mentor.active_client_count}/{mentor.max_clients} clients
+                                            </p>
+                                        </div>
+                                        <button
+                                            onClick={() => handleChange(mentor.id)}
+                                            disabled={changing}
+                                            className="px-4 py-2 bg-blue-600 dark:bg-pink-600 text-white text-xs font-bold rounded-lg hover:bg-blue-700 dark:hover:bg-pink-700 transition disabled:opacity-50 shrink-0"
+                                        >
+                                            Select
+                                        </button>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    )}
+                </div>
+            </div>
+        </div>
+    );
+}
+
+
+
+================================================
+FILE: frontend/src/components/Mentorship/ChatWindow.jsx
+================================================
+import React, { useState, useEffect, useRef } from 'react';
+import { useAuth } from '../../context/AuthContext';
+import mentorshipService from '../../services/mentorshipService';
+
+export default function ChatWindow({ assignment, onClose }) {
+    const { user } = useAuth();
+    const [messages, setMessages] = useState([]);
+    const [newMessage, setNewMessage] = useState('');
+    const [sending, setSending] = useState(false);
+    const [loading, setLoading] = useState(true);
+    const messagesEndRef = useRef(null);
+    const inputRef = useRef(null);
+
+    const isMentor = user?.id === assignment.mentor_detail?.user?.id;
+    const otherName = isMentor
+        ? `${assignment.user_detail?.first_name || ''} ${assignment.user_detail?.last_name || ''}`.trim()
+        : `${assignment.mentor_detail?.user?.first_name || ''} ${assignment.mentor_detail?.user?.last_name || ''}`.trim();
+
+    useEffect(() => {
+        loadMessages();
+        // Mark messages as read
+        mentorshipService.markRead(assignment.id).catch(() => {});
+        // Poll for new messages every 3 seconds
+        const interval = setInterval(loadMessages, 3000);
+        return () => clearInterval(interval);
+    }, [assignment.id]);
+
+    useEffect(() => {
+        scrollToBottom();
+    }, [messages]);
+
+    const loadMessages = async () => {
+        try {
+            const res = await mentorshipService.getChatHistory(assignment.id);
+            setMessages(res.data);
+            // Mark as read whenever we load
+            mentorshipService.markRead(assignment.id).catch(() => {});
+        } catch (err) {
+            console.error('Failed to load messages:', err);
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const scrollToBottom = () => {
+        messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    };
+
+    const handleSend = async (e) => {
+        e.preventDefault();
+        if (!newMessage.trim() || sending) return;
+
+        setSending(true);
+        try {
+            await mentorshipService.sendMessage(assignment.id, newMessage.trim());
+            setNewMessage('');
+            await loadMessages();
+            inputRef.current?.focus();
+        } catch (err) {
+            console.error('Failed to send:', err);
+        } finally {
+            setSending(false);
+        }
+    };
+
+    const formatTime = (ts) => {
+        const d = new Date(ts);
+        const now = new Date();
+        const isToday = d.toDateString() === now.toDateString();
+        if (isToday) {
+            return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        }
+        return d.toLocaleDateString([], { month: 'short', day: 'numeric' }) +
+            ' ' + d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    };
+
+    return (
+        <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-xl dark:shadow-black/40 border dark:border-slate-800 flex flex-col overflow-hidden" style={{ height: '75vh' }}>
+            {/* Chat Header */}
+            <div className="bg-gradient-to-r from-blue-600 to-purple-600 dark:from-pink-600 dark:to-purple-700 px-6 py-4 flex items-center gap-4 shrink-0">
+                <div className="w-10 h-10 rounded-full bg-white/20 backdrop-blur flex items-center justify-center text-lg font-bold text-white">
+                    {otherName.charAt(0)}
+                </div>
+                <div className="flex-1">
+                    <h3 className="text-white font-bold">{otherName}</h3>
+                    <p className="text-white/70 text-xs">
+                        {isMentor ? 'Client' : assignment.mentor_detail?.specialization_display}
+                    </p>
+                </div>
+                <div className="flex items-center gap-2">
+                    <span className="w-2 h-2 bg-green-400 rounded-full animate-pulse"></span>
+                    <span className="text-white/70 text-xs">Online</span>
+                </div>
+            </div>
+
+            {/* Messages Area */}
+            <div className="flex-1 overflow-y-auto px-6 py-4 space-y-4" style={{ scrollbarWidth: 'thin' }}>
+                {loading ? (
+                    <div className="flex items-center justify-center h-full">
+                        <div className="animate-spin rounded-full h-8 w-8 border-3 border-pink-500 border-t-transparent"></div>
+                    </div>
+                ) : messages.length === 0 ? (
+                    <div className="flex flex-col items-center justify-center h-full text-center">
+                        <div className="w-20 h-20 bg-blue-100 dark:bg-pink-500/10 rounded-full flex items-center justify-center text-4xl mb-4">
+                            ðŸ’¬
+                        </div>
+                        <h4 className="text-lg font-bold dark:text-white mb-1">Start the Conversation</h4>
+                        <p className="text-gray-400 dark:text-slate-500 text-sm max-w-xs">
+                            Say hello to {otherName}! They're here to help and guide you.
+                        </p>
+                    </div>
+                ) : (
+                    <>
+                        {messages.map((msg, idx) => {
+                            const isMe = msg.sender === user?.id;
+                            const showAvatar = idx === 0 || messages[idx - 1]?.sender !== msg.sender;
+                            return (
+                                <div key={msg.id} className={`flex ${isMe ? 'justify-end' : 'justify-start'}`}>
+                                    <div className={`flex gap-2 max-w-[75%] ${isMe ? 'flex-row-reverse' : ''}`}>
+                                        {showAvatar && (
+                                            <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold shrink-0 ${
+                                                isMe
+                                                    ? 'bg-blue-600 dark:bg-pink-600 text-white'
+                                                    : 'bg-gray-200 dark:bg-slate-700 text-gray-600 dark:text-slate-300'
+                                            }`}>
+                                                {msg.sender_name?.charAt(0) || '?'}
+                                            </div>
+                                        )}
+                                        {!showAvatar && <div className="w-8 shrink-0"></div>}
+                                        <div>
+                                            <div className={`px-4 py-3 rounded-2xl text-sm leading-relaxed ${
+                                                isMe
+                                                    ? 'bg-blue-600 dark:bg-pink-600 text-white rounded-br-md'
+                                                    : 'bg-gray-100 dark:bg-slate-800 text-gray-800 dark:text-slate-200 rounded-bl-md'
+                                            }`}>
+                                                {msg.message}
+                                            </div>
+                                            <p className={`text-[10px] mt-1 text-gray-400 dark:text-slate-600 ${isMe ? 'text-right' : ''}`}>
+                                                {formatTime(msg.timestamp)}
+                                                {isMe && (
+                                                    <span className="ml-1">
+                                                        {msg.is_read ? 'âœ“âœ“' : 'âœ“'}
+                                                    </span>
+                                                )}
+                                            </p>
+                                        </div>
+                                    </div>
+                                </div>
+                            );
+                        })}
+                        <div ref={messagesEndRef} />
+                    </>
+                )}
+            </div>
+
+            {/* Input Area */}
+            <form onSubmit={handleSend} className="px-6 py-4 border-t dark:border-slate-800 shrink-0">
+                <div className="flex gap-3 items-end">
+                    <div className="flex-1 relative">
+                        <textarea
+                            ref={inputRef}
+                            value={newMessage}
+                            onChange={(e) => setNewMessage(e.target.value)}
+                            onKeyDown={(e) => {
+                                if (e.key === 'Enter' && !e.shiftKey) {
+                                    e.preventDefault();
+                                    handleSend(e);
+                                }
+                            }}
+                            placeholder="Type a message..."
+                            rows={1}
+                            className="w-full px-4 py-3 rounded-xl border dark:border-slate-700 bg-gray-50 dark:bg-slate-800 text-gray-800 dark:text-white placeholder-gray-400 dark:placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:focus:ring-pink-500 resize-none text-sm"
+                            style={{ maxHeight: '120px' }}
+                        />
+                    </div>
+                    <button
+                        type="submit"
+                        disabled={!newMessage.trim() || sending}
+                        className="px-6 py-3 bg-blue-600 dark:bg-pink-600 text-white rounded-xl font-medium hover:bg-blue-700 dark:hover:bg-pink-700 transition disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-2 shrink-0"
+                    >
+                        {sending ? (
+                            <span className="animate-spin h-4 w-4 border-2 border-white border-t-transparent rounded-full"></span>
+                        ) : (
+                            <>
+                                Send
+                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
+                                </svg>
+                            </>
+                        )}
+                    </button>
+                </div>
+            </form>
+        </div>
+    );
+}
+
+
+
+================================================
+FILE: frontend/src/components/Mentorship/index.js
+================================================
+export { default as MentorChatPage } from './MentorChatPage';
+export { default as ChatWindow } from './ChatWindow';
+export { default as ChangeMentorModal } from './ChangeMentorModal';
+export { default as MentorDashboard } from './MentorDashboard';
+
+
+
+================================================
+FILE: frontend/src/components/Mentorship/MentorChatPage.jsx
+================================================
+import React, { useState, useEffect } from 'react';
+import { useAuth } from '../../context/AuthContext';
+import mentorshipService from '../../services/mentorshipService';
+import MentorDashboard from './MentorDashboard';
+import ChatWindow from './ChatWindow';
+import ChangeMentorModal from './ChangeMentorModal';
+
+const STAGE_META = {
+    pregnancy: { label: 'Before Birth', emoji: '🤰', color: 'pink' },
+    early_childhood: { label: 'Early Childhood', emoji: '👶', color: 'blue' },
+    growing_stage: { label: 'Growing Stage', emoji: '🧒', color: 'green' },
+    teen_age: { label: 'Teenager', emoji: '🧑‍🎓', color: 'purple' },
+};
+
+export default function MentorChatPage({ stage }) {
+    const { user } = useAuth();
+    const [assignment, setAssignment] = useState(null);
+    const [assignments, setAssignments] = useState([]);
+    const [activeChat, setActiveChat] = useState(null);
+    const [loading, setLoading] = useState(true);
+    const [assigning, setAssigning] = useState(false);
+    const [error, setError] = useState('');
+    const [showChangeMentor, setShowChangeMentor] = useState(false);
+
+    // Check if user is a mentor
+    const isMentor = user?.role === 'mentor';
+
+    useEffect(() => {
+        loadAssignments();
+        // Poll every 10s for new messages
+        const interval = setInterval(loadAssignments, 10000);
+        return () => clearInterval(interval);
+    }, []);
+
+    const loadAssignments = async () => {
+        try {
+            const res = await mentorshipService.getAssignments();
+            const data = res.data;
+            setAssignments(data);
+            // For non-mentor users, find the assignment for the current stage
+            if (!isMentor && stage) {
+                const found = data.find(a => a.stage === stage && a.is_active);
+                setAssignment(found || null);
+            }
+        } catch (err) {
+            console.error('Failed to load assignments:', err);
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const handleAutoAssign = async () => {
+        setAssigning(true);
+        setError('');
+        try {
+            const res = await mentorshipService.autoAssign(stage);
+            setAssignment(res.data);
+            await loadAssignments();
+        } catch (err) {
+            setError(err.response?.data?.error || 'Failed to assign a mentor.');
+        } finally {
+            setAssigning(false);
+        }
+    };
+
+    const handleMentorChanged = async () => {
+        setShowChangeMentor(false);
+        setActiveChat(null);
+        await loadAssignments();
+        // Re-select the new assignment
+        const res = await mentorshipService.getAssignments();
+        const data = res.data;
+        const found = data.find(a => a.stage === stage && a.is_active);
+        setAssignment(found || null);
+    };
+
+    // If mentor role, show mentor dashboard
+    if (isMentor) {
+        return (
+            <MentorDashboard
+                assignments={assignments}
+                onSelectChat={setActiveChat}
+                activeChat={activeChat}
+                onRefresh={loadAssignments}
+            />
+        );
+    }
+
+    const meta = STAGE_META[stage] || { label: stage, emoji: '💬', color: 'gray' };
+
+    if (loading) {
+        return (
+            <div className="flex items-center justify-center min-h-[60vh]">
+                <div className="animate-spin rounded-full h-12 w-12 border-4 border-pink-500 border-t-transparent"></div>
+            </div>
+        );
+    }
+
+    // Chat view when chatting
+    if (activeChat) {
+        return (
+            <div className="max-w-5xl mx-auto px-4 py-6">
+                <button
+                    onClick={() => setActiveChat(null)}
+                    className="mb-4 text-blue-600 dark:text-pink-400 hover:underline flex items-center gap-2 text-sm font-medium"
+                >
+                    ← Back to Mentor Dashboard
+                </button>
+                <ChatWindow
+                    assignment={activeChat}
+                    onClose={() => setActiveChat(null)}
+                />
+            </div>
+        );
+    }
+
+    return (
+        <div className="max-w-5xl mx-auto px-4 py-8">
+            {/* Header */}
+            <div className="mb-8">
+                <h1 className="text-3xl font-extrabold dark:text-white tracking-tight flex items-center gap-3">
+                    <span className="text-4xl">{meta.emoji}</span>
+                    Mentor <span className="dark:text-pink-500 text-blue-600">Chat</span>
+                </h1>
+                <p className="text-gray-500 dark:text-slate-400 mt-1">
+                    {meta.label} Stage — Private one-to-one guidance
+                </p>
+            </div>
+
+            {/* Assignment Card */}
+            {assignment ? (
+                <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-lg dark:shadow-black/30 border dark:border-slate-800 overflow-hidden">
+                    {/* Mentor info header */}
+                    <div className="bg-gradient-to-r from-blue-600 to-purple-600 dark:from-pink-600 dark:to-purple-700 p-6">
+                        <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-4">
+                                <div className="w-16 h-16 rounded-full bg-white/20 backdrop-blur flex items-center justify-center text-2xl font-bold text-white">
+                                    {assignment.mentor_detail?.user?.first_name?.charAt(0) || 'M'}
+                                </div>
+                                <div>
+                                    <h2 className="text-xl font-bold text-white">
+                                        {assignment.mentor_detail?.user?.first_name} {assignment.mentor_detail?.user?.last_name}
+                                    </h2>
+                                    <p className="text-white/80 text-sm">
+                                        {assignment.mentor_detail?.specialization_display}
+                                    </p>
+                                    <p className="text-white/60 text-xs mt-1">
+                                        Assigned {new Date(assignment.assigned_at).toLocaleDateString()}
+                                    </p>
+                                </div>
+                            </div>
+                            <button
+                                onClick={() => setShowChangeMentor(true)}
+                                className="px-4 py-2 bg-white/20 backdrop-blur rounded-lg text-white text-sm hover:bg-white/30 transition font-medium"
+                            >
+                                Change Mentor
+                            </button>
+                        </div>
+                    </div>
+
+                    {/* Mentor bio */}
+                    <div className="p-6">
+                        {assignment.mentor_detail?.bio && (
+                            <p className="text-gray-600 dark:text-slate-400 text-sm mb-6 italic">
+                                "{assignment.mentor_detail.bio}"
+                            </p>
+                        )}
+
+                        {/* Stats row */}
+                        <div className="grid grid-cols-3 gap-4 mb-6">
+                            <div className="text-center p-4 rounded-xl bg-blue-50 dark:bg-slate-800">
+                                <p className="text-2xl font-bold text-blue-600 dark:text-pink-400">
+                                    {assignment.unread_count || 0}
+                                </p>
+                                <p className="text-xs text-gray-500 dark:text-slate-400">Unread</p>
+                            </div>
+                            <div className="text-center p-4 rounded-xl bg-green-50 dark:bg-slate-800">
+                                <p className="text-2xl font-bold text-green-600 dark:text-green-400">
+                                    {assignment.last_message ? '✓' : '—'}
+                                </p>
+                                <p className="text-xs text-gray-500 dark:text-slate-400">
+                                    {assignment.last_message ? 'Active' : 'No msgs'}
+                                </p>
+                            </div>
+                            <div className="text-center p-4 rounded-xl bg-purple-50 dark:bg-slate-800">
+                                <p className="text-2xl font-bold text-purple-600 dark:text-purple-400">
+                                    {meta.emoji}
+                                </p>
+                                <p className="text-xs text-gray-500 dark:text-slate-400">{meta.label}</p>
+                            </div>
+                        </div>
+
+                        {/* Last message preview */}
+                        {assignment.last_message && (
+                            <div className="mb-6 p-4 rounded-xl bg-gray-50 dark:bg-slate-800/50 border dark:border-slate-700">
+                                <p className="text-xs text-gray-400 dark:text-slate-500 mb-1">Last message</p>
+                                <p className="text-sm text-gray-700 dark:text-slate-300 truncate">
+                                    {assignment.last_message.message}
+                                </p>
+                                <p className="text-xs text-gray-400 dark:text-slate-500 mt-1">
+                                    {new Date(assignment.last_message.timestamp).toLocaleString()}
+                                </p>
+                            </div>
+                        )}
+
+                        {/* Start Chat Button */}
+                        <button
+                            onClick={() => setActiveChat(assignment)}
+                            className="w-full py-4 bg-gradient-to-r from-blue-600 to-purple-600 dark:from-pink-600 dark:to-purple-700 text-white font-bold rounded-xl hover:shadow-lg hover:shadow-blue-500/20 dark:hover:shadow-pink-500/20 transition-all transform hover:-translate-y-0.5 text-lg flex items-center justify-center gap-3"
+                        >
+                            💬 Open Chat
+                            {assignment.unread_count > 0 && (
+                                <span className="bg-white/20 backdrop-blur px-3 py-1 rounded-full text-sm">
+                                    {assignment.unread_count} new
+                                </span>
+                            )}
+                        </button>
+                    </div>
+                </div>
+            ) : (
+                /* No assignment yet */
+                <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-lg dark:shadow-black/30 border dark:border-slate-800 p-12 text-center">
+                    <div className="w-24 h-24 bg-blue-100 dark:bg-pink-500/10 rounded-full flex items-center justify-center mx-auto mb-6 text-5xl">
+                        {meta.emoji}
+                    </div>
+                    <h2 className="text-2xl font-bold dark:text-white mb-2">
+                        Get Matched with a Mentor
+                    </h2>
+                    <p className="text-gray-500 dark:text-slate-400 mb-8 max-w-md mx-auto">
+                        Our system will connect you with a qualified <strong>{meta.label}</strong> mentor 
+                        based on availability and expertise.
+                    </p>
+
+                    {error && (
+                        <div className="mb-6 p-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-xl text-red-600 dark:text-red-400 text-sm">
+                            {error}
+                        </div>
+                    )}
+
+                    <button
+                        onClick={handleAutoAssign}
+                        disabled={assigning}
+                        className="px-8 py-4 bg-gradient-to-r from-blue-600 to-purple-600 dark:from-pink-600 dark:to-purple-700 text-white font-bold rounded-xl hover:shadow-lg hover:shadow-blue-500/20 dark:hover:shadow-pink-500/20 transition-all transform hover:-translate-y-0.5 disabled:opacity-50 disabled:cursor-not-allowed text-lg"
+                    >
+                        {assigning ? (
+                            <span className="flex items-center gap-2">
+                                <span className="animate-spin h-5 w-5 border-2 border-white border-t-transparent rounded-full"></span>
+                                Finding your mentor...
+                            </span>
+                        ) : (
+                            '🔍 Find My Mentor'
+                        )}
+                    </button>
+                </div>
+            )}
+
+            {/* Change Mentor Modal */}
+            {showChangeMentor && assignment && (
+                <ChangeMentorModal
+                    assignment={assignment}
+                    stage={stage}
+                    onClose={() => setShowChangeMentor(false)}
+                    onChanged={handleMentorChanged}
+                />
+            )}
+        </div>
+    );
+}
+
+
+
+================================================
+FILE: frontend/src/components/Mentorship/MentorDashboard.jsx
+================================================
+import React, { useState } from 'react';
+import ChatWindow from './ChatWindow';
+
+export default function MentorDashboard({ assignments, onSelectChat, activeChat, onRefresh }) {
+    const [selectedAssignment, setSelectedAssignment] = useState(activeChat);
+
+    const handleSelectChat = (assignment) => {
+        setSelectedAssignment(assignment);
+        onSelectChat(assignment);
+    };
+
+    // If a chat is open, show full chat
+    if (selectedAssignment) {
+        return (
+            <div className="max-w-5xl mx-auto px-4 py-6">
+                <button
+                    onClick={() => {
+                        setSelectedAssignment(null);
+                        onSelectChat(null);
+                    }}
+                    className="mb-4 text-blue-600 dark:text-pink-400 hover:underline flex items-center gap-2 text-sm font-medium"
+                >
+                    ← Back to Client List
+                </button>
+                <ChatWindow
+                    assignment={selectedAssignment}
+                    onClose={() => {
+                        setSelectedAssignment(null);
+                        onSelectChat(null);
+                    }}
+                />
+            </div>
+        );
+    }
+
+    return (
+        <div className="max-w-5xl mx-auto px-4 py-8">
+            {/* Header */}
+            <div className="mb-8">
+                <h1 className="text-3xl font-extrabold dark:text-white tracking-tight flex items-center gap-3">
+                    <span className="text-4xl">🧑‍🏫</span>
+                    Mentor <span className="dark:text-pink-500 text-blue-600">Dashboard</span>
+                </h1>
+                <p className="text-gray-500 dark:text-slate-400 mt-1">
+                    Your assigned clients • {assignments.length} active
+                </p>
+            </div>
+
+            {/* Client Cards */}
+            {assignments.length === 0 ? (
+                <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-lg dark:shadow-black/30 border dark:border-slate-800 p-12 text-center">
+                    <div className="w-20 h-20 bg-green-100 dark:bg-green-500/10 rounded-full flex items-center justify-center mx-auto mb-6 text-4xl">
+                        ☕
+                    </div>
+                    <h2 className="text-xl font-bold dark:text-white mb-2">No Clients Yet</h2>
+                    <p className="text-gray-400 dark:text-slate-500">
+                        New clients will appear here once they're assigned to you.
+                    </p>
+                </div>
+            ) : (
+                <div className="space-y-4">
+                    {assignments.map((a) => {
+                        const STAGE_EMOJIS = {
+                            pregnancy: '🤰',
+                            early_childhood: '👶',
+                            growing_stage: '🧒',
+                            teen_age: '🧑‍🎓',
+                        };
+                        return (
+                            <div
+                                key={a.id}
+                                onClick={() => handleSelectChat(a)}
+                                className="bg-white dark:bg-slate-900 rounded-xl shadow-md dark:shadow-black/20 border dark:border-slate-800 p-5 flex items-center gap-4 cursor-pointer hover:shadow-lg hover:border-blue-300 dark:hover:border-pink-500/30 transition-all group"
+                            >
+                                <div className="w-12 h-12 rounded-full bg-blue-100 dark:bg-pink-500/10 flex items-center justify-center text-xl font-bold text-blue-600 dark:text-pink-400 shrink-0 group-hover:scale-110 transition-transform">
+                                    {a.user_detail?.first_name?.charAt(0) || '?'}
+                                </div>
+                                <div className="flex-1 min-w-0">
+                                    <div className="flex items-center gap-2">
+                                        <h3 className="font-bold dark:text-white text-sm">
+                                            {a.user_detail?.first_name} {a.user_detail?.last_name}
+                                        </h3>
+                                        <span className="text-xs px-2 py-0.5 rounded-full bg-blue-50 dark:bg-slate-800 text-blue-600 dark:text-pink-400">
+                                            {STAGE_EMOJIS[a.stage] || '💬'} {a.stage.replace('_', ' ')}
+                                        </span>
+                                    </div>
+                                    {a.last_message ? (
+                                        <p className="text-xs text-gray-500 dark:text-slate-400 truncate mt-1">
+                                            {a.last_message.sender_id === a.user_detail?.id ? '' : 'You: '}
+                                            {a.last_message.message}
+                                        </p>
+                                    ) : (
+                                        <p className="text-xs text-gray-400 dark:text-slate-500 mt-1 italic">
+                                            No messages yet
+                                        </p>
+                                    )}
+                                </div>
+                                <div className="flex flex-col items-end gap-1 shrink-0">
+                                    {a.last_message && (
+                                        <p className="text-[10px] text-gray-400 dark:text-slate-500">
+                                            {new Date(a.last_message.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                        </p>
+                                    )}
+                                    {a.unread_count > 0 && (
+                                        <span className="w-5 h-5 rounded-full bg-blue-600 dark:bg-pink-600 text-white text-[10px] font-bold flex items-center justify-center">
+                                            {a.unread_count}
+                                        </span>
+                                    )}
+                                </div>
+                            </div>
+                        );
+                    })}
+                </div>
+            )}
+        </div>
+    );
+}
+
+
+
+================================================
 FILE: frontend/src/components/Navbar/Navbar.jsx
 ================================================
 import React, { useState } from 'react';
@@ -7017,6 +8599,12 @@ function Navbar() {
           ) : (
             <>
               <Link to="/" className="hover:text-blue-600 dark:text-gray-200 dark:hover:text-blue-400">Home</Link>
+              <Link
+                to={user.role === 'mentor' ? '/dashboard/mentor' : user.role === 'teen' ? '/mentor-chat/teen?stage=teen_age' : '/mentor-chat'}
+                className="hover:text-blue-600 dark:text-gray-200 dark:hover:text-blue-400 flex items-center gap-1"
+              >
+                ðŸ’¬ Mentor Chat
+              </Link>
               <Link to="/pricing" className="hover:text-blue-600 dark:text-gray-200 dark:hover:text-blue-400">Upgrade</Link>
               <div className="flex gap-4 items-center">
                 <span className="text-sm text-gray-600 dark:text-gray-300">{user.email}</span>
@@ -7052,6 +8640,14 @@ function Navbar() {
         <div className="md:hidden bg-gray-100 dark:bg-slate-800 p-4 space-y-4">
           <Link to="/" className="block hover:text-blue-600 dark:text-gray-200">Home</Link>
           <Link to="/pricing" className="block hover:text-blue-600 dark:text-gray-200">Pricing</Link>
+          {user && (
+            <Link
+              to={user.role === 'mentor' ? '/dashboard/mentor' : user.role === 'teen' ? '/mentor-chat/teen?stage=teen_age' : '/mentor-chat'}
+              className="block hover:text-blue-600 dark:text-gray-200"
+            >
+              ðŸ’¬ Mentor Chat
+            </Link>
+          )}
           {!user ? (
             <div className="space-y-2">
               <Link to="/login/parent" className="block text-center px-4 py-2 border border-blue-600 rounded text-blue-600 dark:border-blue-400 dark:text-blue-400">
@@ -9241,6 +10837,88 @@ export default HomePage;
 
 
 ================================================
+FILE: frontend/src/pages/MentorChatPageWrapper.jsx
+================================================
+import React from 'react';
+import MentorChatPage from '../components/Mentorship/MentorChatPage';
+import { useAuth } from '../context/AuthContext';
+
+/**
+ * Standalone page for mentor chat.
+ * Determines the stage automatically from query params or user context.
+ * URL: /mentor-chat?stage=pregnancy
+ */
+export default function MentorChatPageWrapper() {
+    const { user } = useAuth();
+    const params = new URLSearchParams(window.location.search);
+    let stage = params.get('stage');
+
+    // If no stage in URL, try to infer from user
+    if (!stage) {
+        if (user?.role === 'mentor') {
+            // Mentor doesn't need a stage
+            stage = null;
+        } else if (user?.is_expecting) {
+            stage = 'pregnancy';
+        } else if (user?.role === 'teen') {
+            stage = 'teen_age';
+        } else {
+            // Default for parents — let them pick
+            stage = null;
+        }
+    }
+
+    // If no stage and not a mentor, show stage picker
+    if (!stage && user?.role !== 'mentor') {
+        return <StageSelector />;
+    }
+
+    return <MentorChatPage stage={stage} />;
+}
+
+function StageSelector() {
+    const stages = [
+        { value: 'pregnancy', label: 'Before Birth', emoji: '🤰', desc: 'Chat with a pregnancy mentor', gradient: 'from-pink-500 to-rose-600' },
+        { value: 'early_childhood', label: 'Early Childhood', emoji: '👶', desc: 'Guidance for ages 0-5', gradient: 'from-blue-500 to-cyan-600' },
+        { value: 'growing_stage', label: 'Growing Stage', emoji: '🧒', desc: 'Support for ages 6-12', gradient: 'from-green-500 to-emerald-600' },
+        { value: 'teen_age', label: 'Teenager', emoji: '🧑‍🎓', desc: 'Guidance for ages 13-21', gradient: 'from-purple-500 to-violet-600' },
+    ];
+
+    return (
+        <div className="max-w-4xl mx-auto px-4 py-12">
+            <div className="text-center mb-10">
+                <h1 className="text-3xl font-extrabold dark:text-white tracking-tight">
+                    Choose Your <span className="dark:text-pink-500 text-blue-600">Stage</span>
+                </h1>
+                <p className="text-gray-500 dark:text-slate-400 mt-2">
+                    Select the development stage to find the right mentor for you
+                </p>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+                {stages.map((s) => (
+                    <a
+                        key={s.value}
+                        href={`/mentor-chat?stage=${s.value}`}
+                        className="group bg-white dark:bg-slate-900 rounded-2xl shadow-lg dark:shadow-black/30 border dark:border-slate-800 overflow-hidden hover:shadow-xl transition-all transform hover:-translate-y-1"
+                    >
+                        <div className={`bg-gradient-to-r ${s.gradient} p-6`}>
+                            <span className="text-4xl">{s.emoji}</span>
+                        </div>
+                        <div className="p-6">
+                            <h3 className="text-lg font-bold dark:text-white mb-1">{s.label}</h3>
+                            <p className="text-sm text-gray-500 dark:text-slate-400">{s.desc}</p>
+                        </div>
+                    </a>
+                ))}
+            </div>
+        </div>
+    );
+}
+
+
+
+================================================
 FILE: frontend/src/pages/NotFound.jsx
 ================================================
 import React from 'react';
@@ -9421,6 +11099,31 @@ function ParentDashboard() {
                 <p className="text-sm text-gray-500 dark:text-slate-400 mt-2">
                     Assess your own parenting style and environment.
                 </p>
+            </div>
+
+            {/* Mentor Chat Section */}
+            <div className="mb-10">
+                <a
+                    href="/mentor-chat"
+                    className="block bg-gradient-to-r from-blue-50 to-purple-50 dark:from-slate-800 dark:to-slate-900 p-6 rounded-2xl border border-blue-200 dark:border-slate-700 hover:shadow-lg transition-all group"
+                >
+                    <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-4">
+                            <div className="w-14 h-14 bg-blue-600 dark:bg-pink-600 rounded-xl flex items-center justify-center text-2xl group-hover:scale-110 transition-transform">
+                                💬
+                            </div>
+                            <div>
+                                <h3 className="text-lg font-bold text-gray-800 dark:text-white">Chat with a Mentor</h3>
+                                <p className="text-sm text-gray-500 dark:text-slate-400">
+                                    Get one-on-one guidance from an expert mentor
+                                </p>
+                            </div>
+                        </div>
+                        <span className="text-blue-600 dark:text-pink-400 font-medium text-sm group-hover:translate-x-1 transition-transform">
+                            Open Chat →
+                        </span>
+                    </div>
+                </a>
             </div>
 
             {/* Children Section */}
@@ -9858,7 +11561,7 @@ function PregnancyDashboard() {
             )}
 
             {/* Quick-action cards */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-8">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-8">
                 <button onClick={() => setShowHealthGuide(true)} className="group bg-gradient-to-br from-rose-50 to-pink-50 dark:from-rose-900/20 dark:to-pink-900/20 border border-rose-200 dark:border-rose-800 rounded-2xl p-5 text-left hover:shadow-lg hover:border-rose-400 dark:hover:border-rose-600 transition-all">
                     <div className="text-3xl mb-3">🌸</div>
                     <h3 className="text-base font-bold text-rose-700 dark:text-rose-300 mb-1">Maternal Health Guide</h3>
@@ -9871,6 +11574,12 @@ function PregnancyDashboard() {
                     <p className="text-sm text-gray-500 dark:text-slate-400">Upload your report and we'll automatically extract your next appointment and add it to Google Calendar.</p>
                     <span className="mt-3 inline-block text-xs font-semibold text-blue-600 dark:text-blue-400 group-hover:underline">Upload report →</span>
                 </button>
+                <a href="/mentor-chat?stage=pregnancy" className="group bg-gradient-to-br from-purple-50 to-violet-50 dark:from-purple-900/20 dark:to-violet-900/20 border border-purple-200 dark:border-purple-800 rounded-2xl p-5 text-left hover:shadow-lg hover:border-purple-400 dark:hover:border-purple-600 transition-all">
+                    <div className="text-3xl mb-3">💬</div>
+                    <h3 className="text-base font-bold text-purple-700 dark:text-purple-300 mb-1">Chat with Mentor</h3>
+                    <p className="text-sm text-gray-500 dark:text-slate-400">Get one-on-one guidance from an expert pregnancy mentor for diet, wellness, and emotional support.</p>
+                    <span className="mt-3 inline-block text-xs font-semibold text-purple-600 dark:text-purple-400 group-hover:underline">Open chat →</span>
+                </a>
             </div>
 
             {/* Next appointment */}
@@ -10120,6 +11829,12 @@ export default PricingPage;
 FILE: frontend/src/pages/TeenDashboard.jsx
 ================================================
 // frontend/src/pages/TeenDashboard.jsx
+//
+// Key change: voice / text input may contain MULTIPLE tasks in one paragraph.
+// parse_voice  → returns { parsed: [task, task, ...] }
+// add_from_voice → saves ALL tasks, syncs each to Google Calendar,
+//                  returns { created: true, count: N, tasks: [...], skipped_duplicates: [...] }
+//
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
@@ -10135,7 +11850,8 @@ import {
     deleteTask,
 } from '../services/studyPlannerService';
 
-// Helper components
+// ─── Helpers ────────────────────────────────────────────────────────────────
+
 const PRIORITY_COLORS = {
     High:   'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400',
     Medium: 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400',
@@ -10157,9 +11873,10 @@ function Badge({ text, color }) {
     );
 }
 
-// ===== NEW: Google Calendar connection banner =====
+// ─── Google Calendar banner ─────────────────────────────────────────────────
+
 function GoogleCalendarBanner({ connected, onConnect, connecting }) {
-    if (connected === null) return null; // loading state handled outside
+    if (connected === null) return null;
     if (connected) {
         return (
             <div className="mb-6 p-3 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-xl flex items-center gap-3">
@@ -10201,17 +11918,97 @@ function GoogleCalendarBanner({ connected, onConnect, connecting }) {
     );
 }
 
-// ===== Study Planner Component (with calendar sync indicator) =====
+// ─── Multi-task preview card ────────────────────────────────────────────────
+//
+// Shows all tasks parsed from one voice/text input so the teen can review them
+// before confirming. Each task is shown as its own compact card inside the list.
+
+function MultiTaskPreview({ tasks, onConfirm, onDiscard, saving }) {
+    if (!tasks || tasks.length === 0) return null;
+
+    return (
+        <div className="mb-6 p-4 bg-white dark:bg-slate-800 border border-violet-300 dark:border-violet-700 rounded-2xl shadow">
+            <div className="flex items-center justify-between mb-3">
+                <p className="text-xs font-bold uppercase text-violet-500">
+                    AI Preview — {tasks.length} task{tasks.length > 1 ? 's' : ''} detected
+                </p>
+                <span className="text-xs text-gray-400 dark:text-slate-500">Review before saving</span>
+            </div>
+
+            <div className="space-y-3 mb-4">
+                {tasks.map((t, idx) => (
+                    <div
+                        key={idx}
+                        className="p-3 bg-violet-50 dark:bg-violet-900/10 border border-violet-100 dark:border-violet-800/30 rounded-xl"
+                    >
+                        {/* Task number badge */}
+                        <div className="flex items-center gap-2 mb-2">
+                            <span className="w-5 h-5 rounded-full bg-violet-600 text-white text-xs flex items-center justify-center font-bold flex-shrink-0">
+                                {idx + 1}
+                            </span>
+                            <span className="font-semibold text-gray-800 dark:text-white text-sm">
+                                {TYPE_ICONS[t.type] ?? '📋'} {t.title}
+                            </span>
+                            <Badge text={t.priority} color={PRIORITY_COLORS[t.priority] ?? ''} />
+                        </div>
+                        <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-xs text-gray-500 dark:text-slate-400 pl-7">
+                            <div><span className="font-semibold">Type: </span>{t.type}</div>
+                            <div><span className="font-semibold">Date: </span>{t.date}</div>
+                            <div><span className="font-semibold">Time: </span>{t.time ?? '—'}</div>
+                            <div><span className="font-semibold">Reminder: </span>{t.reminder}</div>
+                            <div><span className="font-semibold">Deadline: </span>{t.deadline ? 'Yes' : 'No'}</div>
+                            <div>
+                                <span className="font-semibold">Calendar: </span>
+                                {t.calendar_event?.create
+                                    ? `📅 ${t.calendar_event.event_type}`
+                                    : 'Not scheduled'}
+                            </div>
+                        </div>
+                    </div>
+                ))}
+            </div>
+
+            <div className="flex gap-3">
+                <button
+                    onClick={onConfirm}
+                    disabled={saving}
+                    className="px-5 py-2 bg-pink-600 text-white rounded-xl text-sm font-bold hover:bg-pink-700 disabled:opacity-50 flex items-center gap-2"
+                >
+                    {saving ? (
+                        <>
+                            <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                            Saving…
+                        </>
+                    ) : (
+                        <>✅ Confirm & Save All {tasks.length > 1 ? `(${tasks.length})` : ''}</>
+                    )}
+                </button>
+                <button
+                    onClick={onDiscard}
+                    disabled={saving}
+                    className="px-5 py-2 bg-gray-200 dark:bg-slate-700 text-gray-700 dark:text-white rounded-xl text-sm font-bold hover:bg-gray-300 dark:hover:bg-slate-600"
+                >
+                    ✕ Discard
+                </button>
+            </div>
+        </div>
+    );
+}
+
+// ─── Study Planner ──────────────────────────────────────────────────────────
+
 function StudyPlanner() {
-    const [activeTab, setActiveTab]     = useState('upcoming');
-    const [tasks, setTasks]             = useState([]);
-    const [loading, setLoading]         = useState(false);
-    const [voiceText, setVoiceText]     = useState('');
-    const [isListening, setIsListening] = useState(false);
-    const [parsing, setParsing]         = useState(false);
-    const [preview, setPreview]         = useState(null);
-    const [feedback, setFeedback]       = useState(null);
-    const [clarify, setClarify]         = useState(false);
+    const [activeTab, setActiveTab]       = useState('upcoming');
+    const [tasks, setTasks]               = useState([]);
+    const [loading, setLoading]           = useState(false);
+    const [voiceText, setVoiceText]       = useState('');
+    const [isListening, setIsListening]   = useState(false);
+    const [parsing, setParsing]           = useState(false);
+    const [saving, setSaving]             = useState(false);
+    // previews is now ALWAYS an array of task dicts (or null)
+    const [previews, setPreviews]         = useState(null);
+    const [feedback, setFeedback]         = useState(null);
+    const [clarify, setClarify]           = useState(false);
     const recognitionRef = useRef(null);
 
     const fetchTasks = useCallback(async (filter) => {
@@ -10229,6 +12026,8 @@ function StudyPlanner() {
     useEffect(() => {
         fetchTasks(activeTab);
     }, [activeTab, fetchTasks]);
+
+    // ── voice input ──────────────────────────────────────────────────────────
 
     const startListening = () => {
         const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
@@ -10255,10 +12054,12 @@ function StudyPlanner() {
         setIsListening(false);
     };
 
+    // ── preview (parse only, no save) ────────────────────────────────────────
+
     const handleParse = async () => {
         if (!voiceText.trim()) return;
         setParsing(true);
-        setPreview(null);
+        setPreviews(null);
         setFeedback(null);
         setClarify(false);
         try {
@@ -10267,7 +12068,8 @@ function StudyPlanner() {
                 setClarify(true);
                 setFeedback({ type: 'warn', message: data.question });
             } else {
-                setPreview(data.parsed);
+                // data.parsed is always an array now
+                setPreviews(data.parsed);
             }
         } catch {
             setFeedback({ type: 'error', message: 'AI parsing failed. Please try again.' });
@@ -10276,28 +12078,48 @@ function StudyPlanner() {
         }
     };
 
+    // ── confirm & save all tasks ─────────────────────────────────────────────
+
     const handleConfirmSave = async () => {
         if (!voiceText.trim()) return;
-        setParsing(true);
+        setSaving(true);
         try {
             const { data } = await addTaskFromVoice(voiceText);
+
             if (data.needs_clarification) {
                 setClarify(true);
                 setFeedback({ type: 'warn', message: data.question });
-            } else if (data.duplicate) {
-                setFeedback({ type: 'warn', message: data.message });
-            } else {
-                setFeedback({ type: 'success', message: `✅ "${data.task.title}" added to your planner!` });
-                setVoiceText('');
-                setPreview(null);
-                fetchTasks(activeTab);
+                return;
             }
+
+            // Build success message
+            const count = data.count ?? 0;
+            const skipped = data.skipped_duplicates ?? [];
+            let msg = '';
+
+            if (count > 0) {
+                const titles = data.tasks.map((t) => `"${t.title}"`).join(', ');
+                msg = `✅ ${count} task${count > 1 ? 's' : ''} added: ${titles}`;
+            }
+            if (skipped.length > 0) {
+                msg += ` (skipped ${skipped.length} duplicate${skipped.length > 1 ? 's' : ''}: ${skipped.map((s) => `"${s}"`).join(', ')})`;
+            }
+            if (count === 0 && skipped.length === 0) {
+                msg = 'No tasks were added.';
+            }
+
+            setFeedback({ type: count > 0 ? 'success' : 'warn', message: msg });
+            setVoiceText('');
+            setPreviews(null);
+            fetchTasks(activeTab);
         } catch {
-            setFeedback({ type: 'error', message: 'Failed to save task. Please try again.' });
+            setFeedback({ type: 'error', message: 'Failed to save tasks. Please try again.' });
         } finally {
-            setParsing(false);
+            setSaving(false);
         }
     };
+
+    // ── task status / delete ─────────────────────────────────────────────────
 
     const toggleStatus = async (task) => {
         const next = task.status === 'Pending' ? 'Completed' : 'Pending';
@@ -10318,6 +12140,8 @@ function StudyPlanner() {
             setFeedback({ type: 'error', message: 'Delete failed.' });
         }
     };
+
+    // ── UI ───────────────────────────────────────────────────────────────────
 
     const TABS = [
         { key: 'upcoming',  label: '📅 Upcoming' },
@@ -10341,17 +12165,20 @@ function StudyPlanner() {
                 <span className="text-xs text-gray-400 dark:text-slate-500">AI-powered scheduler</span>
             </div>
 
-            {/* Voice / Text Input */}
+            {/* ── Voice / Text Input ─────────────────────────────────────── */}
             <div className="mb-6 p-5 bg-violet-50 dark:bg-violet-900/10 border border-violet-200 dark:border-violet-800/40 rounded-2xl">
-                <p className="text-sm font-semibold text-violet-700 dark:text-violet-300 mb-3">
-                    🎤 Speak or type your task (e.g. "Math test on 10th April at 10 AM")
+                <p className="text-sm font-semibold text-violet-700 dark:text-violet-300 mb-1">
+                    🎤 Speak or type one or more tasks
+                </p>
+                <p className="text-xs text-violet-500 dark:text-violet-400 mb-3">
+                    e.g. "Math test on 10th April at 10 AM, submit science project by 15th April, meeting with mentor tomorrow at 5 PM"
                 </p>
                 <div className="flex gap-2">
                     <textarea
                         value={voiceText}
                         onChange={(e) => setVoiceText(e.target.value)}
-                        placeholder='e.g. "Submit science project by 15th April" or "Meeting with mentor tomorrow at 5 PM"'
-                        rows={2}
+                        placeholder='Describe all your tasks in one go…'
+                        rows={3}
                         className="flex-1 p-3 rounded-xl border border-violet-300 dark:border-violet-700 bg-white dark:bg-slate-800 text-gray-800 dark:text-white text-sm resize-none focus:outline-none focus:ring-2 focus:ring-violet-400"
                     />
                     <button
@@ -10369,22 +12196,27 @@ function StudyPlanner() {
                 <div className="flex gap-3 mt-3">
                     <button
                         onClick={handleParse}
-                        disabled={parsing || !voiceText.trim()}
+                        disabled={parsing || saving || !voiceText.trim()}
                         className="px-5 py-2 rounded-xl bg-violet-600 text-white text-sm font-semibold hover:bg-violet-700 disabled:opacity-50 transition"
                     >
-                        {parsing ? '⏳ Parsing…' : '🔍 Preview'}
+                        {parsing ? '⏳ Parsing…' : '🔍 Preview Tasks'}
                     </button>
                     <button
                         onClick={handleConfirmSave}
-                        disabled={parsing || !voiceText.trim()}
-                        className="px-5 py-2 rounded-xl bg-pink-600 text-white text-sm font-semibold hover:bg-pink-700 disabled:opacity-50 transition"
+                        disabled={parsing || saving || !voiceText.trim()}
+                        className="px-5 py-2 rounded-xl bg-pink-600 text-white text-sm font-semibold hover:bg-pink-700 disabled:opacity-50 transition flex items-center gap-2"
                     >
-                        {parsing ? '⏳ Saving…' : '➕ Add Task'}
+                        {saving ? (
+                            <>
+                                <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                                Saving…
+                            </>
+                        ) : '➕ Add All Tasks'}
                     </button>
                 </div>
             </div>
 
-            {/* Feedback banner */}
+            {/* ── Feedback banner ─────────────────────────────────────────── */}
             {feedback && (
                 <div className={`mb-4 p-3 rounded-xl border text-sm font-medium ${feedbackStyle[feedback.type]}`}>
                     {feedback.message}
@@ -10392,39 +12224,17 @@ function StudyPlanner() {
                 </div>
             )}
 
-            {/* Preview Card */}
-            {preview && (
-                <div className="mb-6 p-4 bg-white dark:bg-slate-800 border border-violet-300 dark:border-violet-700 rounded-2xl shadow">
-                    <p className="text-xs font-bold uppercase text-violet-500 mb-3">AI Preview — confirm before saving</p>
-                    <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
-                        <div><span className="font-semibold text-gray-500 dark:text-slate-400">Title</span><p className="dark:text-white">{preview.title}</p></div>
-                        <div><span className="font-semibold text-gray-500 dark:text-slate-400">Type</span><p className="dark:text-white">{TYPE_ICONS[preview.type]} {preview.type}</p></div>
-                        <div><span className="font-semibold text-gray-500 dark:text-slate-400">Date</span><p className="dark:text-white">{preview.date}</p></div>
-                        <div><span className="font-semibold text-gray-500 dark:text-slate-400">Time</span><p className="dark:text-white">{preview.time ?? '—'}</p></div>
-                        <div><span className="font-semibold text-gray-500 dark:text-slate-400">Priority</span><Badge text={preview.priority} color={PRIORITY_COLORS[preview.priority]} /></div>
-                        <div><span className="font-semibold text-gray-500 dark:text-slate-400">Reminder</span><p className="dark:text-white">{preview.reminder}</p></div>
-                        <div><span className="font-semibold text-gray-500 dark:text-slate-400">Deadline</span><p className="dark:text-white">{preview.deadline ? 'Yes' : 'No'}</p></div>
-                        <div><span className="font-semibold text-gray-500 dark:text-slate-400">Calendar</span><p className="dark:text-white">{preview.calendar_event?.event_type}</p></div>
-                    </div>
-                    <div className="mt-4 flex gap-3">
-                        <button
-                            onClick={handleConfirmSave}
-                            disabled={parsing}
-                            className="px-5 py-2 bg-pink-600 text-white rounded-xl text-sm font-bold hover:bg-pink-700 disabled:opacity-50"
-                        >
-                            ✅ Confirm & Save
-                        </button>
-                        <button
-                            onClick={() => { setPreview(null); setVoiceText(''); }}
-                            className="px-5 py-2 bg-gray-200 dark:bg-slate-700 text-gray-700 dark:text-white rounded-xl text-sm font-bold hover:bg-gray-300 dark:hover:bg-slate-600"
-                        >
-                            ✕ Discard
-                        </button>
-                    </div>
-                </div>
+            {/* ── Multi-task Preview ──────────────────────────────────────── */}
+            {previews && previews.length > 0 && (
+                <MultiTaskPreview
+                    tasks={previews}
+                    onConfirm={handleConfirmSave}
+                    onDiscard={() => { setPreviews(null); setVoiceText(''); }}
+                    saving={saving}
+                />
             )}
 
-            {/* Tabs */}
+            {/* ── Tabs ────────────────────────────────────────────────────── */}
             <div className="flex gap-2 mb-5 border-b border-gray-100 dark:border-slate-800 pb-3">
                 {TABS.map((t) => (
                     <button
@@ -10439,9 +12249,15 @@ function StudyPlanner() {
                         {t.label}
                     </button>
                 ))}
+                {/* Task count badge */}
+                {!loading && (
+                    <span className="ml-auto self-center text-xs text-gray-400 dark:text-slate-500">
+                        {tasks.length} task{tasks.length !== 1 ? 's' : ''}
+                    </span>
+                )}
             </div>
 
-            {/* Task List */}
+            {/* ── Task List ───────────────────────────────────────────────── */}
             {loading ? (
                 <div className="text-center py-8 text-gray-400 text-sm">Loading…</div>
             ) : tasks.length === 0 ? (
@@ -10460,6 +12276,7 @@ function StudyPlanner() {
                                     : 'bg-white dark:bg-slate-800 border-gray-100 dark:border-slate-700 hover:shadow-md'
                             }`}
                         >
+                            {/* Status toggle */}
                             <button
                                 onClick={() => toggleStatus(task)}
                                 title="Toggle status"
@@ -10469,12 +12286,14 @@ function StudyPlanner() {
                                         : 'border-gray-300 dark:border-slate-600 hover:border-violet-500'
                                 }`}
                             >
-                                {task.status === 'Completed' && <span className="text-white text-xs leading-none flex items-center justify-center h-full">✓</span>}
+                                {task.status === 'Completed' && (
+                                    <span className="text-white text-xs leading-none flex items-center justify-center h-full">✓</span>
+                                )}
                             </button>
 
                             <div className="flex-1 min-w-0">
                                 <div className="flex flex-wrap items-center gap-2 mb-1">
-                                    <span className="font-bold text-gray-800 dark:text-white truncate">
+                                    <span className={`font-bold text-gray-800 dark:text-white truncate ${task.status === 'Completed' ? 'line-through' : ''}`}>
                                         {TYPE_ICONS[task.task_type]} {task.title}
                                     </span>
                                     <Badge text={task.priority} color={PRIORITY_COLORS[task.priority]} />
@@ -10507,19 +12326,20 @@ function StudyPlanner() {
     );
 }
 
-// ===== Main TeenDashboard =====
+// ─── Main TeenDashboard ─────────────────────────────────────────────────────
+
 export default function TeenDashboard() {
     const { user, token } = useAuth();
     const { canAccessInsights } = useSubscription();
     const navigate = useNavigate();
 
-    const [results, setResults]                   = useState([]);
-    const [loading, setLoading]                   = useState(true);
-    const [takingAssessment, setTakingAssessment] = useState(false);
+    const [results, setResults]                         = useState([]);
+    const [loading, setLoading]                         = useState(true);
+    const [takingAssessment, setTakingAssessment]       = useState(false);
     const [showAssessmentPrompt, setShowAssessmentPrompt] = useState(false);
 
     // Google Calendar connection state
-    const [googleConnected, setGoogleConnected] = useState(null);
+    const [googleConnected, setGoogleConnected]   = useState(null);
     const [connectingGoogle, setConnectingGoogle] = useState(false);
 
     useEffect(() => {
@@ -10554,7 +12374,6 @@ export default function TeenDashboard() {
         setConnectingGoogle(true);
         try {
             const res = await api.get('/users/google_oauth_url/');
-            // Store current path in sessionStorage to redirect back after OAuth
             sessionStorage.setItem('redirectAfterGoogle', '/dashboard/teen');
             window.location.href = res.data.url;
         } catch {
@@ -10620,6 +12439,29 @@ export default function TeenDashboard() {
             {/* Study Planner (always visible) */}
             <StudyPlanner />
 
+            {/* Mentor Chat Section */}
+            <a
+                href="/mentor-chat/teen?stage=teen_age"
+                className="block bg-gradient-to-r from-purple-50 to-pink-50 dark:from-slate-800 dark:to-slate-900 p-6 rounded-2xl border border-purple-200 dark:border-slate-700 hover:shadow-lg transition-all group"
+            >
+                <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-4">
+                        <div className="w-14 h-14 bg-purple-600 dark:bg-pink-600 rounded-xl flex items-center justify-center text-2xl group-hover:scale-110 transition-transform">
+                            💬
+                        </div>
+                        <div>
+                            <h3 className="text-lg font-bold text-gray-800 dark:text-white">Chat with Your Mentor</h3>
+                            <p className="text-sm text-gray-500 dark:text-slate-400">
+                                Get guidance on studies, goals, and personal growth
+                            </p>
+                        </div>
+                    </div>
+                    <span className="text-purple-600 dark:text-pink-400 font-medium text-sm group-hover:translate-x-1 transition-transform">
+                        Open Chat →
+                    </span>
+                </div>
+            </a>
+
             {/* Assessment Results */}
             {latestResult ? (
                 <>
@@ -10630,11 +12472,11 @@ export default function TeenDashboard() {
                         </h2>
                         <div className="grid md:grid-cols-5 gap-4">
                             {[
-                                { label: 'Overall',   value: latestResult.final_score,    color: 'text-blue-600 dark:text-pink-500' },
-                                { label: 'Health',    value: latestResult.health_score,   color: 'text-green-600' },
-                                { label: 'Behavior',  value: latestResult.behavior_score, color: 'text-orange-600' },
-                                { label: 'Routine',   value: latestResult.routine_score,  color: 'text-purple-600' },
-                                { label: 'Emotional', value: latestResult.emotional_score,color: 'text-red-600' },
+                                { label: 'Overall',   value: latestResult.final_score,     color: 'text-blue-600 dark:text-pink-500' },
+                                { label: 'Health',    value: latestResult.health_score,    color: 'text-green-600' },
+                                { label: 'Behavior',  value: latestResult.behavior_score,  color: 'text-orange-600' },
+                                { label: 'Routine',   value: latestResult.routine_score,   color: 'text-purple-600' },
+                                { label: 'Emotional', value: latestResult.emotional_score, color: 'text-red-600' },
                             ].map(({ label, value, color }) => (
                                 <div key={label} className="text-center p-6 bg-gray-50 dark:bg-slate-800 rounded-2xl border border-gray-100 dark:border-slate-700/50 shadow-sm">
                                     <p className={`text-4xl font-black ${color} mb-1`}>{value}%</p>
@@ -10866,6 +12708,51 @@ export const getHealthGuide = (id) => api.get(`/reports/health-guide/${id}/`);
 
 
 ================================================
+FILE: frontend/src/services/mentorshipService.js
+================================================
+import api from './api';
+
+const mentorshipService = {
+    // â”€â”€â”€ Mentors â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    getMentors: (stage) => {
+        const params = stage ? { stage } : {};
+        return api.get('/mentorship/mentors/', { params });
+    },
+
+    // â”€â”€â”€ Assignments â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    getAssignments: () =>
+        api.get('/mentorship/assignments/'),
+
+    autoAssign: (stage) =>
+        api.post('/mentorship/assignments/auto_assign/', { stage }),
+
+    changeMentor: (assignmentId, newMentorId) =>
+        api.post('/mentorship/assignments/change_mentor/', {
+            assignment_id: assignmentId,
+            new_mentor_id: newMentorId,
+        }),
+
+    // â”€â”€â”€ Chat â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    getChatHistory: (assignmentId) =>
+        api.get(`/mentorship/chat/history/${assignmentId}/`),
+
+    sendMessage: (assignmentId, message) =>
+        api.post('/mentorship/chat/send/', {
+            assignment_id: assignmentId,
+            message,
+        }),
+
+    markRead: (assignmentId) =>
+        api.post('/mentorship/chat/mark_read/', {
+            assignment_id: assignmentId,
+        }),
+};
+
+export default mentorshipService;
+
+
+
+================================================
 FILE: frontend/src/services/reportService.js
 ================================================
 
@@ -10878,13 +12765,15 @@ FILE: frontend/src/services/studyPlannerService.js
 import api from './api';
 
 /**
- * Parse a voice text string â†’ structured JSON (preview, no save)
+ * Parse a voice text string â†’ structured JSON preview (no save).
+ * Now returns { parsed: [task, task, ...] } â€” always an ARRAY of tasks.
  */
 export const parseVoiceText = (voice_text) =>
     api.post('/study-tasks/parse_voice/', { voice_text });
 
 /**
- * Parse + immediately save the task to the database.
+ * Parse + immediately save ALL tasks found in the voice text.
+ * Returns { created: true, count: N, tasks: [...], skipped_duplicates: [...] }
  */
 export const addTaskFromVoice = (voice_text) =>
     api.post('/study-tasks/add_from_voice/', { voice_text });

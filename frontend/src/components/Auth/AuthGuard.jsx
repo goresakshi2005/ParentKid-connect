@@ -10,7 +10,8 @@ function AuthGuard({ children, role }) {
   }
 
   if (!user) {
-    return <Navigate to={`/login/${role}`} />;
+    const loginRole = role === 'mentor' ? 'parent' : role;
+    return <Navigate to={`/login/${loginRole}`} />;
   }
 
   if (user.role !== role) {
