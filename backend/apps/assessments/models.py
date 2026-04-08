@@ -77,6 +77,7 @@ class CareerDiscoveryResult(models.Model):
     best_career_title = models.CharField(max_length=200)
     best_career_emoji = models.CharField(max_length=10, blank=True)
     best_career_why = models.TextField(blank=True)
+    task = models.TextField(blank=True)
     
     alternatives = models.JSONField(default=list)
     

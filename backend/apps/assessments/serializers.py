@@ -28,6 +28,6 @@ class CareerDiscoveryResultSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'user', 'child', 'child_details',
             'trait_labels', 'scores', 'best_career_title', 
-            'best_career_emoji', 'best_career_why', 'alternatives',
+            'best_career_emoji', 'best_career_why', 'task', 'alternatives',
             'created_at', 'updated_at'
         ]

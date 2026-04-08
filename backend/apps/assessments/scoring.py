@@ -1,3 +1,4 @@
+import json
 import google.generativeai as genai
 from django.conf import settings
 
@@ -202,3 +203,51 @@ Keep it brief, practical, and encouraging.
             'improvements': self.get_improvements(),
             'recommendations': recommendations,
         }
+
+class CareerDiscoveryEngine:
+    @staticmethod
+    def generate_career_path(trait_labels, scores):
+        try:
+            prompt = f"""
+You are an advanced AI career discovery engine designed specifically for teenagers.
+Your goal is to analyze a teenager's personality traits and scores and recommend the most suitable career path from ALL POSSIBLE FIELDS in the real world.
+You MUST follow a deep exploration approach, not shallow suggestions.
+
+INPUT:
+* Trait labels: {trait_labels}
+* Trait scores: {scores}
+
+STEP 1: TRAIT ANALYSIS
+* Identify top 4 dominant traits
+* Identify hidden/secondary traits
+* Understand personality pattern (analytical, creative, social, practical, etc.)
+
+STEP 2: BROAD DOMAIN MAPPING
+* Map traits to ALL possible domains
+
+STEP 3: Niche Career Identification
+* Find specific real-world roles.
+
+Important: Return ONLY a valid JSON object matching this schema exactly, and nothing else (no markdown wrappers like ```json ... ```, just the raw JSON object string):
+{{
+    "best_career_title": "string",
+    "best_career_emoji": "emoji string",
+    "best_career_why": "string explaining why based on traits",
+    "task": "A Try-It-Now Challenge string to let the teen practically try out the career",
+    "alternatives": ["emoji string 1", "emoji string 2", "emoji string 3"]
+}}
+"""
+            model = genai.GenerativeModel('gemini-2.5-flash')
+            response = model.generate_content(prompt)
+            # Remove any markdown formatting if present
+            response_text = response.text.strip()
+            if response_text.startswith("```json"):
+                response_text = response_text[7:]
+            if response_text.endswith("```"):
+                response_text = response_text[:-3]
+            
+            return json.loads(response_text)
+            
+        except Exception as e:
+            print(f"Error generating career recommendations: {str(e)}")
+            return None

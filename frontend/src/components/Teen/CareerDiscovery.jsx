@@ -54,6 +54,7 @@ export default function CareerDiscovery({ onBack }) {
   const [stage, setStage] = useState('hook');
   const [animKey, setAnimKey] = useState(0);
   const [scores, setScores] = useState({});
+  const [apiResult, setApiResult] = useState(null);
 
   // Stage-specific state
   const [selectedWorlds, setSelectedWorlds] = useState([]);
@@ -163,28 +164,39 @@ export default function CareerDiscovery({ onBack }) {
   const handleShowResult = async () => {
     setAnalyzing(true);
     
-    // Pre-calculate to save to backend
+    // Pre-calculate fallback to save to backend
     const computedResults = getBestCareer(scores, realityAnswers);
+    let finalBest = computedResults.best;
+    let finalAlts = (computedResults.alternatives || []).map(a => `${a.emoji} ${a.title}`);
     
     try {
-      await saveCareerDiscoveryResult({
+      const resp = await saveCareerDiscoveryResult({
         trait_labels: traitLabels,
         scores: scores,
-        best_career_title: computedResults.best?.title || '',
-        best_career_emoji: computedResults.best?.emoji || '',
-        best_career_why: computedResults.best?.why || '',
-        alternatives: (computedResults.alternatives || []).map(a => `${a.emoji} ${a.title}`)
+        best_career_title: '',
+        best_career_emoji: '',
+        best_career_why: '',
+        alternatives: []
       });
+      const data = resp.data || resp;
+      if (data && data.best_career_title) {
+        finalBest = {
+          title: data.best_career_title,
+          emoji: data.best_career_emoji,
+          why: data.best_career_why,
+          task: data.task || "Start exploring this field today with a small project!"
+        };
+        finalAlts = data.alternatives || [];
+      }
     } catch (error) {
-      console.error("Failed to save career discovery results to backend:", error);
+      console.error("Failed to save/get AI career discovery results:", error);
     }
 
-    setTimeout(() => {
-      setAnalyzing(false);
-      setShowConfetti(true);
-      goStage('result');
-      setTimeout(() => setShowConfetti(false), 4000);
-    }, 2500);
+    setApiResult({ best: finalBest, alternatives: finalAlts });
+    setAnalyzing(false);
+    setShowConfetti(true);
+    goStage('result');
+    setTimeout(() => setShowConfetti(false), 4000);
   };
 
   // ── Render helpers ────────────────────────────────────────────────────
@@ -492,29 +504,29 @@ export default function CareerDiscovery({ onBack }) {
         )}
 
         {/* ═══════════ STAGE 8: FINAL RESULT ═══════════ */}
-        {stage === 'result' && bestCareer && (
+        {stage === 'result' && apiResult?.best && (
           <div className="cd-stage-enter cd-result" key={`result-${animKey}`}>
             <div className="cd-result-trophy">🏆</div>
             <div className="cd-result-title-label">🎯 Your Best Career Match</div>
             <h2 className="cd-result-career">
-              {bestCareer.emoji} {bestCareer.title}
+              {apiResult.best.emoji} {apiResult.best.title}
             </h2>
 
             <div className="cd-result-why">
               <div className="cd-result-why-label">💡 Why This Fits You</div>
-              <p className="cd-result-why-text">{bestCareer.why}</p>
+              <p className="cd-result-why-text">{apiResult.best.why}</p>
             </div>
 
-            {alternatives.length > 0 && (
+            {apiResult.alternatives?.length > 0 && (
               <div className="cd-result-alternatives">
                 <div className="cd-result-alt-label">🔁 Alternative Paths</div>
                 <div className="cd-result-alt-list">
-                  {alternatives.map((alt, i) => (
+                  {apiResult.alternatives.map((alt, i) => (
                     <span className="cd-result-alt-tag" key={i}>
-                      {alt.emoji} {alt.title}
+                      {alt}
                     </span>
                   ))}
-                  {bestCareer.alts.map((a, i) => (
+                  {apiResult.best.alts?.map((a, i) => (
                     <span className="cd-result-alt-tag" key={`sub-${i}`}>✦ {a}</span>
                   ))}
                 </div>
@@ -523,7 +535,7 @@ export default function CareerDiscovery({ onBack }) {
 
             <div className="cd-result-bonus">
               <div className="cd-result-bonus-label">🎁 Try-It-Now Challenge</div>
-              <p className="cd-result-bonus-text">{bestCareer.task}</p>
+              <p className="cd-result-bonus-text">{apiResult.best.task}</p>
             </div>
 
             <div className="cd-result-actions">
@@ -534,6 +546,7 @@ export default function CareerDiscovery({ onBack }) {
                 className="cd-btn-secondary"
                 onClick={() => {
                   setStage('hook');
+                  setApiResult(null);
                   setScores({});
                   setSelectedWorlds([]);
                   setRfIndex(0);

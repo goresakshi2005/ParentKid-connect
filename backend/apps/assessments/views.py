@@ -180,15 +180,36 @@ class CareerDiscoveryViewSet(viewsets.ModelViewSet):
             except Child.DoesNotExist:
                 return Response({'error': 'Child not found'}, status=404)
                 
+        best_career_title = data.get('best_career_title', '')
+        best_career_emoji = data.get('best_career_emoji', '')
+        best_career_why = data.get('best_career_why', '')
+        task = ''
+        alternatives = data.get('alternatives', [])
+        
+        # Call AI if not fully provided (or force AI generation)
+        if not best_career_title or not best_career_why:
+            from .scoring import CareerDiscoveryEngine
+            ai_results = CareerDiscoveryEngine.generate_career_path(
+                trait_labels=data.get('trait_labels', []),
+                scores=data.get('scores', {})
+            )
+            if ai_results:
+                best_career_title = ai_results.get('best_career_title', best_career_title)
+                best_career_emoji = ai_results.get('best_career_emoji', best_career_emoji)
+                best_career_why = ai_results.get('best_career_why', best_career_why)
+                task = ai_results.get('task', '')
+                alternatives = ai_results.get('alternatives', alternatives)
+
         result = CareerDiscoveryResult.objects.create(
             user=user,
             child=child,
             trait_labels=data.get('trait_labels', []),
             scores=data.get('scores', {}),
-            best_career_title=data.get('best_career_title', ''),
-            best_career_emoji=data.get('best_career_emoji', ''),
-            best_career_why=data.get('best_career_why', ''),
-            alternatives=data.get('alternatives', [])
+            best_career_title=best_career_title,
+            best_career_emoji=best_career_emoji,
+            best_career_why=best_career_why,
+            task=task,
+            alternatives=alternatives
         )
         
         serializer = self.get_serializer(result)

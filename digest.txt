@@ -41,6 +41,7 @@ Directory structure:
     │   │   │       ├── 0002_initial.py
     │   │   │       ├── 0003_initial.py
     │   │   │       ├── 0004_assessment_tier.py
+    │   │   │       ├── 0005_careerdiscoveryresult.py
     │   │   │       └── __init__.py
     │   │   ├── children/
     │   │   │   ├── __init__.py
@@ -226,6 +227,9 @@ Directory structure:
             │   │   └── ScreenTimeDashboard.jsx
             │   ├── Teen/
             │   │   ├── AssessmentPrompt.jsx
+            │   │   ├── careerData.js
+            │   │   ├── CareerDiscovery.css
+            │   │   ├── CareerDiscovery.jsx
             │   │   └── Dashboard.jsx
             │   └── VoiceAssessment/
             │       ├── VoiceAssessmentFlow.jsx
@@ -1046,6 +1050,31 @@ class AssessmentResult(models.Model):
         user_ref = self.user.email if self.user else self.child.name
         return f"{user_ref} - {self.final_score}%"
 
+class CareerDiscoveryResult(models.Model):
+    user = models.ForeignKey(User, on_delete=models.CASCADE, null=True, blank=True)
+    child = models.ForeignKey('children.Child', on_delete=models.CASCADE, 
+                              null=True, blank=True)
+    
+    # Results data
+    trait_labels = models.JSONField(default=list)
+    scores = models.JSONField(default=dict)
+    
+    best_career_title = models.CharField(max_length=200)
+    best_career_emoji = models.CharField(max_length=10, blank=True)
+    best_career_why = models.TextField(blank=True)
+    
+    alternatives = models.JSONField(default=list)
+    
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    
+    class Meta:
+        ordering = ['-created_at']
+        
+    def __str__(self):
+        user_ref = self.user.email if self.user else (self.child.name if self.child else "Unknown")
+        return f"{user_ref} - {self.best_career_title}"
+
 
 ================================================
 FILE: backend/apps/assessments/scoring.py
@@ -1260,7 +1289,7 @@ Keep it brief, practical, and encouraging.
 FILE: backend/apps/assessments/serializers.py
 ================================================
 from rest_framework import serializers
-from .models import Assessment, AssessmentResult
+from .models import Assessment, AssessmentResult, CareerDiscoveryResult
 from apps.children.serializers import ChildSerializer
 
 class AssessmentSerializer(serializers.ModelSerializer):
@@ -1281,6 +1310,18 @@ class AssessmentResultSerializer(serializers.ModelSerializer):
             'strengths', 'improvements', 'recommendations', 'created_at'
         ]
 
+class CareerDiscoveryResultSerializer(serializers.ModelSerializer):
+    child_details = ChildSerializer(source='child', read_only=True)
+    
+    class Meta:
+        model = CareerDiscoveryResult
+        fields = [
+            'id', 'user', 'child', 'child_details',
+            'trait_labels', 'scores', 'best_career_title', 
+            'best_career_emoji', 'best_career_why', 'alternatives',
+            'created_at', 'updated_at'
+        ]
+
 
 ================================================
 FILE: backend/apps/assessments/urls.py
@@ -1298,8 +1339,8 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
 from django.db.models import Q
-from .models import Assessment, AssessmentResult
-from .serializers import AssessmentSerializer, AssessmentResultSerializer
+from .models import Assessment, AssessmentResult, CareerDiscoveryResult
+from .serializers import AssessmentSerializer, AssessmentResultSerializer, CareerDiscoveryResultSerializer
 from .scoring import AssessmentScorer
 from apps.children.models import Child
 
@@ -1447,6 +1488,45 @@ class AssessmentViewSet(viewsets.ModelViewSet):
 
         serializer = AssessmentSerializer(assessment)
         return Response(serializer.data)
+
+class CareerDiscoveryViewSet(viewsets.ModelViewSet):
+    queryset = CareerDiscoveryResult.objects.all()
+    serializer_class = CareerDiscoveryResultSerializer
+    permission_classes = [IsAuthenticated]
+    
+    def get_queryset(self):
+        user = self.request.user
+        if user.role == 'parent':
+            child_ids = Child.objects.filter(parent=user).values_list('id', flat=True)
+            return CareerDiscoveryResult.objects.filter(Q(user=user) | Q(child__in=child_ids))
+        return CareerDiscoveryResult.objects.filter(user=user)
+        
+    def create(self, request, *args, **kwargs):
+        data = request.data
+        child_id = data.get('child_id')
+        user = request.user
+        
+        child = None
+        if child_id:
+            try:
+                child = Child.objects.get(id=child_id, parent=user)
+                user = None
+            except Child.DoesNotExist:
+                return Response({'error': 'Child not found'}, status=404)
+                
+        result = CareerDiscoveryResult.objects.create(
+            user=user,
+            child=child,
+            trait_labels=data.get('trait_labels', []),
+            scores=data.get('scores', {}),
+            best_career_title=data.get('best_career_title', ''),
+            best_career_emoji=data.get('best_career_emoji', ''),
+            best_career_why=data.get('best_career_why', ''),
+            alternatives=data.get('alternatives', [])
+        )
+        
+        serializer = self.get_serializer(result)
+        return Response(serializer.data, status=status.HTTP_201_CREATED)
 
 
 ================================================
@@ -1935,6 +2015,48 @@ class Migration(migrations.Migration):
             model_name='assessment',
             name='tier',
             field=models.CharField(choices=[('free', 'Free'), ('paid', 'Paid')], default='free', max_length=10),
+        ),
+    ]
+
+
+
+================================================
+FILE: backend/apps/assessments/migrations/0005_careerdiscoveryresult.py
+================================================
+# Generated by Django 4.2 on 2026-04-08 03:08
+
+from django.conf import settings
+from django.db import migrations, models
+import django.db.models.deletion
+
+
+class Migration(migrations.Migration):
+
+    dependencies = [
+        migrations.swappable_dependency(settings.AUTH_USER_MODEL),
+        ('children', '0006_alter_child_stage'),
+        ('assessments', '0004_assessment_tier'),
+    ]
+
+    operations = [
+        migrations.CreateModel(
+            name='CareerDiscoveryResult',
+            fields=[
+                ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
+                ('trait_labels', models.JSONField(default=list)),
+                ('scores', models.JSONField(default=dict)),
+                ('best_career_title', models.CharField(max_length=200)),
+                ('best_career_emoji', models.CharField(blank=True, max_length=10)),
+                ('best_career_why', models.TextField(blank=True)),
+                ('alternatives', models.JSONField(default=list)),
+                ('created_at', models.DateTimeField(auto_now_add=True)),
+                ('updated_at', models.DateTimeField(auto_now=True)),
+                ('child', models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.CASCADE, to='children.child')),
+                ('user', models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.CASCADE, to=settings.AUTH_USER_MODEL)),
+            ],
+            options={
+                'ordering': ['-created_at'],
+            },
         ),
     ]
 
@@ -6924,13 +7046,14 @@ from django.conf.urls.static import static
 from rest_framework.routers import DefaultRouter
 from apps.users.views import UserViewSet
 from apps.children.views import ChildViewSet
-from apps.assessments.views import AssessmentViewSet
+from apps.assessments.views import AssessmentViewSet, CareerDiscoveryViewSet
 from apps.subscriptions.views import SubscriptionViewSet
 
 router = DefaultRouter()
 router.register(r'users', UserViewSet, basename='user')
 router.register(r'children', ChildViewSet, basename='child')
 router.register(r'assessments', AssessmentViewSet, basename='assessment')
+router.register(r'career-discovery', CareerDiscoveryViewSet, basename='career_discovery')
 router.register(r'subscriptions', SubscriptionViewSet, basename='subscription')
 
 urlpatterns = [
@@ -11741,6 +11864,2082 @@ export default AssessmentPrompt;
 
 
 ================================================
+FILE: frontend/src/components/Teen/careerData.js
+================================================
+// Career Discovery Journey — All static data and scoring logic
+
+export const WORLDS = [
+  { id: 'tech', icon: '💻', name: 'Tech World', desc: 'Code, AI, apps & machines', tags: ['cs', 'ai', 'data', 'cyber'] },
+  { id: 'creator', icon: '🎨', name: 'Creator World', desc: 'Design, art, content & media', tags: ['design', 'media', 'art', 'writing'] },
+  { id: 'business', icon: '💼', name: 'Business World', desc: 'Money, markets & leadership', tags: ['finance', 'marketing', 'management', 'startup'] },
+  { id: 'people', icon: '🤝', name: 'People World', desc: 'Helping, teaching & connecting', tags: ['psychology', 'education', 'social', 'hr'] },
+  { id: 'science', icon: '🔬', name: 'Science World', desc: 'Research, discovery & experiments', tags: ['bio', 'chem', 'physics', 'research'] },
+  { id: 'nature', icon: '🌿', name: 'Nature World', desc: 'Environment, animals & earth', tags: ['environment', 'agriculture', 'wildlife', 'geo'] },
+  { id: 'health', icon: '🏥', name: 'Health World', desc: 'Medicine, fitness & wellness', tags: ['medicine', 'fitness', 'nutrition', 'pharma'] },
+  { id: 'builder', icon: '🏗️', name: 'Builder World', desc: 'Structures, machines & systems', tags: ['mechanical', 'civil', 'electrical', 'architecture'] },
+  { id: 'law', icon: '⚖️', name: 'Justice World', desc: 'Law, policy & social change', tags: ['law', 'politics', 'advocacy', 'policy'] },
+];
+
+export const RAPID_FIRE = [
+  { a: { text: 'Build an app', emoji: '📱', tags: { cs: 2, ai: 1 } }, b: { text: 'Design a poster', emoji: '🎨', tags: { design: 2, art: 1 } } },
+  { a: { text: 'Solve a mystery', emoji: '🔍', tags: { data: 2, research: 1 } }, b: { text: 'Talk to a crowd', emoji: '🎤', tags: { marketing: 2, education: 1 } } },
+  { a: { text: 'Write code all night', emoji: '🌙', tags: { cs: 2, cyber: 1 } }, b: { text: 'Brainstorm ideas', emoji: '💡', tags: { startup: 2, design: 1 } } },
+  { a: { text: 'Analyze data charts', emoji: '📊', tags: { data: 2, finance: 1 } }, b: { text: 'Record a video', emoji: '🎬', tags: { media: 2, writing: 1 } } },
+  { a: { text: 'Fix a broken machine', emoji: '🔧', tags: { mechanical: 2, electrical: 1 } }, b: { text: 'Comfort a friend', emoji: '💛', tags: { psychology: 2, social: 1 } } },
+  { a: { text: 'Run experiments', emoji: '🧪', tags: { research: 2, bio: 1 } }, b: { text: 'Plan a campaign', emoji: '📣', tags: { marketing: 2, management: 1 } } },
+  { a: { text: 'Draw blueprints', emoji: '📐', tags: { architecture: 2, civil: 1 } }, b: { text: 'Negotiate a deal', emoji: '🤝', tags: { finance: 2, management: 1 } } },
+  { a: { text: 'Teach someone new', emoji: '📚', tags: { education: 2, social: 1 } }, b: { text: 'Hack a system', emoji: '🛡️', tags: { cyber: 2, cs: 1 } } },
+  { a: { text: 'Grow a garden', emoji: '🌱', tags: { agriculture: 2, environment: 1 } }, b: { text: 'Trade stocks', emoji: '📈', tags: { finance: 2, data: 1 } } },
+  { a: { text: 'Treat a patient', emoji: '🩺', tags: { medicine: 2, bio: 1 } }, b: { text: 'Argue in court', emoji: '⚖️', tags: { law: 2, advocacy: 1 } } },
+];
+
+export const MISSIONS = [
+  {
+    scenario: '🚀 A startup is about to fail. The team has 48 hours. What do you do?',
+    options: [
+      { text: 'Fix the broken code', emoji: '💻', tags: { cs: 3, ai: 1 } },
+      { text: 'Redesign the product', emoji: '🎨', tags: { design: 3, art: 1 } },
+      { text: 'Pitch to investors', emoji: '💰', tags: { finance: 2, marketing: 2 } },
+      { text: 'Analyze user data', emoji: '📊', tags: { data: 3, research: 1 } },
+    ],
+  },
+  {
+    scenario: '🏫 Your school wants to go completely digital. You volunteer to lead. What\'s your move?',
+    options: [
+      { text: 'Build the school app', emoji: '📱', tags: { cs: 3, cyber: 1 } },
+      { text: 'Design the experience', emoji: '✨', tags: { design: 2, art: 2 } },
+      { text: 'Train teachers & students', emoji: '🎓', tags: { education: 3, social: 1 } },
+      { text: 'Manage the project', emoji: '📋', tags: { management: 3, startup: 1 } },
+    ],
+  },
+  {
+    scenario: '🌍 A new virus is spreading in a remote village. You\'re sent to help.',
+    options: [
+      { text: 'Research a cure', emoji: '🔬', tags: { research: 2, bio: 2 } },
+      { text: 'Treat the patients', emoji: '🏥', tags: { medicine: 3, nutrition: 1 } },
+      { text: 'Spread awareness online', emoji: '📢', tags: { media: 2, social: 2 } },
+      { text: 'Build a supply system', emoji: '🚛', tags: { management: 2, civil: 2 } },
+    ],
+  },
+  {
+    scenario: '🤖 You got early access to a powerful AI. How do you use it?',
+    options: [
+      { text: 'Train it to solve problems', emoji: '🧠', tags: { ai: 3, data: 1 } },
+      { text: 'Make it create art', emoji: '🖼️', tags: { art: 2, design: 2 } },
+      { text: 'Use it to help students', emoji: '📖', tags: { education: 2, psychology: 2 } },
+      { text: 'Build a business around it', emoji: '💼', tags: { startup: 3, marketing: 1 } },
+    ],
+  },
+  {
+    scenario: '⚡ A city just lost all power. It\'s up to your team to fix it.',
+    options: [
+      { text: 'Fix the power grid', emoji: '🔌', tags: { electrical: 3, mechanical: 1 } },
+      { text: 'Set up solar panels', emoji: '☀️', tags: { environment: 2, physics: 2 } },
+      { text: 'Coordinate rescue teams', emoji: '🚨', tags: { management: 2, social: 2 } },
+      { text: 'Write emergency protocols', emoji: '📝', tags: { law: 2, policy: 2 } },
+    ],
+  },
+];
+
+export const REALITY_CHECKS = [
+  { q: '💻 Can you sit and work on a laptop for hours?', tag: 'desk', emoji: '🪑' },
+  { q: '🔢 Do you actually enjoy math & logic puzzles?', tag: 'math', emoji: '🧮' },
+  { q: '🎤 Are you comfortable speaking in public?', tag: 'public', emoji: '🗣️' },
+  { q: '🧪 Do you like doing detailed, precise work?', tag: 'detail', emoji: '🔬' },
+];
+
+// ── Domain Narrowing Questions (generated dynamically) ──────────────────
+export const DOMAIN_QUESTIONS = {
+  tech: {
+    question: 'In the tech universe, which path calls to you?',
+    options: [
+      { text: 'Build Smart Apps', emoji: '📱', sub: 'Software & Mobile Dev', tags: { cs: 3 } },
+      { text: 'Teach Machines to Think', emoji: '🤖', sub: 'AI & Machine Learning', tags: { ai: 3 } },
+      { text: 'Protect Digital Worlds', emoji: '🛡️', sub: 'Cybersecurity', tags: { cyber: 3 } },
+      { text: 'Decode Hidden Patterns', emoji: '📊', sub: 'Data Science', tags: { data: 3 } },
+    ],
+  },
+  creator: {
+    question: 'What kind of creator are you?',
+    options: [
+      { text: 'Design Interfaces', emoji: '🖥️', sub: 'UI/UX Design', tags: { design: 3 } },
+      { text: 'Tell Visual Stories', emoji: '🎬', sub: 'Film & Animation', tags: { media: 3 } },
+      { text: 'Write & Blog', emoji: '✍️', sub: 'Content & Writing', tags: { writing: 3 } },
+      { text: 'Create Art & Illustrations', emoji: '🎨', sub: 'Graphic & Digital Art', tags: { art: 3 } },
+    ],
+  },
+  business: {
+    question: 'What\'s your business superpower?',
+    options: [
+      { text: 'Start a Company', emoji: '🚀', sub: 'Entrepreneurship', tags: { startup: 3 } },
+      { text: 'Grow Brands', emoji: '📣', sub: 'Marketing & Branding', tags: { marketing: 3 } },
+      { text: 'Manage Money', emoji: '💰', sub: 'Finance & Investment', tags: { finance: 3 } },
+      { text: 'Lead Teams', emoji: '👑', sub: 'Management & Strategy', tags: { management: 3 } },
+    ],
+  },
+  people: {
+    question: 'How do you connect with people?',
+    options: [
+      { text: 'Understand Minds', emoji: '🧠', sub: 'Psychology & Counseling', tags: { psychology: 3 } },
+      { text: 'Teach & Inspire', emoji: '🎓', sub: 'Education & Training', tags: { education: 3 } },
+      { text: 'Fight for Rights', emoji: '✊', sub: 'Social Work & NGOs', tags: { social: 3 } },
+      { text: 'Recruit & Develop', emoji: '🤝', sub: 'HR & People Ops', tags: { hr: 3 } },
+    ],
+  },
+  science: {
+    question: 'Which science frontier excites you?',
+    options: [
+      { text: 'Explore Life', emoji: '🧬', sub: 'Biology & Biotech', tags: { bio: 3 } },
+      { text: 'Mix & React', emoji: '⚗️', sub: 'Chemistry & Materials', tags: { chem: 3 } },
+      { text: 'Understand the Universe', emoji: '🌌', sub: 'Physics & Astronomy', tags: { physics: 3 } },
+      { text: 'Discover Deep Truths', emoji: '📖', sub: 'Pure Research', tags: { research: 3 } },
+    ],
+  },
+  nature: {
+    question: 'How do you want to save the planet?',
+    options: [
+      { text: 'Protect Ecosystems', emoji: '🌳', sub: 'Environmental Science', tags: { environment: 3 } },
+      { text: 'Feed the World', emoji: '🌾', sub: 'Agriculture & Food Tech', tags: { agriculture: 3 } },
+      { text: 'Save Animals', emoji: '🐾', sub: 'Wildlife & Zoology', tags: { wildlife: 3 } },
+      { text: 'Map the Earth', emoji: '🗺️', sub: 'Geography & GIS', tags: { geo: 3 } },
+    ],
+  },
+  health: {
+    question: 'Your health mission is...',
+    options: [
+      { text: 'Heal People', emoji: '🩺', sub: 'Medicine & Surgery', tags: { medicine: 3 } },
+      { text: 'Train Bodies', emoji: '💪', sub: 'Sports & Fitness', tags: { fitness: 3 } },
+      { text: 'Nourish Lives', emoji: '🥗', sub: 'Nutrition & Dietetics', tags: { nutrition: 3 } },
+      { text: 'Create Medicines', emoji: '💊', sub: 'Pharmacy & Biotech', tags: { pharma: 3 } },
+    ],
+  },
+  builder: {
+    question: 'What do you want to build?',
+    options: [
+      { text: 'Design Machines', emoji: '⚙️', sub: 'Mechanical Engineering', tags: { mechanical: 3 } },
+      { text: 'Build Structures', emoji: '🏛️', sub: 'Civil Engineering', tags: { civil: 3 } },
+      { text: 'Power Systems', emoji: '⚡', sub: 'Electrical Engineering', tags: { electrical: 3 } },
+      { text: 'Shape Spaces', emoji: '🏠', sub: 'Architecture', tags: { architecture: 3 } },
+    ],
+  },
+  law: {
+    question: 'Your justice path is...',
+    options: [
+      { text: 'Practice Law', emoji: '⚖️', sub: 'Lawyer & Advocate', tags: { law: 3 } },
+      { text: 'Shape Policy', emoji: '📜', sub: 'Public Policy', tags: { policy: 3 } },
+      { text: 'Lead Nations', emoji: '🏛️', sub: 'Politics & Governance', tags: { politics: 3 } },
+      { text: 'Defend Rights', emoji: '🕊️', sub: 'NGO & Advocacy', tags: { advocacy: 3 } },
+    ],
+  },
+};
+
+// ── Career Mapping ──────────────────────────────────────────────────────
+export const CAREERS = {
+  cs: { title: 'Software Engineer', emoji: '💻', why: 'You love building things with code and solving complex puzzles. Software engineering lets you create the apps and systems that power the world.', alts: ['Full-Stack Developer', 'Mobile App Developer', 'DevOps Engineer'], task: 'Try building a simple calculator app using HTML & JavaScript today!' },
+  ai: { title: 'AI / ML Engineer', emoji: '🤖', why: 'You\'re fascinated by smart systems and want machines to think. AI Engineering puts you at the cutting edge of technology.', alts: ['Data Scientist', 'Robotics Engineer', 'NLP Specialist'], task: 'Try training a simple chatbot using a free tool like Teachable Machine!' },
+  data: { title: 'Data Scientist', emoji: '📊', why: 'You see patterns where others see chaos. Data Science lets you uncover hidden insights that drive real decisions.', alts: ['Business Analyst', 'Data Engineer', 'Statistician'], task: 'Try visualizing a dataset on Kaggle using Python or Google Sheets!' },
+  cyber: { title: 'Cybersecurity Analyst', emoji: '🛡️', why: 'You think like a hacker to protect others. Cybersecurity is a high-impact field that\'s always in demand.', alts: ['Ethical Hacker', 'Security Architect', 'Digital Forensics'], task: 'Try a beginner challenge on TryHackMe or PicoCTF today!' },
+  design: { title: 'UI/UX Designer', emoji: '🎨', why: 'You care deeply about how things look AND feel. Great design shapes how millions experience technology.', alts: ['Product Designer', 'Interaction Designer', 'Design System Lead'], task: 'Try redesigning your favorite app\'s login screen in Figma!' },
+  media: { title: 'Content Creator / Filmmaker', emoji: '🎬', why: 'You\'re a natural storyteller with a visual eye. The creator economy is booming — your voice matters.', alts: ['Video Editor', 'Social Media Manager', 'Podcast Producer'], task: 'Create a 60-second video about something you love today!' },
+  art: { title: 'Digital Artist / Illustrator', emoji: '🖌️', why: 'Your creativity flows through visuals. Digital art is shaping games, movies, and the metaverse.', alts: ['Game Artist', 'Concept Artist', 'Motion Designer'], task: 'Draw a character or scene using a free tool like Krita!' },
+  writing: { title: 'Content Writer / Copywriter', emoji: '✍️', why: 'Words are your superpower. Great writing drives brands, moves people, and builds communities.', alts: ['Technical Writer', 'Journalist', 'Screenwriter'], task: 'Write a 200-word blog post on a topic you care about!' },
+  finance: { title: 'Financial Analyst', emoji: '💰', why: 'Numbers tell you stories others can\'t hear. Finance careers put you at the center of global markets.', alts: ['Investment Banker', 'Chartered Accountant', 'FinTech Developer'], task: 'Research one stock and write a mini analysis on why it\'s a buy or sell!' },
+  marketing: { title: 'Marketing Strategist', emoji: '📣', why: 'You understand people and know how to get their attention. Marketing is the engine behind every successful brand.', alts: ['Growth Hacker', 'Brand Manager', 'SEO Specialist'], task: 'Create a mock social media campaign for your favorite brand!' },
+  management: { title: 'Product Manager', emoji: '📋', why: 'You\'re a natural leader who sees the big picture. Product managers shape the future of technology products.', alts: ['Project Manager', 'Operations Manager', 'Strategy Consultant'], task: 'Write a 1-page product brief for an app idea you have!' },
+  startup: { title: 'Entrepreneur / Founder', emoji: '🚀', why: 'You don\'t just dream — you build. Entrepreneurship lets you create something that didn\'t exist before.', alts: ['Startup Founder', 'Venture Capitalist', 'Innovation Consultant'], task: 'Write your startup idea in 3 sentences and tell a friend!' },
+  psychology: { title: 'Psychologist / Counselor', emoji: '🧠', why: 'You understand emotions deeply. Psychology helps people heal, grow, and find meaning in life.', alts: ['Clinical Psychologist', 'Organizational Psychologist', 'Life Coach'], task: 'Listen to a friend\'s problem today and practice active listening!' },
+  education: { title: 'Educator / EdTech Designer', emoji: '🎓', why: 'You light up when teaching. Education roles let you shape future generations and build learning tools.', alts: ['Curriculum Designer', 'Training Specialist', 'Online Course Creator'], task: 'Explain a concept you know well in a 2-minute video!' },
+  social: { title: 'Social Worker / NGO Leader', emoji: '🌍', why: 'You fight for those who can\'t fight for themselves. Social work creates real, tangible change.', alts: ['Community Organizer', 'Humanitarian Worker', 'Policy Advocate'], task: 'Volunteer for 1 hour at a local community organization!' },
+  hr: { title: 'HR Manager / People Ops', emoji: '🤝', why: 'You bring teams together. HR is no longer just paperwork — it\'s about culture and growth.', alts: ['Talent Recruiter', 'Employee Experience Lead', 'Diversity & Inclusion Lead'], task: 'Interview a friend about their dream job and take notes!' },
+  bio: { title: 'Biotechnologist', emoji: '🧬', why: 'You want to unlock the secrets of life itself. Biotech is solving the world\'s biggest health challenges.', alts: ['Genetic Counselor', 'Bioinformatician', 'Lab Scientist'], task: 'Watch a CRISPR documentary and write 3 things you learned!' },
+  chem: { title: 'Chemical Engineer', emoji: '⚗️', why: 'You love reactions and transformations. Chemistry powers medicines, materials, and energy.', alts: ['Materials Scientist', 'Pharmaceutical Chemist', 'Food Technologist'], task: 'Do a simple kitchen chemistry experiment safely at home!' },
+  physics: { title: 'Physicist / Astrophysicist', emoji: '🌌', why: 'You ask the biggest questions in the universe. Physics lets you explore reality at its deepest level.', alts: ['Quantum Computing Researcher', 'Aerospace Engineer', 'Optics Engineer'], task: 'Watch a Veritasium or 3Blue1Brown video and solve a physics puzzle!' },
+  research: { title: 'Research Scientist', emoji: '🔬', why: 'You live to discover. Research scientists push the boundaries of human knowledge every day.', alts: ['Lab Director', 'Academic Professor', 'R&D Specialist'], task: 'Read one research abstract on Google Scholar about something cool!' },
+  environment: { title: 'Environmental Scientist', emoji: '🌳', why: 'The planet needs you. Environmental science addresses climate change and ecosystem preservation.', alts: ['Sustainability Consultant', 'Clean Energy Engineer', 'Conservation Biologist'], task: 'Calculate your carbon footprint using an online calculator!' },
+  agriculture: { title: 'Agricultural Scientist / AgriTech', emoji: '🌾', why: 'You want to feed the world sustainably. AgriTech combines farming with cutting-edge innovation.', alts: ['Soil Scientist', 'Food Safety Expert', 'Vertical Farming Engineer'], task: 'Plant a seed today and track its growth for a week!' },
+  wildlife: { title: 'Wildlife Biologist', emoji: '🐾', why: 'Animals fascinate you. Wildlife biology lets you protect and study the species that share our planet.', alts: ['Veterinarian', 'Marine Biologist', 'Zoo Curator'], task: 'Visit a local park and identify 5 different plant or animal species!' },
+  geo: { title: 'Geographer / GIS Specialist', emoji: '🗺️', why: 'Maps are more than locations — they\'re stories. GIS technology shapes urban planning and disaster response.', alts: ['Urban Planner', 'Remote Sensing Analyst', 'Cartographer'], task: 'Explore Google Earth and find 3 geographic features you didn\'t know existed!' },
+  medicine: { title: 'Doctor / Physician', emoji: '🩺', why: 'You want to heal. Medicine is one of the most impactful and respected professions in the world.', alts: ['Surgeon', 'Psychiatrist', 'Public Health Specialist'], task: 'Learn basic first aid from a Red Cross YouTube video!' },
+  fitness: { title: 'Sports Scientist / Coach', emoji: '💪', why: 'Movement is your language. Sports science combines biology, psychology, and performance.', alts: ['Personal Trainer', 'Physiotherapist', 'Sports Psychologist'], task: 'Design a 15-minute workout routine for a friend!' },
+  nutrition: { title: 'Nutritionist / Dietitian', emoji: '🥗', why: 'You know food is medicine. Nutrition careers help people live healthier, longer lives.', alts: ['Food Scientist', 'Clinical Dietitian', 'Wellness Coach'], task: 'Plan a balanced meal for tomorrow using a food tracking app!' },
+  pharma: { title: 'Pharmacist / Drug Researcher', emoji: '💊', why: 'You want to create the medicines that save lives. Pharma is where science meets healing.', alts: ['Clinical Research Associate', 'Regulatory Affairs Specialist', 'Pharmacologist'], task: 'Read a drug label and research how one common medicine works!' },
+  mechanical: { title: 'Mechanical Engineer', emoji: '⚙️', why: 'You love machines. Mechanical engineering is one of the broadest and most versatile engineering fields.', alts: ['Automotive Engineer', 'Robotics Engineer', 'HVAC Engineer'], task: 'Take apart a simple gadget and try to understand how it works!' },
+  civil: { title: 'Civil Engineer', emoji: '🏛️', why: 'You want to build infrastructure that lasts. Civil engineering shapes cities and communities.', alts: ['Structural Engineer', 'Transportation Engineer', 'Construction Manager'], task: 'Research how a famous bridge was built and draw its structure!' },
+  electrical: { title: 'Electrical Engineer', emoji: '⚡', why: 'You\'re drawn to power and circuits. Electrical engineering powers everything from homes to rockets.', alts: ['Electronics Engineer', 'Power Systems Engineer', 'Semiconductor Designer'], task: 'Build a simple LED circuit using a battery and wires!' },
+  architecture: { title: 'Architect', emoji: '🏠', why: 'You imagine spaces before they exist. Architecture blends art, science, and human experience.', alts: ['Interior Designer', 'Landscape Architect', 'Urban Designer'], task: 'Sketch the floor plan of your dream room or house!' },
+  law: { title: 'Lawyer / Legal Advisor', emoji: '⚖️', why: 'You argue with logic and defend with passion. Law shapes society and protects justice.', alts: ['Corporate Lawyer', 'Criminal Lawyer', 'International Law'], task: 'Read about a famous court case and form your own opinion!' },
+  policy: { title: 'Public Policy Analyst', emoji: '📜', why: 'You want systems to be fair. Policy work shapes the rules that govern millions.', alts: ['Think Tank Researcher', 'Government Advisor', 'UN Official'], task: 'Read about a current government policy and write a 100-word opinion!' },
+  politics: { title: 'Political Leader / Diplomat', emoji: '🏛️', why: 'You want to lead change at scale. Politics and diplomacy shape nations and global relations.', alts: ['Civil Servant', 'Foreign Service Officer', 'Political Analyst'], task: 'Attend or watch a local council meeting and take notes!' },
+  advocacy: { title: 'Human Rights Advocate', emoji: '🕊️', why: 'You fight for what\'s right. Advocacy turns passion into policies that protect vulnerable communities.', alts: ['Legal Aid Worker', 'NGO Director', 'Community Advocate'], task: 'Learn about one human rights issue and share it on social media!' },
+};
+
+// ── Cross-Domain Hybrid Careers ─────────────────────────────────────────
+export const CROSS_DOMAIN_MAP = [
+  { combo: ['tech', 'creator'], emoji: '🖥️', title: 'UI/UX Designer', formula: 'Tech + Creativity', desc: 'Design beautiful digital experiences where code meets art', tag: 'design' },
+  { combo: ['tech', 'business'], emoji: '📊', title: 'Business Analyst', formula: 'Data + Business', desc: 'Use data to drive strategic decisions and solve business puzzles', tag: 'data' },
+  { combo: ['tech', 'health'], emoji: '🏥', title: 'Health Tech Engineer', formula: 'Tech + Health', desc: 'Build the apps and devices that save lives in modern healthcare', tag: 'cs' },
+  { combo: ['tech', 'science'], emoji: '🧬', title: 'Bioinformatics Specialist', formula: 'Tech + Science', desc: 'Decode genomes and biological data using powerful algorithms', tag: 'ai' },
+  { combo: ['creator', 'business'], emoji: '📣', title: 'Brand Strategist', formula: 'Creativity + Business', desc: 'Shape how the world sees brands through visual storytelling', tag: 'marketing' },
+  { combo: ['creator', 'people'], emoji: '🎓', title: 'Instructional Designer', formula: 'Creativity + Education', desc: 'Create engaging learning experiences that transform education', tag: 'education' },
+  { combo: ['science', 'health'], emoji: '💊', title: 'Biomedical Researcher', formula: 'Science + Health', desc: 'Discover cures and develop new treatments that heal the world', tag: 'bio' },
+  { combo: ['science', 'nature'], emoji: '🌿', title: 'Conservation Scientist', formula: 'Science + Nature', desc: 'Use scientific methods to protect endangered ecosystems', tag: 'environment' },
+  { combo: ['business', 'people'], emoji: '🤝', title: 'HR Tech Specialist', formula: 'Business + People', desc: 'Build people-first cultures using technology and empathy', tag: 'hr' },
+  { combo: ['people', 'health'], emoji: '🧠', title: 'Clinical Psychologist', formula: 'People + Health', desc: 'Heal minds and transform lives through therapy and research', tag: 'psychology' },
+  { combo: ['builder', 'nature'], emoji: '☀️', title: 'Renewable Energy Engineer', formula: 'Engineering + Nature', desc: 'Design sustainable energy systems that power a greener future', tag: 'electrical' },
+  { combo: ['builder', 'tech'], emoji: '🤖', title: 'Robotics Engineer', formula: 'Engineering + Tech', desc: 'Build intelligent machines that work alongside humans', tag: 'mechanical' },
+  { combo: ['law', 'tech'], emoji: '🔐', title: 'Cyber Law Specialist', formula: 'Law + Tech', desc: 'Navigate the legal frontiers of data privacy and digital rights', tag: 'law' },
+  { combo: ['law', 'people'], emoji: '🕊️', title: 'Human Rights Lawyer', formula: 'Law + People', desc: 'Defend the vulnerable and fight injustice through legal action', tag: 'advocacy' },
+];
+
+// ── Scoring helpers ─────────────────────────────────────────────────────
+export function addScores(currentScores, newTags) {
+  const updated = { ...currentScores };
+  Object.entries(newTags).forEach(([tag, score]) => {
+    updated[tag] = (updated[tag] || 0) + score;
+  });
+  return updated;
+}
+
+export function getTopTags(scores, n = 3) {
+  return Object.entries(scores)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, n)
+    .map(([tag]) => tag);
+}
+
+export function getTraitLabels(topTags) {
+  const map = {
+    cs: '🔧 Problem Solver', ai: '🤖 Tech Explorer', data: '📊 Pattern Finder',
+    cyber: '🛡️ Digital Guardian', design: '🎨 Creator', media: '🎬 Storyteller',
+    art: '🖌️ Visual Thinker', writing: '✍️ Word Crafter', finance: '💰 Number Master',
+    marketing: '📣 Influencer', management: '👑 Leader', startup: '🚀 Innovator',
+    psychology: '🧠 Mind Reader', education: '🎓 Mentor', social: '🌍 Changemaker',
+    hr: '🤝 Connector', bio: '🧬 Life Explorer', chem: '⚗️ Transformer',
+    physics: '🌌 Universe Seeker', research: '🔬 Discoverer', environment: '🌳 Earth Protector',
+    agriculture: '🌾 Nurturer', wildlife: '🐾 Animal Ally', geo: '🗺️ Explorer',
+    medicine: '🩺 Healer', fitness: '💪 Body Architect', nutrition: '🥗 Wellness Guide',
+    pharma: '💊 Medicine Maker', mechanical: '⚙️ Machine Whisperer', civil: '🏛️ Builder',
+    electrical: '⚡ Energy Master', architecture: '🏠 Space Designer',
+    law: '⚖️ Justice Seeker', policy: '📜 Rule Shaper', politics: '🏛️ Leader',
+    advocacy: '🕊️ Rights Defender',
+  };
+  return topTags.map((t) => map[t] || '✨ Explorer');
+}
+
+export function getBestCareer(scores, realityAnswers) {
+  let adjusted = { ...scores };
+
+  // Reality check filters
+  if (realityAnswers.desk === 'no') {
+    ['cs', 'ai', 'data', 'cyber', 'writing', 'finance'].forEach((t) => {
+      adjusted[t] = (adjusted[t] || 0) * 0.6;
+    });
+  }
+  if (realityAnswers.math === 'no') {
+    ['data', 'finance', 'physics', 'ai', 'electrical'].forEach((t) => {
+      adjusted[t] = (adjusted[t] || 0) * 0.6;
+    });
+  }
+  if (realityAnswers.public === 'yes') {
+    ['marketing', 'education', 'management', 'politics', 'advocacy'].forEach((t) => {
+      adjusted[t] = (adjusted[t] || 0) * 1.3;
+    });
+  }
+  if (realityAnswers.detail === 'yes') {
+    ['research', 'medicine', 'pharma', 'architecture', 'law'].forEach((t) => {
+      adjusted[t] = (adjusted[t] || 0) * 1.2;
+    });
+  }
+
+  const top = getTopTags(adjusted, 3);
+  const best = CAREERS[top[0]] || CAREERS.cs;
+  const alt1 = CAREERS[top[1]];
+  const alt2 = CAREERS[top[2]];
+
+  return { best, alternatives: [alt1, alt2].filter(Boolean) };
+}
+
+
+
+================================================
+FILE: frontend/src/components/Teen/CareerDiscovery.css
+================================================
+/* ═══════════════════════════════════════════════════════════════════════════
+   Career Discovery Journey — Premium Dark Space Theme
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* ── Base Container ──────────────────────────────────────────────────────── */
+
+.career-discovery {
+  position: relative;
+  min-height: 100vh;
+  overflow: hidden;
+  font-family: 'Inter', 'Segoe UI', sans-serif;
+}
+
+.career-discovery * {
+  box-sizing: border-box;
+}
+
+/* ── Animated Cosmic Background ──────────────────────────────────────────── */
+
+.cd-bg {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  background: radial-gradient(ellipse at 20% 50%, #1a0533 0%, transparent 50%),
+    radial-gradient(ellipse at 80% 20%, #0c1445 0%, transparent 50%),
+    radial-gradient(ellipse at 50% 80%, #1a0a2e 0%, transparent 50%),
+    #060612;
+  overflow: hidden;
+}
+
+.cd-bg::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: url("data:image/svg+xml,%3Csvg width='400' height='400' xmlns='http://www.w3.org/2000/svg'%3E%3Cdefs%3E%3CradialGradient id='a'%3E%3Cstop offset='0' stop-color='%23fff' stop-opacity='.8'/%3E%3Cstop offset='1' stop-color='%23fff' stop-opacity='0'/%3E%3C/radialGradient%3E%3C/defs%3E%3Ccircle cx='50' cy='80' r='1' fill='url(%23a)'/%3E%3Ccircle cx='200' cy='30' r='0.8' fill='url(%23a)'/%3E%3Ccircle cx='350' cy='120' r='1.2' fill='url(%23a)'/%3E%3Ccircle cx='100' cy='250' r='0.6' fill='url(%23a)'/%3E%3Ccircle cx='300' cy='300' r='1' fill='url(%23a)'/%3E%3Ccircle cx='150' cy='350' r='0.8' fill='url(%23a)'/%3E%3Ccircle cx='380' cy='200' r='0.7' fill='url(%23a)'/%3E%3Ccircle cx='20' cy='180' r='0.9' fill='url(%23a)'/%3E%3Ccircle cx='250' cy='180' r='1.1' fill='url(%23a)'/%3E%3C/svg%3E");
+  opacity: 0.5;
+  animation: cd-drift 120s linear infinite;
+}
+
+.cd-bg::after {
+  content: '';
+  position: absolute;
+  top: -50%;
+  left: -50%;
+  width: 200%;
+  height: 200%;
+  background: radial-gradient(
+    circle at 50% 50%,
+    rgba(139, 92, 246, 0.03) 0%,
+    transparent 50%
+  );
+  animation: cd-nebula 20s ease-in-out infinite;
+}
+
+@keyframes cd-drift {
+  from { transform: translateY(0); }
+  to { transform: translateY(-50%); }
+}
+
+@keyframes cd-nebula {
+  0%, 100% { transform: scale(1) rotate(0deg); opacity: 0.5; }
+  50% { transform: scale(1.2) rotate(180deg); opacity: 0.8; }
+}
+
+/* ── Content Wrapper ─────────────────────────────────────────────────────── */
+
+.cd-content {
+  position: relative;
+  z-index: 1;
+  max-width: 800px;
+  margin: 0 auto;
+  padding: 2rem 1.5rem;
+}
+
+/* ── Progress Bar ────────────────────────────────────────────────────────── */
+
+.cd-progress-bar {
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  padding: 1rem 0;
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+}
+
+.cd-progress-track {
+  height: 6px;
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: 100px;
+  overflow: hidden;
+  position: relative;
+}
+
+.cd-progress-fill {
+  height: 100%;
+  border-radius: 100px;
+  background: linear-gradient(90deg, #a855f7, #ec4899, #f97316);
+  transition: width 0.8s cubic-bezier(0.34, 1.56, 0.64, 1);
+  position: relative;
+}
+
+.cd-progress-fill::after {
+  content: '';
+  position: absolute;
+  right: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 14px;
+  height: 14px;
+  background: white;
+  border-radius: 50%;
+  box-shadow: 0 0 12px rgba(168, 85, 247, 0.8), 0 0 24px rgba(236, 72, 153, 0.5);
+}
+
+.cd-progress-label {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 0.75rem;
+  font-size: 0.75rem;
+  color: rgba(255, 255, 255, 0.5);
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.cd-progress-stage {
+  color: #c084fc;
+  font-weight: 700;
+}
+
+/* ── Stage Transitions ───────────────────────────────────────────────────── */
+
+.cd-stage-enter {
+  animation: cd-stage-in 0.6s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.cd-stage-exit {
+  animation: cd-stage-out 0.3s cubic-bezier(0.7, 0, 0.84, 0) forwards;
+}
+
+@keyframes cd-stage-in {
+  from {
+    opacity: 0;
+    transform: translateY(40px) scale(0.96);
+    filter: blur(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+    filter: blur(0);
+  }
+}
+
+@keyframes cd-stage-out {
+  from {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+  to {
+    opacity: 0;
+    transform: translateY(-30px) scale(0.96);
+  }
+}
+
+/* ── Glass Card ──────────────────────────────────────────────────────────── */
+
+.cd-glass {
+  background: rgba(255, 255, 255, 0.04);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 20px;
+  padding: 2rem;
+}
+
+.cd-glass-sm {
+  background: rgba(255, 255, 255, 0.03);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 16px;
+  padding: 1.25rem 1.5rem;
+}
+
+/* ── Hook Screen ─────────────────────────────────────────────────────────── */
+
+.cd-hook {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 80vh;
+  text-align: center;
+  gap: 2rem;
+}
+
+.cd-hook-icon {
+  font-size: 5rem;
+  animation: cd-float 3s ease-in-out infinite;
+  filter: drop-shadow(0 0 30px rgba(168, 85, 247, 0.5));
+}
+
+@keyframes cd-float {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-15px); }
+}
+
+.cd-hook h1 {
+  font-size: 2.5rem;
+  font-weight: 900;
+  line-height: 1.2;
+  background: linear-gradient(135deg, #fff 0%, #c084fc 50%, #f472b6 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  max-width: 600px;
+}
+
+.cd-hook-subtitle {
+  font-size: 1.1rem;
+  color: rgba(255, 255, 255, 0.6);
+  max-width: 500px;
+  line-height: 1.7;
+}
+
+.cd-hook-typing {
+  display: inline;
+}
+
+.cd-hook-typing::after {
+  content: '|';
+  animation: cd-blink 0.7s infinite;
+  color: #a855f7;
+}
+
+@keyframes cd-blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0; }
+}
+
+/* ── Buttons ─────────────────────────────────────────────────────────────── */
+
+.cd-btn-glow {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 1rem 2.5rem;
+  font-size: 1.1rem;
+  font-weight: 800;
+  color: white;
+  background: linear-gradient(135deg, #8b5cf6, #ec4899);
+  border: none;
+  border-radius: 16px;
+  cursor: pointer;
+  overflow: hidden;
+  transition: all 0.3s ease;
+  letter-spacing: 0.02em;
+}
+
+.cd-btn-glow::before {
+  content: '';
+  position: absolute;
+  inset: -2px;
+  background: linear-gradient(135deg, #8b5cf6, #ec4899, #f97316, #8b5cf6);
+  background-size: 300% 300%;
+  border-radius: 18px;
+  z-index: -1;
+  animation: cd-glow-rotate 3s linear infinite;
+  filter: blur(8px);
+  opacity: 0.6;
+}
+
+.cd-btn-glow:hover {
+  transform: translateY(-3px) scale(1.03);
+  box-shadow: 0 8px 32px rgba(139, 92, 246, 0.4), 0 4px 16px rgba(236, 72, 153, 0.3);
+}
+
+.cd-btn-glow:active {
+  transform: translateY(-1px) scale(0.98);
+}
+
+@keyframes cd-glow-rotate {
+  0% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
+}
+
+.cd-btn-secondary {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.75rem 1.75rem;
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: rgba(255, 255, 255, 0.7);
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 14px;
+  cursor: pointer;
+  transition: all 0.25s ease;
+}
+
+.cd-btn-secondary:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: white;
+  transform: translateY(-2px);
+}
+
+/* ── Section Header ──────────────────────────────────────────────────────── */
+
+.cd-section-header {
+  text-align: center;
+  margin-bottom: 2.5rem;
+}
+
+.cd-section-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.4rem 1rem;
+  font-size: 0.7rem;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: #c084fc;
+  background: rgba(168, 85, 247, 0.1);
+  border: 1px solid rgba(168, 85, 247, 0.2);
+  border-radius: 100px;
+  margin-bottom: 1rem;
+}
+
+.cd-section-title {
+  font-size: 2rem;
+  font-weight: 900;
+  color: white;
+  line-height: 1.3;
+  margin-bottom: 0.5rem;
+}
+
+.cd-section-sub {
+  font-size: 1rem;
+  color: rgba(255, 255, 255, 0.5);
+  max-width: 500px;
+  margin: 0 auto;
+  line-height: 1.6;
+}
+
+/* ── World Cards (Stage 1) ───────────────────────────────────────────────── */
+
+.cd-worlds-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 1rem;
+}
+
+.cd-world-card {
+  position: relative;
+  padding: 1.5rem;
+  border-radius: 20px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 2px solid rgba(255, 255, 255, 0.06);
+  cursor: pointer;
+  transition: all 0.35s cubic-bezier(0.34, 1.56, 0.64, 1);
+  overflow: hidden;
+  text-align: center;
+}
+
+.cd-world-card::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 20px;
+  opacity: 0;
+  transition: opacity 0.35s ease;
+}
+
+.cd-world-card:hover {
+  transform: translateY(-6px) scale(1.02);
+  border-color: rgba(168, 85, 247, 0.3);
+  box-shadow: 0 8px 32px rgba(139, 92, 246, 0.15);
+}
+
+.cd-world-card:hover::before {
+  opacity: 1;
+}
+
+.cd-world-card.selected {
+  border-color: #a855f7;
+  background: rgba(168, 85, 247, 0.1);
+  box-shadow: 0 0 30px rgba(168, 85, 247, 0.2), inset 0 0 30px rgba(168, 85, 247, 0.05);
+}
+
+.cd-world-card.selected::after {
+  content: '✓';
+  position: absolute;
+  top: 0.75rem;
+  right: 0.75rem;
+  width: 24px;
+  height: 24px;
+  background: #a855f7;
+  color: white;
+  font-size: 0.75rem;
+  font-weight: 900;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.cd-world-icon {
+  font-size: 2.5rem;
+  margin-bottom: 0.75rem;
+  display: block;
+}
+
+.cd-world-name {
+  font-size: 1rem;
+  font-weight: 800;
+  color: white;
+  margin-bottom: 0.25rem;
+}
+
+.cd-world-desc {
+  font-size: 0.8rem;
+  color: rgba(255, 255, 255, 0.45);
+  line-height: 1.4;
+}
+
+.cd-world-hint {
+  text-align: center;
+  margin-top: 1.5rem;
+  font-size: 0.85rem;
+  color: rgba(255, 255, 255, 0.35);
+}
+
+/* ── Rapid Fire (Stage 2) ────────────────────────────────────────────────── */
+
+.cd-rapidfire {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1.5rem;
+}
+
+.cd-rapidfire-counter {
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: rgba(255,255,255,0.35);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.cd-rapidfire-vs {
+  display: flex;
+  align-items: stretch;
+  gap: 1rem;
+  width: 100%;
+  max-width: 650px;
+}
+
+.cd-rapidfire-option {
+  flex: 1;
+  padding: 2rem 1.5rem;
+  border-radius: 20px;
+  text-align: center;
+  cursor: pointer;
+  transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.75rem;
+  min-height: 160px;
+}
+
+.cd-rapidfire-option.left {
+  background: linear-gradient(135deg, rgba(139, 92, 246, 0.12) 0%, rgba(139, 92, 246, 0.04) 100%);
+  border: 2px solid rgba(139, 92, 246, 0.2);
+}
+
+.cd-rapidfire-option.right {
+  background: linear-gradient(135deg, rgba(236, 72, 153, 0.12) 0%, rgba(236, 72, 153, 0.04) 100%);
+  border: 2px solid rgba(236, 72, 153, 0.2);
+}
+
+.cd-rapidfire-option:hover {
+  transform: scale(1.04);
+}
+
+.cd-rapidfire-option.left:hover {
+  border-color: #a855f7;
+  box-shadow: 0 8px 32px rgba(139, 92, 246, 0.25);
+  background: linear-gradient(135deg, rgba(139, 92, 246, 0.2) 0%, rgba(139, 92, 246, 0.08) 100%);
+}
+
+.cd-rapidfire-option.right:hover {
+  border-color: #ec4899;
+  box-shadow: 0 8px 32px rgba(236, 72, 153, 0.25);
+  background: linear-gradient(135deg, rgba(236, 72, 153, 0.2) 0%, rgba(236, 72, 153, 0.08) 100%);
+}
+
+.cd-rapidfire-option:active {
+  transform: scale(0.97);
+}
+
+.cd-rapidfire-emoji {
+  font-size: 2.5rem;
+}
+
+.cd-rapidfire-text {
+  font-size: 1rem;
+  font-weight: 700;
+  color: white;
+}
+
+.cd-rapidfire-or {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.75rem;
+  font-weight: 900;
+  color: rgba(255, 255, 255, 0.2);
+  letter-spacing: 0.1em;
+  min-width: 40px;
+}
+
+.cd-rapidfire-or::before,
+.cd-rapidfire-or::after {
+  content: '';
+  width: 2px;
+  height: 30px;
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: 2px;
+}
+
+/* Flash animation for rapid fire choices */
+.cd-flash-left {
+  animation: cd-flash-purple 0.4s ease;
+}
+
+.cd-flash-right {
+  animation: cd-flash-pink 0.4s ease;
+}
+
+@keyframes cd-flash-purple {
+  0% { background: rgba(139, 92, 246, 0.4); }
+  100% { background: rgba(139, 92, 246, 0.12); }
+}
+
+@keyframes cd-flash-pink {
+  0% { background: rgba(236, 72, 153, 0.4); }
+  100% { background: rgba(236, 72, 153, 0.12); }
+}
+
+/* ── Mission Cards (Stage 3) ─────────────────────────────────────────────── */
+
+.cd-mission {
+  margin-bottom: 2rem;
+}
+
+.cd-mission-scenario {
+  padding: 1.5rem 2rem;
+  border-radius: 20px;
+  background: linear-gradient(135deg, rgba(249, 115, 22, 0.08), rgba(139, 92, 246, 0.08));
+  border: 1px solid rgba(249, 115, 22, 0.15);
+  margin-bottom: 1.5rem;
+  font-size: 1.05rem;
+  color: rgba(255, 255, 255, 0.85);
+  line-height: 1.7;
+  text-align: center;
+}
+
+.cd-mission-scenario span {
+  color: #fbbf24;
+  font-weight: 700;
+}
+
+.cd-mission-options {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.75rem;
+}
+
+.cd-mission-option {
+  padding: 1.25rem;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 2px solid rgba(255, 255, 255, 0.06);
+  cursor: pointer;
+  transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+  text-align: center;
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.75);
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  justify-content: center;
+}
+
+.cd-mission-option:hover {
+  transform: translateY(-3px);
+  border-color: rgba(168, 85, 247, 0.4);
+  background: rgba(168, 85, 247, 0.1);
+  color: white;
+  box-shadow: 0 4px 20px rgba(168, 85, 247, 0.15);
+}
+
+.cd-mission-option:active {
+  transform: translateY(-1px) scale(0.97);
+}
+
+.cd-mission-option.selected {
+  border-color: #a855f7;
+  background: rgba(168, 85, 247, 0.15);
+  color: white;
+}
+
+.cd-mission-emoji {
+  font-size: 1.5rem;
+}
+
+/* ── Interest Reveal (Stage 4) ───────────────────────────────────────────── */
+
+.cd-reveal {
+  text-align: center;
+  padding: 2rem 0;
+}
+
+.cd-reveal-card {
+  padding: 2.5rem;
+  border-radius: 24px;
+  background: linear-gradient(135deg, rgba(139, 92, 246, 0.12), rgba(236, 72, 153, 0.08));
+  border: 1px solid rgba(139, 92, 246, 0.2);
+  margin-bottom: 2rem;
+}
+
+.cd-reveal-label {
+  font-size: 0.75rem;
+  font-weight: 800;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+  color: #c084fc;
+  margin-bottom: 1rem;
+}
+
+.cd-reveal-traits {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-bottom: 1.5rem;
+}
+
+.cd-reveal-trait {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.6rem 1.25rem;
+  border-radius: 100px;
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: white;
+  animation: cd-pop-in 0.5s cubic-bezier(0.34, 1.56, 0.64, 1) backwards;
+}
+
+.cd-reveal-trait:nth-child(1) {
+  background: linear-gradient(135deg, #8b5cf6, #7c3aed);
+  animation-delay: 0.2s;
+}
+
+.cd-reveal-trait:nth-child(2) {
+  background: linear-gradient(135deg, #ec4899, #db2777);
+  animation-delay: 0.4s;
+}
+
+.cd-reveal-trait:nth-child(3) {
+  background: linear-gradient(135deg, #f97316, #ea580c);
+  animation-delay: 0.6s;
+}
+
+.cd-reveal-plus {
+  font-size: 1.2rem;
+  font-weight: 900;
+  color: rgba(255, 255, 255, 0.3);
+  animation: cd-pop-in 0.5s cubic-bezier(0.34, 1.56, 0.64, 1) backwards;
+}
+
+.cd-reveal-plus:nth-of-type(1) { animation-delay: 0.3s; }
+.cd-reveal-plus:nth-of-type(2) { animation-delay: 0.5s; }
+
+@keyframes cd-pop-in {
+  from {
+    opacity: 0;
+    transform: scale(0.5);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.cd-reveal-subtitle {
+  font-size: 1rem;
+  color: rgba(255, 255, 255, 0.5);
+  line-height: 1.6;
+}
+
+/* ── Domain Narrowing (Stage 5) ──────────────────────────────────────────── */
+
+.cd-narrow-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem;
+}
+
+.cd-narrow-option {
+  padding: 1.5rem;
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 2px solid rgba(255, 255, 255, 0.06);
+  cursor: pointer;
+  transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.cd-narrow-option:hover {
+  transform: translateY(-4px);
+  border-color: rgba(168, 85, 247, 0.4);
+  background: rgba(168, 85, 247, 0.08);
+  box-shadow: 0 6px 24px rgba(139, 92, 246, 0.15);
+}
+
+.cd-narrow-option:active {
+  transform: scale(0.97);
+}
+
+.cd-narrow-option.selected {
+  border-color: #a855f7;
+  background: rgba(168, 85, 247, 0.15);
+  box-shadow: 0 0 20px rgba(168, 85, 247, 0.2);
+}
+
+.cd-narrow-emoji {
+  font-size: 2rem;
+}
+
+.cd-narrow-label {
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: white;
+}
+
+.cd-narrow-desc {
+  font-size: 0.75rem;
+  color: rgba(255, 255, 255, 0.4);
+}
+
+/* ── Cross Domain (Stage 6) ──────────────────────────────────────────────── */
+
+.cd-cross-list {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.cd-cross-card {
+  display: flex;
+  align-items: center;
+  gap: 1.25rem;
+  padding: 1.5rem;
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.cd-cross-card:hover {
+  transform: translateX(8px);
+  border-color: rgba(236, 72, 153, 0.3);
+  background: rgba(236, 72, 153, 0.06);
+}
+
+.cd-cross-card.selected {
+  border-color: #ec4899;
+  background: rgba(236, 72, 153, 0.1);
+  box-shadow: 0 0 20px rgba(236, 72, 153, 0.15);
+}
+
+.cd-cross-emoji {
+  font-size: 2.5rem;
+  flex-shrink: 0;
+}
+
+.cd-cross-info {
+  flex: 1;
+}
+
+.cd-cross-title {
+  font-size: 1rem;
+  font-weight: 800;
+  color: white;
+  margin-bottom: 0.25rem;
+}
+
+.cd-cross-formula {
+  font-size: 0.8rem;
+  color: #c084fc;
+  font-weight: 600;
+  margin-bottom: 0.25rem;
+}
+
+.cd-cross-desc {
+  font-size: 0.8rem;
+  color: rgba(255, 255, 255, 0.4);
+}
+
+/* ── Reality Check (Stage 7) ─────────────────────────────────────────────── */
+
+.cd-reality-list {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
+.cd-reality-card {
+  padding: 1.5rem;
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.cd-reality-question {
+  font-size: 1rem;
+  font-weight: 700;
+  color: white;
+  margin-bottom: 1rem;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.cd-reality-options {
+  display: flex;
+  gap: 0.75rem;
+}
+
+.cd-reality-btn {
+  flex: 1;
+  padding: 0.75rem 1rem;
+  border-radius: 14px;
+  font-size: 0.9rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.25s ease;
+  text-align: center;
+  border: 2px solid transparent;
+  background: rgba(255, 255, 255, 0.04);
+  color: rgba(255, 255, 255, 0.6);
+}
+
+.cd-reality-btn:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: white;
+}
+
+.cd-reality-btn.selected-yes {
+  border-color: #22c55e;
+  background: rgba(34, 197, 94, 0.15);
+  color: #4ade80;
+}
+
+.cd-reality-btn.selected-no {
+  border-color: #ef4444;
+  background: rgba(239, 68, 68, 0.15);
+  color: #f87171;
+}
+
+.cd-reality-btn.selected-maybe {
+  border-color: #eab308;
+  background: rgba(234, 179, 8, 0.15);
+  color: #facc15;
+}
+
+/* ── Final Result (Stage 8) ──────────────────────────────────────────────── */
+
+.cd-result {
+  text-align: center;
+}
+
+.cd-result-trophy {
+  font-size: 5rem;
+  margin-bottom: 1rem;
+  animation: cd-trophy-bounce 1s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+}
+
+@keyframes cd-trophy-bounce {
+  0% { transform: scale(0) rotate(-20deg); opacity: 0; }
+  60% { transform: scale(1.2) rotate(5deg); opacity: 1; }
+  100% { transform: scale(1) rotate(0); }
+}
+
+.cd-result-title-label {
+  font-size: 0.75rem;
+  font-weight: 800;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+  color: #facc15;
+  margin-bottom: 0.5rem;
+}
+
+.cd-result-career {
+  font-size: 2.25rem;
+  font-weight: 900;
+  background: linear-gradient(135deg, #fff, #c084fc, #f472b6);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  margin-bottom: 1.5rem;
+  line-height: 1.3;
+}
+
+.cd-result-why {
+  padding: 1.5rem 2rem;
+  border-radius: 18px;
+  background: rgba(139, 92, 246, 0.08);
+  border: 1px solid rgba(139, 92, 246, 0.15);
+  margin-bottom: 2rem;
+  text-align: left;
+}
+
+.cd-result-why-label {
+  font-size: 0.7rem;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: #c084fc;
+  margin-bottom: 0.5rem;
+}
+
+.cd-result-why-text {
+  font-size: 0.95rem;
+  color: rgba(255, 255, 255, 0.7);
+  line-height: 1.7;
+}
+
+.cd-result-alternatives {
+  margin-bottom: 2rem;
+}
+
+.cd-result-alt-label {
+  font-size: 0.7rem;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.4);
+  margin-bottom: 0.75rem;
+}
+
+.cd-result-alt-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  justify-content: center;
+}
+
+.cd-result-alt-tag {
+  padding: 0.6rem 1.25rem;
+  border-radius: 100px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: rgba(255, 255, 255, 0.7);
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.cd-result-bonus {
+  padding: 1.5rem 2rem;
+  border-radius: 18px;
+  background: linear-gradient(135deg, rgba(34, 197, 94, 0.08), rgba(16, 185, 129, 0.04));
+  border: 1px solid rgba(34, 197, 94, 0.15);
+  margin-bottom: 2rem;
+}
+
+.cd-result-bonus-label {
+  font-size: 0.7rem;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: #4ade80;
+  margin-bottom: 0.5rem;
+}
+
+.cd-result-bonus-text {
+  font-size: 0.95rem;
+  color: rgba(255, 255, 255, 0.7);
+  line-height: 1.6;
+}
+
+.cd-result-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  justify-content: center;
+  margin-top: 2rem;
+}
+
+/* ── Confetti ────────────────────────────────────────────────────────────── */
+
+.cd-confetti {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 200;
+  overflow: hidden;
+}
+
+.cd-confetti-piece {
+  position: absolute;
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+  animation: cd-confetti-fall 3s linear forwards;
+}
+
+@keyframes cd-confetti-fall {
+  0% {
+    transform: translateY(-100vh) rotate(0deg);
+    opacity: 1;
+  }
+  100% {
+    transform: translateY(100vh) rotate(720deg);
+    opacity: 0;
+  }
+}
+
+/* ── Utilities ───────────────────────────────────────────────────────────── */
+
+.cd-mt-2 { margin-top: 2rem; }
+.cd-mt-3 { margin-top: 3rem; }
+.cd-mb-1 { margin-bottom: 1rem; }
+.cd-mb-2 { margin-bottom: 2rem; }
+.cd-text-center { text-align: center; }
+
+.cd-back-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.6rem 1.25rem;
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: rgba(255, 255, 255, 0.5);
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 12px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  margin-bottom: 1.5rem;
+}
+
+.cd-back-btn:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: white;
+}
+
+/* ── Responsive ──────────────────────────────────────────────────────────── */
+
+@media (max-width: 640px) {
+  .cd-content {
+    padding: 1rem;
+  }
+
+  .cd-hook h1 {
+    font-size: 1.75rem;
+  }
+
+  .cd-worlds-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .cd-rapidfire-vs {
+    flex-direction: column;
+  }
+
+  .cd-rapidfire-or {
+    flex-direction: row;
+    gap: 0.5rem;
+  }
+
+  .cd-rapidfire-or::before,
+  .cd-rapidfire-or::after {
+    width: 30px;
+    height: 2px;
+  }
+
+  .cd-mission-options {
+    grid-template-columns: 1fr;
+  }
+
+  .cd-narrow-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .cd-section-title {
+    font-size: 1.5rem;
+  }
+
+  .cd-result-career {
+    font-size: 1.75rem;
+  }
+}
+
+/* ── Pulse animation for continue button ─────────────────────────────────── */
+
+.cd-pulse {
+  animation: cd-btn-pulse 2s ease-in-out infinite;
+}
+
+@keyframes cd-btn-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(168, 85, 247, 0.4); }
+  50% { box-shadow: 0 0 0 12px rgba(168, 85, 247, 0); }
+}
+
+/* ── Shake for validation ────────────────────────────────────────────────── */
+
+.cd-shake {
+  animation: cd-shake 0.5s ease;
+}
+
+@keyframes cd-shake {
+  0%, 100% { transform: translateX(0); }
+  10%, 30%, 50%, 70%, 90% { transform: translateX(-4px); }
+  20%, 40%, 60%, 80% { transform: translateX(4px); }
+}
+
+/* ── Particle floating elements ──────────────────────────────────────────── */
+
+.cd-particle {
+  position: absolute;
+  border-radius: 50%;
+  pointer-events: none;
+  animation: cd-particle-float 8s ease-in-out infinite;
+}
+
+@keyframes cd-particle-float {
+  0%, 100% {
+    transform: translate(0, 0) scale(1);
+    opacity: 0.3;
+  }
+  25% {
+    transform: translate(20px, -30px) scale(1.2);
+    opacity: 0.6;
+  }
+  50% {
+    transform: translate(-10px, -60px) scale(0.8);
+    opacity: 0.4;
+  }
+  75% {
+    transform: translate(30px, -20px) scale(1.1);
+    opacity: 0.5;
+  }
+}
+
+/* ── Loading/Analyzing animation ─────────────────────────────────────────── */
+
+.cd-analyzing {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 50vh;
+  gap: 2rem;
+  text-align: center;
+}
+
+.cd-analyzing-ring {
+  width: 80px;
+  height: 80px;
+  border-radius: 50%;
+  border: 4px solid rgba(168, 85, 247, 0.1);
+  border-top-color: #a855f7;
+  border-right-color: #ec4899;
+  animation: cd-spin 1s linear infinite;
+}
+
+@keyframes cd-spin {
+  to { transform: rotate(360deg); }
+}
+
+.cd-analyzing-text {
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: rgba(255, 255, 255, 0.7);
+}
+
+.cd-analyzing-sub {
+  font-size: 0.85rem;
+  color: rgba(255, 255, 255, 0.35);
+}
+
+
+
+================================================
+FILE: frontend/src/components/Teen/CareerDiscovery.jsx
+================================================
+import React, { useState, useEffect, useCallback } from 'react';
+import './CareerDiscovery.css';
+import {
+  WORLDS, RAPID_FIRE, MISSIONS, REALITY_CHECKS,
+  DOMAIN_QUESTIONS, CROSS_DOMAIN_MAP, CAREERS,
+  addScores, getTopTags, getTraitLabels, getBestCareer,
+} from './careerData';
+import { saveCareerDiscoveryResult } from '../../services/assessmentService';
+
+// ── Stage names for progress ────────────────────────────────────────────
+const STAGES = [
+  'hook', 'worlds', 'rapidfire', 'missions',
+  'reveal', 'narrow', 'crossdomain', 'reality', 'result',
+];
+const STAGE_LABELS = [
+  'Start', 'Choose Worlds', 'Rapid Fire', 'Missions',
+  'Interest Reveal', 'Focus', 'Cross-Domain', 'Reality Check', 'Your Career',
+];
+
+// ── Confetti Component ──────────────────────────────────────────────────
+function Confetti() {
+  const colors = ['#a855f7', '#ec4899', '#f97316', '#22c55e', '#3b82f6', '#facc15'];
+  const pieces = Array.from({ length: 60 }, (_, i) => ({
+    id: i,
+    left: Math.random() * 100,
+    delay: Math.random() * 2,
+    color: colors[Math.floor(Math.random() * colors.length)],
+    size: 6 + Math.random() * 8,
+    rotation: Math.random() * 360,
+  }));
+  return (
+    <div className="cd-confetti">
+      {pieces.map((p) => (
+        <div
+          key={p.id}
+          className="cd-confetti-piece"
+          style={{
+            left: `${p.left}%`,
+            animationDelay: `${p.delay}s`,
+            backgroundColor: p.color,
+            width: p.size, height: p.size,
+            transform: `rotate(${p.rotation}deg)`,
+          }}
+        />
+      ))}
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// MAIN COMPONENT
+// ═══════════════════════════════════════════════════════════════════════════
+export default function CareerDiscovery({ onBack }) {
+  const [stage, setStage] = useState('hook');
+  const [animKey, setAnimKey] = useState(0);
+  const [scores, setScores] = useState({});
+
+  // Stage-specific state
+  const [selectedWorlds, setSelectedWorlds] = useState([]);
+  const [rfIndex, setRfIndex] = useState(0);
+  const [missionIndex, setMissionIndex] = useState(0);
+  const [missionSelections, setMissionSelections] = useState({});
+  const [narrowAnswers, setNarrowAnswers] = useState({});
+  const [crossSelected, setCrossSelected] = useState([]);
+  const [realityAnswers, setRealityAnswers] = useState({});
+  const [analyzing, setAnalyzing] = useState(false);
+  const [showConfetti, setShowConfetti] = useState(false);
+
+  // Typing effect for hook
+  const [hookText, setHookText] = useState('');
+  const fullHookText = "You are entering a future world where your career defines your powers...";
+
+  useEffect(() => {
+    if (stage !== 'hook') return;
+    let i = 0;
+    const timer = setInterval(() => {
+      i++;
+      setHookText(fullHookText.slice(0, i));
+      if (i >= fullHookText.length) clearInterval(timer);
+    }, 40);
+    return () => clearInterval(timer);
+  }, [stage]);
+
+  const goStage = useCallback((s) => {
+    setAnimKey((k) => k + 1);
+    setStage(s);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }, []);
+
+  const stageIdx = STAGES.indexOf(stage);
+  const progress = ((stageIdx) / (STAGES.length - 1)) * 100;
+
+  // ── STAGE 1: World selection ────────────────────────────────────────────
+  const toggleWorld = (id) => {
+    setSelectedWorlds((prev) => {
+      if (prev.includes(id)) return prev.filter((w) => w !== id);
+      if (prev.length >= 3) return prev;
+      return [...prev, id];
+    });
+  };
+
+  // ── STAGE 2: Rapid fire ────────────────────────────────────────────────
+  const handleRapidFire = (choice) => {
+    const q = RAPID_FIRE[rfIndex];
+    const tags = choice === 'a' ? q.a.tags : q.b.tags;
+    setScores((prev) => addScores(prev, tags));
+    if (rfIndex < RAPID_FIRE.length - 1) {
+      setRfIndex(rfIndex + 1);
+    } else {
+      goStage('missions');
+    }
+  };
+
+  // ── STAGE 3: Missions ─────────────────────────────────────────────────
+  const handleMission = (mIdx, optIdx) => {
+    const mission = MISSIONS[mIdx];
+    const opt = mission.options[optIdx];
+    setMissionSelections((prev) => ({ ...prev, [mIdx]: optIdx }));
+    setScores((prev) => addScores(prev, opt.tags));
+  };
+
+  const canAdvanceMissions = Object.keys(missionSelections).length >= MISSIONS.length;
+
+  // ── STAGE 5: Domain Narrowing ──────────────────────────────────────────
+  const relevantDomains = selectedWorlds.filter((w) => DOMAIN_QUESTIONS[w]);
+
+  const handleNarrowSelect = (worldId, optIdx) => {
+    const opt = DOMAIN_QUESTIONS[worldId].options[optIdx];
+    setNarrowAnswers((prev) => ({ ...prev, [worldId]: optIdx }));
+    setScores((prev) => addScores(prev, opt.tags));
+  };
+
+  // ── STAGE 6: Cross Domain ──────────────────────────────────────────────
+  const relevantCross = CROSS_DOMAIN_MAP.filter((c) =>
+    selectedWorlds.some((w) => c.combo.includes(w))
+  ).slice(0, 5);
+
+  const toggleCross = (idx) => {
+    setCrossSelected((prev) =>
+      prev.includes(idx) ? prev.filter((i) => i !== idx) : [...prev, idx]
+    );
+    const item = relevantCross[idx];
+    if (item && CAREERS[item.tag]) {
+      setScores((prev) => addScores(prev, { [item.tag]: 2 }));
+    }
+  };
+
+  // ── STAGE 7: Reality Check ─────────────────────────────────────────────
+  const handleReality = (tag, answer) => {
+    setRealityAnswers((prev) => ({ ...prev, [tag]: answer }));
+  };
+
+  const allRealityDone = Object.keys(realityAnswers).length >= REALITY_CHECKS.length;
+
+  // Compute results
+  const topTags = getTopTags(scores, 3);
+  const traitLabels = getTraitLabels(topTags);
+  const { best: bestCareer, alternatives } = stage === 'result'
+    ? getBestCareer(scores, realityAnswers)
+    : { best: null, alternatives: [] };
+
+  // ── STAGE 8: Final Result ──────────────────────────────────────────────
+  const handleShowResult = async () => {
+    setAnalyzing(true);
+    
+    // Pre-calculate to save to backend
+    const computedResults = getBestCareer(scores, realityAnswers);
+    
+    try {
+      await saveCareerDiscoveryResult({
+        trait_labels: traitLabels,
+        scores: scores,
+        best_career_title: computedResults.best?.title || '',
+        best_career_emoji: computedResults.best?.emoji || '',
+        best_career_why: computedResults.best?.why || '',
+        alternatives: (computedResults.alternatives || []).map(a => `${a.emoji} ${a.title}`)
+      });
+    } catch (error) {
+      console.error("Failed to save career discovery results to backend:", error);
+    }
+
+    setTimeout(() => {
+      setAnalyzing(false);
+      setShowConfetti(true);
+      goStage('result');
+      setTimeout(() => setShowConfetti(false), 4000);
+    }, 2500);
+  };
+
+  // ── Render helpers ────────────────────────────────────────────────────
+
+  // Analyzing screen
+  if (analyzing) {
+    return (
+      <div className="career-discovery">
+        <div className="cd-bg" />
+        <div className="cd-content">
+          <div className="cd-analyzing">
+            <div className="cd-analyzing-ring" />
+            <p className="cd-analyzing-text">🔮 Analyzing your unique powers...</p>
+            <p className="cd-analyzing-sub">Matching you with your ideal career path</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="career-discovery">
+      <div className="cd-bg" />
+      {showConfetti && <Confetti />}
+
+      <div className="cd-content">
+        {/* Back button */}
+        {stage !== 'hook' && (
+          <button className="cd-back-btn" onClick={onBack}>
+            ← Back to Dashboard
+          </button>
+        )}
+
+        {/* Progress Bar */}
+        {stage !== 'hook' && stage !== 'result' && (
+          <div className="cd-progress-bar">
+            <div className="cd-progress-track">
+              <div className="cd-progress-fill" style={{ width: `${progress}%` }} />
+            </div>
+            <div className="cd-progress-label">
+              <span className="cd-progress-stage">{STAGE_LABELS[stageIdx]}</span>
+              <span>Level {stageIdx}/{STAGES.length - 1}</span>
+            </div>
+          </div>
+        )}
+
+        {/* ═══════════ STAGE: HOOK ═══════════ */}
+        {stage === 'hook' && (
+          <div className="cd-stage-enter cd-hook" key={`hook-${animKey}`}>
+            <div className="cd-hook-icon">🚀</div>
+            <h1>Career Interest Discovery Journey</h1>
+            <p className="cd-hook-subtitle">
+              <span className="cd-hook-typing">{hookText}</span>
+            </p>
+            <button className="cd-btn-glow" onClick={() => goStage('worlds')}>
+              ⚡ Enter the Portal
+            </button>
+            {onBack && (
+              <button className="cd-btn-secondary" onClick={onBack}>
+                ← Back to Dashboard
+              </button>
+            )}
+          </div>
+        )}
+
+        {/* ═══════════ STAGE 1: WORLDS ═══════════ */}
+        {stage === 'worlds' && (
+          <div className="cd-stage-enter" key={`worlds-${animKey}`}>
+            <div className="cd-section-header">
+              <span className="cd-section-badge">⭐ Stage 1</span>
+              <h2 className="cd-section-title">Choose Your Worlds</h2>
+              <p className="cd-section-sub">Pick 2–3 worlds that excite you the most. No wrong answers!</p>
+            </div>
+            <div className="cd-worlds-grid">
+              {WORLDS.map((w) => (
+                <div
+                  key={w.id}
+                  className={`cd-world-card ${selectedWorlds.includes(w.id) ? 'selected' : ''}`}
+                  onClick={() => toggleWorld(w.id)}
+                >
+                  <span className="cd-world-icon">{w.icon}</span>
+                  <div className="cd-world-name">{w.name}</div>
+                  <div className="cd-world-desc">{w.desc}</div>
+                </div>
+              ))}
+            </div>
+            <p className="cd-world-hint">
+              {selectedWorlds.length}/3 worlds selected
+              {selectedWorlds.length < 2 && ' — pick at least 2!'}
+            </p>
+            {selectedWorlds.length >= 2 && (
+              <div className="cd-text-center cd-mt-2">
+                <button className="cd-btn-glow cd-pulse" onClick={() => goStage('rapidfire')}>
+                  Continue ⚡
+                </button>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ═══════════ STAGE 2: RAPID FIRE ═══════════ */}
+        {stage === 'rapidfire' && (
+          <div className="cd-stage-enter" key={`rf-${animKey}-${rfIndex}`}>
+            <div className="cd-section-header">
+              <span className="cd-section-badge">⚡ Stage 2</span>
+              <h2 className="cd-section-title">Rapid Fire!</h2>
+              <p className="cd-section-sub">Quick — pick the one you vibe with more. No overthinking!</p>
+            </div>
+            <div className="cd-rapidfire">
+              <div className="cd-rapidfire-counter">
+                {rfIndex + 1} / {RAPID_FIRE.length}
+              </div>
+              <div className="cd-rapidfire-vs">
+                <div
+                  className="cd-rapidfire-option left"
+                  onClick={() => handleRapidFire('a')}
+                >
+                  <span className="cd-rapidfire-emoji">{RAPID_FIRE[rfIndex].a.emoji}</span>
+                  <span className="cd-rapidfire-text">{RAPID_FIRE[rfIndex].a.text}</span>
+                </div>
+                <div className="cd-rapidfire-or">VS</div>
+                <div
+                  className="cd-rapidfire-option right"
+                  onClick={() => handleRapidFire('b')}
+                >
+                  <span className="cd-rapidfire-emoji">{RAPID_FIRE[rfIndex].b.emoji}</span>
+                  <span className="cd-rapidfire-text">{RAPID_FIRE[rfIndex].b.text}</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ═══════════ STAGE 3: MISSIONS ═══════════ */}
+        {stage === 'missions' && (
+          <div className="cd-stage-enter" key={`missions-${animKey}`}>
+            <div className="cd-section-header">
+              <span className="cd-section-badge">🧩 Stage 3</span>
+              <h2 className="cd-section-title">Mini Missions</h2>
+              <p className="cd-section-sub">Real scenarios, real choices. What would YOU do?</p>
+            </div>
+            {MISSIONS.map((m, mIdx) => (
+              <div className="cd-mission" key={mIdx}>
+                <div className="cd-mission-scenario">{m.scenario}</div>
+                <div className="cd-mission-options">
+                  {m.options.map((opt, oIdx) => (
+                    <div
+                      key={oIdx}
+                      className={`cd-mission-option ${missionSelections[mIdx] === oIdx ? 'selected' : ''}`}
+                      onClick={() => handleMission(mIdx, oIdx)}
+                    >
+                      <span className="cd-mission-emoji">{opt.emoji}</span>
+                      {opt.text}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ))}
+            {canAdvanceMissions && (
+              <div className="cd-text-center cd-mt-2">
+                <button className="cd-btn-glow cd-pulse" onClick={() => goStage('reveal')}>
+                  See What You Are ✨
+                </button>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ═══════════ STAGE 4: INTEREST REVEAL ═══════════ */}
+        {stage === 'reveal' && (
+          <div className="cd-stage-enter" key={`reveal-${animKey}`}>
+            <div className="cd-section-header">
+              <span className="cd-section-badge">🔍 Mid-Result</span>
+              <h2 className="cd-section-title">You Are A Mix Of...</h2>
+            </div>
+            <div className="cd-reveal-card">
+              <div className="cd-reveal-label">Your Unique Profile</div>
+              <div className="cd-reveal-traits">
+                {traitLabels.map((label, i) => (
+                  <React.Fragment key={i}>
+                    {i > 0 && <span className="cd-reveal-plus">+</span>}
+                    <span className="cd-reveal-trait">{label}</span>
+                  </React.Fragment>
+                ))}
+              </div>
+              <p className="cd-reveal-subtitle">
+                This is just the beginning! Let's dig deeper to find your perfect career...
+              </p>
+            </div>
+            <div className="cd-text-center">
+              <button className="cd-btn-glow" onClick={() => goStage('narrow')}>
+                Let's Go Deeper 🚀
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* ═══════════ STAGE 5: DOMAIN NARROWING ═══════════ */}
+        {stage === 'narrow' && (
+          <div className="cd-stage-enter" key={`narrow-${animKey}`}>
+            <div className="cd-section-header">
+              <span className="cd-section-badge">🚀 Stage 5</span>
+              <h2 className="cd-section-title">Focus Your Powers</h2>
+              <p className="cd-section-sub">Based on your worlds, pick what calls to you in each domain</p>
+            </div>
+            {relevantDomains.map((worldId) => {
+              const dq = DOMAIN_QUESTIONS[worldId];
+              return (
+                <div key={worldId} className="cd-mb-2">
+                  <h3 style={{ color: '#c084fc', fontWeight: 800, fontSize: '1rem', marginBottom: '1rem' }}>
+                    {dq.question}
+                  </h3>
+                  <div className="cd-narrow-grid">
+                    {dq.options.map((opt, oIdx) => (
+                      <div
+                        key={oIdx}
+                        className={`cd-narrow-option ${narrowAnswers[worldId] === oIdx ? 'selected' : ''}`}
+                        onClick={() => handleNarrowSelect(worldId, oIdx)}
+                      >
+                        <span className="cd-narrow-emoji">{opt.emoji}</span>
+                        <span className="cd-narrow-label">{opt.text}</span>
+                        <span className="cd-narrow-desc">{opt.sub}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              );
+            })}
+            {Object.keys(narrowAnswers).length >= relevantDomains.length && relevantDomains.length > 0 && (
+              <div className="cd-text-center cd-mt-2">
+                <button className="cd-btn-glow cd-pulse" onClick={() => goStage('crossdomain')}>
+                  Discover Hybrid Paths 🌐
+                </button>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ═══════════ STAGE 6: CROSS DOMAIN ═══════════ */}
+        {stage === 'crossdomain' && (
+          <div className="cd-stage-enter" key={`cross-${animKey}`}>
+            <div className="cd-section-header">
+              <span className="cd-section-badge">🌐 Stage 6</span>
+              <h2 className="cd-section-title">Cross-Domain Magic</h2>
+              <p className="cd-section-sub">The best careers combine multiple passions. Do any of these spark joy?</p>
+            </div>
+            <div className="cd-cross-list">
+              {relevantCross.map((c, idx) => (
+                <div
+                  key={idx}
+                  className={`cd-cross-card ${crossSelected.includes(idx) ? 'selected' : ''}`}
+                  onClick={() => toggleCross(idx)}
+                >
+                  <span className="cd-cross-emoji">{c.emoji}</span>
+                  <div className="cd-cross-info">
+                    <div className="cd-cross-title">{c.title}</div>
+                    <div className="cd-cross-formula">{c.formula}</div>
+                    <div className="cd-cross-desc">{c.desc}</div>
+                  </div>
+                </div>
+              ))}
+            </div>
+            <div className="cd-text-center cd-mt-3">
+              <button className="cd-btn-glow" onClick={() => goStage('reality')}>
+                Almost There! 🧪
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* ═══════════ STAGE 7: REALITY CHECK ═══════════ */}
+        {stage === 'reality' && (
+          <div className="cd-stage-enter" key={`reality-${animKey}`}>
+            <div className="cd-section-header">
+              <span className="cd-section-badge">🧪 Stage 7</span>
+              <h2 className="cd-section-title">Quick Reality Check</h2>
+              <p className="cd-section-sub">Be honest — this helps us find the BEST fit for the real you</p>
+            </div>
+            <div className="cd-reality-list">
+              {REALITY_CHECKS.map((rc) => (
+                <div className="cd-reality-card" key={rc.tag}>
+                  <div className="cd-reality-question">{rc.emoji} {rc.q}</div>
+                  <div className="cd-reality-options">
+                    {['yes', 'maybe', 'no'].map((ans) => (
+                      <button
+                        key={ans}
+                        className={`cd-reality-btn ${realityAnswers[rc.tag] === ans ? `selected-${ans}` : ''}`}
+                        onClick={() => handleReality(rc.tag, ans)}
+                      >
+                        {ans === 'yes' ? '👍 Yes' : ans === 'maybe' ? '🤷 Maybe' : '👎 Nah'}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+            {allRealityDone && (
+              <div className="cd-text-center cd-mt-3">
+                <button className="cd-btn-glow cd-pulse" onClick={handleShowResult}>
+                  🎯 Reveal My Career
+                </button>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ═══════════ STAGE 8: FINAL RESULT ═══════════ */}
+        {stage === 'result' && bestCareer && (
+          <div className="cd-stage-enter cd-result" key={`result-${animKey}`}>
+            <div className="cd-result-trophy">🏆</div>
+            <div className="cd-result-title-label">🎯 Your Best Career Match</div>
+            <h2 className="cd-result-career">
+              {bestCareer.emoji} {bestCareer.title}
+            </h2>
+
+            <div className="cd-result-why">
+              <div className="cd-result-why-label">💡 Why This Fits You</div>
+              <p className="cd-result-why-text">{bestCareer.why}</p>
+            </div>
+
+            {alternatives.length > 0 && (
+              <div className="cd-result-alternatives">
+                <div className="cd-result-alt-label">🔁 Alternative Paths</div>
+                <div className="cd-result-alt-list">
+                  {alternatives.map((alt, i) => (
+                    <span className="cd-result-alt-tag" key={i}>
+                      {alt.emoji} {alt.title}
+                    </span>
+                  ))}
+                  {bestCareer.alts.map((a, i) => (
+                    <span className="cd-result-alt-tag" key={`sub-${i}`}>✦ {a}</span>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            <div className="cd-result-bonus">
+              <div className="cd-result-bonus-label">🎁 Try-It-Now Challenge</div>
+              <p className="cd-result-bonus-text">{bestCareer.task}</p>
+            </div>
+
+            <div className="cd-result-actions">
+              <button className="cd-btn-glow" onClick={onBack}>
+                🏠 Back to Dashboard
+              </button>
+              <button
+                className="cd-btn-secondary"
+                onClick={() => {
+                  setStage('hook');
+                  setScores({});
+                  setSelectedWorlds([]);
+                  setRfIndex(0);
+                  setMissionIndex(0);
+                  setMissionSelections({});
+                  setNarrowAnswers({});
+                  setCrossSelected([]);
+                  setRealityAnswers({});
+                }}
+              >
+                🔄 Retake Journey
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+
+
+================================================
 FILE: frontend/src/components/Teen/Dashboard.jsx
 ================================================
 
@@ -12588,6 +14787,7 @@ import AssessmentView from '../components/Parent/AssessmentView';
 import ChildSelfAssessment from '../components/Child/ChildSelfAssessment';
 import ResultsDisplay from '../components/Assessment/ResultsDisplay';
 import Loading from '../components/Common/Loading';
+import { getCareerDiscoveryResults } from '../services/assessmentService';
 
 function ParentDashboard() {
     const { token } = useAuth();
@@ -12597,6 +14797,7 @@ function ParentDashboard() {
     const [takingChildSelfAssessment, setTakingChildSelfAssessment] = useState(null);
     const [parentResult, setParentResult] = useState(null);
     const [showParentResult, setShowParentResult] = useState(false);
+    const [careerResults, setCareerResults] = useState([]);
 
     useEffect(() => {
         fetchChildren();
@@ -12620,15 +14821,19 @@ function ParentDashboard() {
 
     const fetchParentResults = async () => {
         try {
-            const response = await axios.get(
-                `${process.env.REACT_APP_API_URL}/assessments/my_results/`,
-                { headers: { Authorization: `Bearer ${token}` } }
-            );
-            const results = response.data.results || response.data;
+            const [assessRes, careerRes] = await Promise.all([
+                axios.get(
+                    `${process.env.REACT_APP_API_URL}/assessments/my_results/`,
+                    { headers: { Authorization: `Bearer ${token}` } }
+                ),
+                getCareerDiscoveryResults()
+            ]);
+            const results = assessRes.data.results || assessRes.data;
             const parentOnlyResults = results.filter(r => r.user && !r.child);
             if (parentOnlyResults.length > 0) {
                 setParentResult(parentOnlyResults[0]);
             }
+            setCareerResults(careerRes.data.results || careerRes.data);
         } catch (error) {
             console.error('Failed to fetch parent results:', error);
         }
@@ -12773,6 +14978,50 @@ function ParentDashboard() {
                     {children.map((child) => (
                         <ChildCard key={child.id} child={child} onTakeAssessment={handleTakeChildSelfAssessment} />
                     ))}
+                </div>
+            )}
+
+            {/* Career Discovery Insights for Teens */}
+            {careerResults && careerResults.length > 0 && (
+                <div className="mt-12 mb-10">
+                    <h2 className="text-2xl font-bold mb-6 dark:text-white flex items-center gap-2">
+                        <span className="p-2 bg-violet-500/10 rounded-lg text-violet-500">🚀</span>
+                        Teen Career Discoveries
+                    </h2>
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                        {careerResults.map((cres, idx) => {
+                            const childName = cres.child_details?.name || 'Teen';
+                            return (
+                                <div key={cres.id || idx} className="p-6 bg-gradient-to-br from-violet-50 to-fuchsia-50 dark:from-slate-800 dark:to-slate-900 rounded-2xl border border-violet-100 dark:border-slate-700 shadow-sm transition hover:shadow-md">
+                                    <div className="flex justify-between items-start mb-4">
+                                        <span className="px-3 py-1 bg-violet-600 text-white rounded-full text-xs font-bold shadow-sm">
+                                            {childName}
+                                        </span>
+                                        <span className="text-xs text-gray-500 dark:text-gray-400 font-medium">
+                                            {new Date(cres.created_at).toLocaleDateString()}
+                                        </span>
+                                    </div>
+                                    <h3 className="text-xl font-black text-gray-800 dark:text-white mb-2 leading-tight">
+                                        {cres.best_career_emoji} {cres.best_career_title}
+                                    </h3>
+                                    <p className="text-sm text-gray-600 dark:text-slate-400 italic mb-4 line-clamp-3">
+                                        "{cres.best_career_why}"
+                                    </p>
+                                    
+                                    <div className="mb-4">
+                                        <p className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">Key Strengths</p>
+                                        <div className="flex flex-wrap gap-2">
+                                            {(cres.trait_labels || []).map((trait, t) => (
+                                                <span key={t} className="px-2 py-1 bg-white dark:bg-slate-700 text-violet-600 dark:text-pink-400 text-xs font-semibold rounded border border-violet-100 dark:border-slate-600">
+                                                    {trait}
+                                                </span>
+                                            ))}
+                                        </div>
+                                    </div>
+                                </div>
+                            );
+                        })}
+                    </div>
                 </div>
             )}
         </div>
@@ -13497,6 +15746,8 @@ import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContai
 import { useAuth } from '../context/AuthContext';
 import { useSubscription } from '../context/SubscriptionContext';
 import AssessmentPrompt from '../components/Teen/AssessmentPrompt';
+import CareerDiscovery from '../components/Teen/CareerDiscovery';
+import { getCareerDiscoveryResults } from '../services/assessmentService';
 import api from '../services/api';
 import {
     parseVoiceText,
@@ -13990,9 +16241,11 @@ export default function TeenDashboard() {
     const navigate = useNavigate();
 
     const [results, setResults]                         = useState([]);
+    const [careerResults, setCareerResults]             = useState([]);
     const [loading, setLoading]                         = useState(true);
     const [takingAssessment, setTakingAssessment]       = useState(false);
     const [showAssessmentPrompt, setShowAssessmentPrompt] = useState(false);
+    const [showCareerDiscovery, setShowCareerDiscovery] = useState(false);
 
     // Google Calendar connection state
     const [googleConnected, setGoogleConnected]   = useState(null);
@@ -14001,14 +16254,19 @@ export default function TeenDashboard() {
     useEffect(() => {
         const fetchResults = async () => {
             try {
-                const { data } = await api.get('/assessments/my_results/');
-                const teen = (data.results ?? data).filter(
+                const [assessRes, careerRes] = await Promise.all([
+                    api.get('/assessments/my_results/'),
+                    getCareerDiscoveryResults()
+                ]);
+                const teen = (assessRes.data.results ?? assessRes.data).filter(
                     (r) => r.assessment?.assessment_type === 'teen'
                 );
                 setResults(teen);
+                setCareerResults(careerRes.data.results ?? careerRes.data);
                 if (teen.length === 0) setShowAssessmentPrompt(true);
             } catch {
                 setResults([]);
+                setCareerResults([]);
             } finally {
                 setLoading(false);
             }
@@ -14050,6 +16308,10 @@ export default function TeenDashboard() {
                 <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-pink-500" />
             </div>
         );
+    }
+
+    if (showCareerDiscovery) {
+        return <CareerDiscovery onBack={() => setShowCareerDiscovery(false)} />;
     }
 
     if (takingAssessment) {
@@ -14101,6 +16363,29 @@ export default function TeenDashboard() {
             {/* Study Planner (always visible) */}
             <StudyPlanner />
 
+            {/* Career Discovery Journey */}
+            <div
+                onClick={() => setShowCareerDiscovery(true)}
+                className="block cursor-pointer bg-gradient-to-r from-violet-50 to-fuchsia-50 dark:from-slate-800 dark:to-slate-900 p-6 rounded-2xl border border-violet-200 dark:border-slate-700 hover:shadow-lg transition-all group"
+            >
+                <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-4">
+                        <div className="w-14 h-14 bg-gradient-to-br from-violet-600 to-pink-600 rounded-xl flex items-center justify-center text-2xl group-hover:scale-110 transition-transform shadow-lg">
+                            🚀
+                        </div>
+                        <div>
+                            <h3 className="text-lg font-bold text-gray-800 dark:text-white">Career Discovery Journey</h3>
+                            <p className="text-sm text-gray-500 dark:text-slate-400">
+                                Discover your ideal career through an exciting, game-like adventure!
+                            </p>
+                        </div>
+                    </div>
+                    <span className="text-violet-600 dark:text-pink-400 font-medium text-sm group-hover:translate-x-1 transition-transform">
+                        Start Journey →
+                    </span>
+                </div>
+            </div>
+
             {/* Mentor Chat Section */}
             <a
                 href="/mentor-chat/teen?stage=teen_age"
@@ -14123,6 +16408,58 @@ export default function TeenDashboard() {
                     </span>
                 </div>
             </a>
+
+            {/* Career Discovery Results History */}
+            {careerResults && careerResults.length > 0 && (
+                <div className="card dark:bg-slate-900 border dark:border-slate-800 p-8 shadow-sm">
+                    <div className="flex items-center justify-between mb-6">
+                        <h2 className="text-2xl font-bold dark:text-white flex items-center gap-3">
+                            <span className="p-2 bg-violet-500/10 rounded-lg text-violet-500">🏆</span>
+                            Your Career Journey Results
+                        </h2>
+                    </div>
+                    
+                    <div className="grid md:grid-cols-2 gap-6">
+                        {careerResults.map((cres, idx) => (
+                            <div key={cres.id || idx} className="p-6 bg-gradient-to-br from-violet-50 to-fuchsia-50 dark:from-slate-800 dark:to-slate-800/80 rounded-2xl border border-violet-100 dark:border-slate-700 shadow-sm transition hover:shadow-md">
+                                <span className="text-xs font-bold text-violet-600 dark:text-violet-400 mb-2 block uppercase tracking-wider">
+                                    {new Date(cres.created_at).toLocaleDateString('en-US', { day: 'numeric', month: 'short', year:'numeric' })}
+                                </span>
+                                <h3 className="text-xl md:text-2xl font-black text-gray-800 dark:text-white mb-2 flex items-center gap-2">
+                                    {cres.best_career_emoji} {cres.best_career_title}
+                                </h3>
+                                <p className="text-sm text-gray-600 dark:text-slate-400 mb-4 italic leading-relaxed">
+                                    "{cres.best_career_why}"
+                                </p>
+                                
+                                <div className="mb-4">
+                                    <div className="text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-slate-500 mb-2">Top Traits</div>
+                                    <div className="flex flex-wrap gap-2">
+                                        {(cres.trait_labels || []).map((trait, tIdx) => (
+                                            <span key={tIdx} className="px-2 py-1 bg-white dark:bg-slate-700 text-violet-600 dark:text-pink-400 text-xs font-bold rounded-lg border border-violet-100 dark:border-slate-600">
+                                                {trait}
+                                            </span>
+                                        ))}
+                                    </div>
+                                </div>
+
+                                {cres.alternatives && cres.alternatives.length > 0 && (
+                                    <div>
+                                        <div className="text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-slate-500 mb-2">Alternative Paths</div>
+                                        <div className="flex flex-wrap gap-2">
+                                            {cres.alternatives.map((alt, aIdx) => (
+                                                <span key={aIdx} className="text-xs text-gray-600 dark:text-slate-300 bg-white/50 dark:bg-slate-900 border dark:border-slate-700 px-2 py-1 rounded-lg">
+                                                    {typeof alt === 'string' ? alt : `${alt.emoji || ''} ${alt.title || ''}`}
+                                                </span>
+                                            ))}
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            )}
 
             {/* Assessment Results */}
             {latestResult ? (
@@ -14305,6 +16642,14 @@ export const getMyResults = () => {
 
 export const getProgressTracking = (childId) => {
     return api.get(`/assessments/progress_tracking/?child_id=${childId || ''}`);
+};
+
+export const saveCareerDiscoveryResult = (resultData) => {
+    return api.post('/career-discovery/', resultData);
+};
+
+export const getCareerDiscoveryResults = () => {
+    return api.get('/career-discovery/');
 };
 
 
