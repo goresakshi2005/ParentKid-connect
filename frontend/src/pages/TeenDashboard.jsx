@@ -12,6 +12,7 @@ import { useAuth } from '../context/AuthContext';
 import { useSubscription } from '../context/SubscriptionContext';
 import AssessmentPrompt from '../components/Teen/AssessmentPrompt';
 import CareerDiscovery from '../components/Teen/CareerDiscovery';
+import { getCareerDiscoveryResults } from '../services/assessmentService';
 import api from '../services/api';
 import {
     parseVoiceText,
@@ -505,6 +506,7 @@ export default function TeenDashboard() {
     const navigate = useNavigate();
 
     const [results, setResults]                         = useState([]);
+    const [careerResults, setCareerResults]             = useState([]);
     const [loading, setLoading]                         = useState(true);
     const [takingAssessment, setTakingAssessment]       = useState(false);
     const [showAssessmentPrompt, setShowAssessmentPrompt] = useState(false);
@@ -517,14 +519,19 @@ export default function TeenDashboard() {
     useEffect(() => {
         const fetchResults = async () => {
             try {
-                const { data } = await api.get('/assessments/my_results/');
-                const teen = (data.results ?? data).filter(
+                const [assessRes, careerRes] = await Promise.all([
+                    api.get('/assessments/my_results/'),
+                    getCareerDiscoveryResults()
+                ]);
+                const teen = (assessRes.data.results ?? assessRes.data).filter(
                     (r) => r.assessment?.assessment_type === 'teen'
                 );
                 setResults(teen);
+                setCareerResults(careerRes.data.results ?? careerRes.data);
                 if (teen.length === 0) setShowAssessmentPrompt(true);
             } catch {
                 setResults([]);
+                setCareerResults([]);
             } finally {
                 setLoading(false);
             }
@@ -666,6 +673,58 @@ export default function TeenDashboard() {
                     </span>
                 </div>
             </a>
+
+            {/* Career Discovery Results History */}
+            {careerResults && careerResults.length > 0 && (
+                <div className="card dark:bg-slate-900 border dark:border-slate-800 p-8 shadow-sm">
+                    <div className="flex items-center justify-between mb-6">
+                        <h2 className="text-2xl font-bold dark:text-white flex items-center gap-3">
+                            <span className="p-2 bg-violet-500/10 rounded-lg text-violet-500">🏆</span>
+                            Your Career Journey Results
+                        </h2>
+                    </div>
+                    
+                    <div className="grid md:grid-cols-2 gap-6">
+                        {careerResults.map((cres, idx) => (
+                            <div key={cres.id || idx} className="p-6 bg-gradient-to-br from-violet-50 to-fuchsia-50 dark:from-slate-800 dark:to-slate-800/80 rounded-2xl border border-violet-100 dark:border-slate-700 shadow-sm transition hover:shadow-md">
+                                <span className="text-xs font-bold text-violet-600 dark:text-violet-400 mb-2 block uppercase tracking-wider">
+                                    {new Date(cres.created_at).toLocaleDateString('en-US', { day: 'numeric', month: 'short', year:'numeric' })}
+                                </span>
+                                <h3 className="text-xl md:text-2xl font-black text-gray-800 dark:text-white mb-2 flex items-center gap-2">
+                                    {cres.best_career_emoji} {cres.best_career_title}
+                                </h3>
+                                <p className="text-sm text-gray-600 dark:text-slate-400 mb-4 italic leading-relaxed">
+                                    "{cres.best_career_why}"
+                                </p>
+                                
+                                <div className="mb-4">
+                                    <div className="text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-slate-500 mb-2">Top Traits</div>
+                                    <div className="flex flex-wrap gap-2">
+                                        {(cres.trait_labels || []).map((trait, tIdx) => (
+                                            <span key={tIdx} className="px-2 py-1 bg-white dark:bg-slate-700 text-violet-600 dark:text-pink-400 text-xs font-bold rounded-lg border border-violet-100 dark:border-slate-600">
+                                                {trait}
+                                            </span>
+                                        ))}
+                                    </div>
+                                </div>
+
+                                {cres.alternatives && cres.alternatives.length > 0 && (
+                                    <div>
+                                        <div className="text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-slate-500 mb-2">Alternative Paths</div>
+                                        <div className="flex flex-wrap gap-2">
+                                            {cres.alternatives.map((alt, aIdx) => (
+                                                <span key={aIdx} className="text-xs text-gray-600 dark:text-slate-300 bg-white/50 dark:bg-slate-900 border dark:border-slate-700 px-2 py-1 rounded-lg">
+                                                    {typeof alt === 'string' ? alt : `${alt.emoji || ''} ${alt.title || ''}`}
+                                                </span>
+                                            ))}
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            )}
 
             {/* Assessment Results */}
             {latestResult ? (

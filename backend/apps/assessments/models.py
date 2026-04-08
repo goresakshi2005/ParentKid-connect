@@ -64,3 +64,28 @@ class AssessmentResult(models.Model):
     def __str__(self):
         user_ref = self.user.email if self.user else self.child.name
         return f"{user_ref} - {self.final_score}%"
+
+class CareerDiscoveryResult(models.Model):
+    user = models.ForeignKey(User, on_delete=models.CASCADE, null=True, blank=True)
+    child = models.ForeignKey('children.Child', on_delete=models.CASCADE, 
+                              null=True, blank=True)
+    
+    # Results data
+    trait_labels = models.JSONField(default=list)
+    scores = models.JSONField(default=dict)
+    
+    best_career_title = models.CharField(max_length=200)
+    best_career_emoji = models.CharField(max_length=10, blank=True)
+    best_career_why = models.TextField(blank=True)
+    
+    alternatives = models.JSONField(default=list)
+    
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    
+    class Meta:
+        ordering = ['-created_at']
+        
+    def __str__(self):
+        user_ref = self.user.email if self.user else (self.child.name if self.child else "Unknown")
+        return f"{user_ref} - {self.best_career_title}"

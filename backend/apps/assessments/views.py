@@ -5,8 +5,8 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
 from django.db.models import Q
-from .models import Assessment, AssessmentResult
-from .serializers import AssessmentSerializer, AssessmentResultSerializer
+from .models import Assessment, AssessmentResult, CareerDiscoveryResult
+from .serializers import AssessmentSerializer, AssessmentResultSerializer, CareerDiscoveryResultSerializer
 from .scoring import AssessmentScorer
 from apps.children.models import Child
 
@@ -154,3 +154,42 @@ class AssessmentViewSet(viewsets.ModelViewSet):
 
         serializer = AssessmentSerializer(assessment)
         return Response(serializer.data)
+
+class CareerDiscoveryViewSet(viewsets.ModelViewSet):
+    queryset = CareerDiscoveryResult.objects.all()
+    serializer_class = CareerDiscoveryResultSerializer
+    permission_classes = [IsAuthenticated]
+    
+    def get_queryset(self):
+        user = self.request.user
+        if user.role == 'parent':
+            child_ids = Child.objects.filter(parent=user).values_list('id', flat=True)
+            return CareerDiscoveryResult.objects.filter(Q(user=user) | Q(child__in=child_ids))
+        return CareerDiscoveryResult.objects.filter(user=user)
+        
+    def create(self, request, *args, **kwargs):
+        data = request.data
+        child_id = data.get('child_id')
+        user = request.user
+        
+        child = None
+        if child_id:
+            try:
+                child = Child.objects.get(id=child_id, parent=user)
+                user = None
+            except Child.DoesNotExist:
+                return Response({'error': 'Child not found'}, status=404)
+                
+        result = CareerDiscoveryResult.objects.create(
+            user=user,
+            child=child,
+            trait_labels=data.get('trait_labels', []),
+            scores=data.get('scores', {}),
+            best_career_title=data.get('best_career_title', ''),
+            best_career_emoji=data.get('best_career_emoji', ''),
+            best_career_why=data.get('best_career_why', ''),
+            alternatives=data.get('alternatives', [])
+        )
+        
+        serializer = self.get_serializer(result)
+        return Response(serializer.data, status=status.HTTP_201_CREATED)

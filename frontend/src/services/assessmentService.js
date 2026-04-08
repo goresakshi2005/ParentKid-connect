@@ -28,3 +28,11 @@ export const getMyResults = () => {
 export const getProgressTracking = (childId) => {
     return api.get(`/assessments/progress_tracking/?child_id=${childId || ''}`);
 };
+
+export const saveCareerDiscoveryResult = (resultData) => {
+    return api.post('/career-discovery/', resultData);
+};
+
+export const getCareerDiscoveryResults = () => {
+    return api.get('/career-discovery/');
+};

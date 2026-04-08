@@ -5,6 +5,7 @@ import {
   DOMAIN_QUESTIONS, CROSS_DOMAIN_MAP, CAREERS,
   addScores, getTopTags, getTraitLabels, getBestCareer,
 } from './careerData';
+import { saveCareerDiscoveryResult } from '../../services/assessmentService';
 
 // ── Stage names for progress ────────────────────────────────────────────
 const STAGES = [
@@ -151,9 +152,33 @@ export default function CareerDiscovery({ onBack }) {
 
   const allRealityDone = Object.keys(realityAnswers).length >= REALITY_CHECKS.length;
 
+  // Compute results
+  const topTags = getTopTags(scores, 3);
+  const traitLabels = getTraitLabels(topTags);
+  const { best: bestCareer, alternatives } = stage === 'result'
+    ? getBestCareer(scores, realityAnswers)
+    : { best: null, alternatives: [] };
+
   // ── STAGE 8: Final Result ──────────────────────────────────────────────
-  const handleShowResult = () => {
+  const handleShowResult = async () => {
     setAnalyzing(true);
+    
+    // Pre-calculate to save to backend
+    const computedResults = getBestCareer(scores, realityAnswers);
+    
+    try {
+      await saveCareerDiscoveryResult({
+        trait_labels: traitLabels,
+        scores: scores,
+        best_career_title: computedResults.best?.title || '',
+        best_career_emoji: computedResults.best?.emoji || '',
+        best_career_why: computedResults.best?.why || '',
+        alternatives: (computedResults.alternatives || []).map(a => `${a.emoji} ${a.title}`)
+      });
+    } catch (error) {
+      console.error("Failed to save career discovery results to backend:", error);
+    }
+
     setTimeout(() => {
       setAnalyzing(false);
       setShowConfetti(true);
@@ -161,13 +186,6 @@ export default function CareerDiscovery({ onBack }) {
       setTimeout(() => setShowConfetti(false), 4000);
     }, 2500);
   };
-
-  // Compute results
-  const topTags = getTopTags(scores, 3);
-  const traitLabels = getTraitLabels(topTags);
-  const { best: bestCareer, alternatives } = stage === 'result'
-    ? getBestCareer(scores, realityAnswers)
-    : { best: null, alternatives: [] };
 
   // ── Render helpers ────────────────────────────────────────────────────
 

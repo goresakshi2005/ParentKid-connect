@@ -11,6 +11,7 @@ import AssessmentView from '../components/Parent/AssessmentView';
 import ChildSelfAssessment from '../components/Child/ChildSelfAssessment';
 import ResultsDisplay from '../components/Assessment/ResultsDisplay';
 import Loading from '../components/Common/Loading';
+import { getCareerDiscoveryResults } from '../services/assessmentService';
 
 function ParentDashboard() {
     const { token } = useAuth();
@@ -20,6 +21,7 @@ function ParentDashboard() {
     const [takingChildSelfAssessment, setTakingChildSelfAssessment] = useState(null);
     const [parentResult, setParentResult] = useState(null);
     const [showParentResult, setShowParentResult] = useState(false);
+    const [careerResults, setCareerResults] = useState([]);
 
     useEffect(() => {
         fetchChildren();
@@ -43,15 +45,19 @@ function ParentDashboard() {
 
     const fetchParentResults = async () => {
         try {
-            const response = await axios.get(
-                `${process.env.REACT_APP_API_URL}/assessments/my_results/`,
-                { headers: { Authorization: `Bearer ${token}` } }
-            );
-            const results = response.data.results || response.data;
+            const [assessRes, careerRes] = await Promise.all([
+                axios.get(
+                    `${process.env.REACT_APP_API_URL}/assessments/my_results/`,
+                    { headers: { Authorization: `Bearer ${token}` } }
+                ),
+                getCareerDiscoveryResults()
+            ]);
+            const results = assessRes.data.results || assessRes.data;
             const parentOnlyResults = results.filter(r => r.user && !r.child);
             if (parentOnlyResults.length > 0) {
                 setParentResult(parentOnlyResults[0]);
             }
+            setCareerResults(careerRes.data.results || careerRes.data);
         } catch (error) {
             console.error('Failed to fetch parent results:', error);
         }
@@ -196,6 +202,50 @@ function ParentDashboard() {
                     {children.map((child) => (
                         <ChildCard key={child.id} child={child} onTakeAssessment={handleTakeChildSelfAssessment} />
                     ))}
+                </div>
+            )}
+
+            {/* Career Discovery Insights for Teens */}
+            {careerResults && careerResults.length > 0 && (
+                <div className="mt-12 mb-10">
+                    <h2 className="text-2xl font-bold mb-6 dark:text-white flex items-center gap-2">
+                        <span className="p-2 bg-violet-500/10 rounded-lg text-violet-500">🚀</span>
+                        Teen Career Discoveries
+                    </h2>
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                        {careerResults.map((cres, idx) => {
+                            const childName = cres.child_details?.name || 'Teen';
+                            return (
+                                <div key={cres.id || idx} className="p-6 bg-gradient-to-br from-violet-50 to-fuchsia-50 dark:from-slate-800 dark:to-slate-900 rounded-2xl border border-violet-100 dark:border-slate-700 shadow-sm transition hover:shadow-md">
+                                    <div className="flex justify-between items-start mb-4">
+                                        <span className="px-3 py-1 bg-violet-600 text-white rounded-full text-xs font-bold shadow-sm">
+                                            {childName}
+                                        </span>
+                                        <span className="text-xs text-gray-500 dark:text-gray-400 font-medium">
+                                            {new Date(cres.created_at).toLocaleDateString()}
+                                        </span>
+                                    </div>
+                                    <h3 className="text-xl font-black text-gray-800 dark:text-white mb-2 leading-tight">
+                                        {cres.best_career_emoji} {cres.best_career_title}
+                                    </h3>
+                                    <p className="text-sm text-gray-600 dark:text-slate-400 italic mb-4 line-clamp-3">
+                                        "{cres.best_career_why}"
+                                    </p>
+                                    
+                                    <div className="mb-4">
+                                        <p className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">Key Strengths</p>
+                                        <div className="flex flex-wrap gap-2">
+                                            {(cres.trait_labels || []).map((trait, t) => (
+                                                <span key={t} className="px-2 py-1 bg-white dark:bg-slate-700 text-violet-600 dark:text-pink-400 text-xs font-semibold rounded border border-violet-100 dark:border-slate-600">
+                                                    {trait}
+                                                </span>
+                                            ))}
+                                        </div>
+                                    </div>
+                                </div>
+                            );
+                        })}
+                    </div>
                 </div>
             )}
         </div>
