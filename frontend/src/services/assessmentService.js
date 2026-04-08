@@ -36,3 +36,7 @@ export const saveCareerDiscoveryResult = (resultData) => {
 export const getCareerDiscoveryResults = () => {
     return api.get('/career-discovery/');
 };
+
+export const deleteCareerDiscoveryResult = (id) => {
+    return api.delete(`/career-discovery/${id}/`);
+};

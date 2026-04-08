@@ -11,7 +11,7 @@ import AssessmentView from '../components/Parent/AssessmentView';
 import ChildSelfAssessment from '../components/Child/ChildSelfAssessment';
 import ResultsDisplay from '../components/Assessment/ResultsDisplay';
 import Loading from '../components/Common/Loading';
-import { getCareerDiscoveryResults } from '../services/assessmentService';
+import { getCareerDiscoveryResults, deleteCareerDiscoveryResult } from '../services/assessmentService';
 
 function ParentDashboard() {
     const { token } = useAuth();
@@ -66,6 +66,16 @@ function ParentDashboard() {
     const handleTakeChildSelfAssessment = (childId) => setTakingChildSelfAssessment(childId);
     const handleChildAssessmentComplete = () => fetchChildren();
     const handleCloseChildAssessment = () => setTakingChildSelfAssessment(null);
+
+    const handleDeleteCareerResult = async (id) => {
+        if (!window.confirm('Delete this teen career discovery result?')) return;
+        try {
+            await deleteCareerDiscoveryResult(id);
+            setCareerResults((prev) => prev.filter(r => r.id !== id));
+        } catch (error) {
+            alert('Failed to delete career result.');
+        }
+    };
 
     const handleParentAssessmentComplete = (resultData) => {
         setParentResult(resultData);
@@ -218,12 +228,21 @@ function ParentDashboard() {
                             return (
                                 <div key={cres.id || idx} className="p-6 bg-gradient-to-br from-violet-50 to-fuchsia-50 dark:from-slate-800 dark:to-slate-900 rounded-2xl border border-violet-100 dark:border-slate-700 shadow-sm transition hover:shadow-md">
                                     <div className="flex justify-between items-start mb-4">
-                                        <span className="px-3 py-1 bg-violet-600 text-white rounded-full text-xs font-bold shadow-sm">
-                                            {childName}
-                                        </span>
-                                        <span className="text-xs text-gray-500 dark:text-gray-400 font-medium">
-                                            {new Date(cres.created_at).toLocaleDateString()}
-                                        </span>
+                                        <div className="flex items-center flex-wrap gap-2">
+                                            <span className="px-3 py-1 bg-violet-600 text-white rounded-full text-xs font-bold shadow-sm">
+                                                {childName}
+                                            </span>
+                                            <span className="text-xs text-gray-500 dark:text-gray-400 font-medium">
+                                                {new Date(cres.created_at).toLocaleDateString()}
+                                            </span>
+                                        </div>
+                                        <button
+                                            onClick={() => handleDeleteCareerResult(cres.id)}
+                                            title="Delete"
+                                            className="text-gray-400 hover:text-red-500 transition"
+                                        >
+                                            🗑
+                                        </button>
                                     </div>
                                     <h3 className="text-xl font-black text-gray-800 dark:text-white mb-2 leading-tight">
                                         {cres.best_career_emoji} {cres.best_career_title}

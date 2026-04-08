@@ -12,7 +12,7 @@ import { useAuth } from '../context/AuthContext';
 import { useSubscription } from '../context/SubscriptionContext';
 import AssessmentPrompt from '../components/Teen/AssessmentPrompt';
 import CareerDiscovery from '../components/Teen/CareerDiscovery';
-import { getCareerDiscoveryResults } from '../services/assessmentService';
+import { getCareerDiscoveryResults, deleteCareerDiscoveryResult } from '../services/assessmentService';
 import api from '../services/api';
 import {
     parseVoiceText,
@@ -567,6 +567,16 @@ export default function TeenDashboard() {
         window.location.reload();
     };
 
+    const handleDeleteCareerResult = async (id) => {
+        if (!window.confirm('Delete this career discovery result?')) return;
+        try {
+            await deleteCareerDiscoveryResult(id);
+            setCareerResults((prev) => prev.filter(r => r.id !== id));
+        } catch (error) {
+            alert('Failed to delete career result.');
+        }
+    };
+
     if (loading) {
         return (
             <div className="flex items-center justify-center min-h-screen">
@@ -687,9 +697,18 @@ export default function TeenDashboard() {
                     <div className="grid md:grid-cols-2 gap-6">
                         {careerResults.map((cres, idx) => (
                             <div key={cres.id || idx} className="p-6 bg-gradient-to-br from-violet-50 to-fuchsia-50 dark:from-slate-800 dark:to-slate-800/80 rounded-2xl border border-violet-100 dark:border-slate-700 shadow-sm transition hover:shadow-md">
-                                <span className="text-xs font-bold text-violet-600 dark:text-violet-400 mb-2 block uppercase tracking-wider">
-                                    {new Date(cres.created_at).toLocaleDateString('en-US', { day: 'numeric', month: 'short', year:'numeric' })}
-                                </span>
+                                <div className="flex justify-between items-start mb-2">
+                                    <span className="text-xs font-bold text-violet-600 dark:text-violet-400 block uppercase tracking-wider">
+                                        {new Date(cres.created_at).toLocaleDateString('en-US', { day: 'numeric', month: 'short', year:'numeric' })}
+                                    </span>
+                                    <button
+                                        onClick={() => handleDeleteCareerResult(cres.id)}
+                                        title="Delete"
+                                        className="text-gray-400 hover:text-red-500 transition ml-auto block"
+                                    >
+                                        🗑
+                                    </button>
+                                </div>
                                 <h3 className="text-xl md:text-2xl font-black text-gray-800 dark:text-white mb-2 flex items-center gap-2">
                                     {cres.best_career_emoji} {cres.best_career_title}
                                 </h3>
