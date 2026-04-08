@@ -22,6 +22,7 @@ function ParentDashboard() {
     const [parentResult, setParentResult] = useState(null);
     const [showParentResult, setShowParentResult] = useState(false);
     const [careerResults, setCareerResults] = useState([]);
+    const [showCareerHistory, setShowCareerHistory] = useState(false);
 
     useEffect(() => {
         fetchChildren();
@@ -218,11 +219,21 @@ function ParentDashboard() {
             {/* Career Discovery Insights for Teens */}
             {careerResults && careerResults.length > 0 && (
                 <div className="mt-12 mb-10">
-                    <h2 className="text-2xl font-bold mb-6 dark:text-white flex items-center gap-2">
-                        <span className="p-2 bg-violet-500/10 rounded-lg text-violet-500">🚀</span>
-                        Teen Career Discoveries
-                    </h2>
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                    <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4 mb-6">
+                        <h2 className="text-2xl font-bold dark:text-white flex items-center gap-2">
+                            <span className="p-2 bg-violet-500/10 rounded-lg text-violet-500">🚀</span>
+                            Teen Career Discoveries
+                        </h2>
+                        <button
+                            onClick={() => setShowCareerHistory(!showCareerHistory)}
+                            className="px-6 py-3 bg-violet-600 text-white rounded-xl font-bold hover:bg-violet-700 shadow-lg transition-all flex items-center gap-2 text-sm"
+                        >
+                            {showCareerHistory ? "Hide Career Discoveries" : "View Previous Career Discoveries"}
+                        </button>
+                    </div>
+                    
+                    {showCareerHistory && (
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                         {careerResults.map((cres, idx) => {
                             const childName = cres.child_details?.name || 'Teen';
                             return (
@@ -264,7 +275,8 @@ function ParentDashboard() {
                                 </div>
                             );
                         })}
-                    </div>
+                        </div>
+                    )}
                 </div>
             )}
         </div>

@@ -511,6 +511,7 @@ export default function TeenDashboard() {
     const [takingAssessment, setTakingAssessment]       = useState(false);
     const [showAssessmentPrompt, setShowAssessmentPrompt] = useState(false);
     const [showCareerDiscovery, setShowCareerDiscovery] = useState(false);
+    const [showCareerHistory, setShowCareerHistory] = useState(false);
 
     // Google Calendar connection state
     const [googleConnected, setGoogleConnected]   = useState(null);
@@ -686,7 +687,18 @@ export default function TeenDashboard() {
 
             {/* Career Discovery Results History */}
             {careerResults && careerResults.length > 0 && (
-                <div className="card dark:bg-slate-900 border dark:border-slate-800 p-8 shadow-sm">
+                <div className="flex justify-center mb-6">
+                    <button
+                        onClick={() => setShowCareerHistory(!showCareerHistory)}
+                        className="px-6 py-3 bg-violet-600 text-white rounded-xl font-bold hover:bg-violet-700 shadow-lg transition-all flex items-center gap-2"
+                    >
+                        {showCareerHistory ? "Hide Career Discoveries" : "View Previous Career Discoveries"}
+                    </button>
+                </div>
+            )}
+
+            {showCareerHistory && careerResults && careerResults.length > 0 && (
+                <div className="card dark:bg-slate-900 border dark:border-slate-800 p-8 shadow-sm mb-8">
                     <div className="flex items-center justify-between mb-6">
                         <h2 className="text-2xl font-bold dark:text-white flex items-center gap-3">
                             <span className="p-2 bg-violet-500/10 rounded-lg text-violet-500">🏆</span>
