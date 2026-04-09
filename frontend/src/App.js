@@ -20,6 +20,7 @@ import { useAuth } from './context/AuthContext';
 
 import ScreenTimePage from './pages/ScreenTimePage';
 import DeviceManagerPage from './pages/DeviceManagerPage';
+import RelationshipIntelligencePage from './pages/RelationshipIntelligencePage';
 
 function App() {
   const { user, loading } = useAuth();
@@ -57,6 +58,14 @@ function App() {
             element={
               <AuthGuard role="parent">
                 <ParentRouter />
+              </AuthGuard>
+            }
+          />
+          <Route
+            path="/relationship-intelligence/:childId"
+            element={
+              <AuthGuard role="parent">
+                <RelationshipIntelligencePage />
               </AuthGuard>
             }
           />

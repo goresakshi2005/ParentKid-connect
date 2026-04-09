@@ -27,6 +27,7 @@ urlpatterns = [
     path('api/', include('apps.study_planner.urls')),
     path('api/mentorship/', include('apps.mentorship.urls')),
     path('api/', include('apps.screen_monitor.urls')),
+    path('api/relationship/', include('apps.relationship_intelligence.urls')),
 ]
 
 if settings.DEBUG:
