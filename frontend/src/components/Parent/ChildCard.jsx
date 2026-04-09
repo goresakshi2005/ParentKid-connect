@@ -1,11 +1,13 @@
 // frontend/src/components/Parent/ChildCard.jsx
 
 import React, { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import ProgressTracking from './ProgressTracking';
-import { FiUser, FiCalendar, FiBarChart2, FiClipboard } from 'react-icons/fi';
+import { FiUser, FiCalendar, FiBarChart2, FiClipboard, FiHeart } from 'react-icons/fi';
 
 function ChildCard({ child, onTakeAssessment }) {
     const [showResults, setShowResults] = useState(false);
+    const navigate = useNavigate();
 
     const getStageLabel = (stage) => {
         const stages = {
@@ -56,6 +58,14 @@ function ChildCard({ child, onTakeAssessment }) {
                     </button>
                 </div>
 
+                {child.stage === 'growing_stage' && (
+                    <button
+                        onClick={() => navigate(`/relationship-intelligence?child_id=${child.id}`)}
+                        className="w-full mt-2 px-4 py-3 bg-gradient-to-r from-pink-500 to-violet-600 text-white rounded-xl hover:from-pink-600 hover:to-violet-700 font-bold shadow-lg transition-all flex items-center justify-center gap-2"
+                    >
+                        <FiHeart /> View Relationship Intelligence
+                    </button>
+                )}
                 {showResults && (
                     <div className="mt-4 pt-4 border-t border-gray-200 dark:border-slate-700">
                         <ProgressTracking childId={child.id} child={child} />

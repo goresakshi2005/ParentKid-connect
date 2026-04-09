@@ -87,6 +87,20 @@ Directory structure:
     │   │   │   └── migrations/
     │   │   │       ├── 0001_initial.py
     │   │   │       └── __init__.py
+    │   │   ├── relationship_intelligence/
+    │   │   │   ├── models.py
+    │   │   │   ├── serializers.py
+    │   │   │   ├── urls.py
+    │   │   │   ├── views.py
+    │   │   │   ├── management/
+    │   │   │   │   └── commands/
+    │   │   │   │       └── init_relationship_states.py
+    │   │   │   ├── migrations/
+    │   │   │   │   ├── 0001_initial.py
+    │   │   │   │   └── __init__.py
+    │   │   │   └── services/
+    │   │   │       ├── ai_prompts.py
+    │   │   │       └── decision_engine.py
     │   │   ├── reports/
     │   │   │   ├── __init__.py
     │   │   │   ├── admin.py
@@ -220,6 +234,9 @@ Directory structure:
             │   │   ├── PricingCard.jsx
             │   │   ├── PricingPage.jsx
             │   │   └── UpgradeModal.jsx
+            │   ├── Relationship/
+            │   │   ├── ParentRelationshipWidget.jsx
+            │   │   └── TeenMoodCheckin.jsx
             │   ├── Reports/
             │   │   ├── MaternalHealthGuide.jsx
             │   │   └── ReportUploader.jsx
@@ -248,6 +265,7 @@ Directory structure:
             │   ├── ParentDashboard.jsx
             │   ├── PregnancyDashboard.jsx
             │   ├── PricingPage.jsx
+            │   ├── RelationshipDashboard.jsx
             │   ├── ScreenTimePage.jsx
             │   ├── TeenDashboard.jsx
             │   └── VoiceAssessmentPage.jsx
@@ -3347,6 +3365,564 @@ class Migration(migrations.Migration):
 FILE: backend/apps/mentorship/migrations/__init__.py
 ================================================
 
+
+
+================================================
+FILE: backend/apps/relationship_intelligence/models.py
+================================================
+from django.db import models
+from django.conf import settings
+from apps.children.models import Child
+
+User = settings.AUTH_USER_MODEL
+
+class RelationshipState(models.Model):
+    MODE_CHOICES = (
+        ('normal', 'Normal'),
+        ('trust_rebuilding', 'Trust Rebuilding'),
+        ('resistance_handling', 'Resistance Handling'),
+    )
+    parent = models.ForeignKey(User, on_delete=models.CASCADE, related_name='rel_parent_states')
+    child = models.ForeignKey(Child, on_delete=models.CASCADE, related_name='rel_states')
+    trust_score = models.IntegerField(default=50)           # 0-100
+    engagement_level = models.CharField(max_length=10, choices=(('high','High'),('medium','Medium'),('low','Low')), default='medium')
+    current_mode = models.CharField(max_length=20, choices=MODE_CHOICES, default='normal')
+    last_updated = models.DateTimeField(auto_now=True)
+    engagement_history = models.JSONField(default=list)     # list of {date, level}
+    trust_history = models.JSONField(default=list)          # list of {date, score}
+
+    class Meta:
+        unique_together = ('parent', 'child')
+
+class MoodCheckIn(models.Model):
+    MOOD_CHOICES = (
+        ('happy', 'Happy'),
+        ('neutral', 'Neutral'),
+        ('low', 'Low'),
+        ('stressed', 'Stressed'),
+    )
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='mood_checkins')
+    child = models.ForeignKey(Child, on_delete=models.CASCADE, null=True, blank=True)  # optional context
+    mood = models.CharField(max_length=10, choices=MOOD_CHOICES)
+    notes = models.TextField(blank=True)
+    timestamp = models.DateTimeField(auto_now_add=True)
+
+class BehaviorSignal(models.Model):
+    SIGNAL_TYPES = (
+        ('response_delay', 'Response Delay'),
+        ('skipped_interaction', 'Skipped Interaction'),
+        ('app_usage', 'App Usage'),
+        ('negative_feedback', 'Negative Feedback'),
+    )
+    parent = models.ForeignKey(User, on_delete=models.CASCADE, related_name='behavior_signals')
+    child = models.ForeignKey(Child, on_delete=models.CASCADE)
+    signal_type = models.CharField(max_length=20, choices=SIGNAL_TYPES)
+    value = models.JSONField(default=dict)   # e.g. {"delay_minutes": 120, "app_name": "YouTube"}
+    timestamp = models.DateTimeField(auto_now_add=True)
+
+class InteractionLog(models.Model):
+    parent = models.ForeignKey(User, on_delete=models.CASCADE, related_name='rel_interactions')
+    child = models.ForeignKey(Child, on_delete=models.CASCADE)
+    suggested_action = models.JSONField()     # store the full recommendation output
+    action_taken = models.CharField(max_length=50, blank=True)  # 'followed', 'ignored', 'modified'
+    outcome = models.CharField(max_length=10, choices=(('positive','Positive'),('neutral','Neutral'),('negative','Negative')), null=True)
+    mode_before = models.CharField(max_length=20)
+    mode_after = models.CharField(max_length=20)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+class ParentActionFeedback(models.Model):
+    parent = models.ForeignKey(User, on_delete=models.CASCADE)
+    child = models.ForeignKey(Child, on_delete=models.CASCADE)
+    interaction = models.ForeignKey(InteractionLog, on_delete=models.CASCADE, null=True)
+    followed = models.BooleanField(default=False)
+    outcome_rating = models.IntegerField(null=True, blank=True)  # 1-5
+    corrective_tip_given = models.TextField(blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+
+================================================
+FILE: backend/apps/relationship_intelligence/serializers.py
+================================================
+from rest_framework import serializers
+from .models import RelationshipState, MoodCheckIn, InteractionLog, ParentActionFeedback, BehaviorSignal
+
+class RelationshipStateSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = RelationshipState
+        fields = '__all__'
+
+class MoodCheckInSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = MoodCheckIn
+        fields = ['id', 'user', 'child', 'mood', 'notes', 'timestamp']
+        read_only_fields = ['id', 'user', 'timestamp']
+
+class InteractionLogSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = InteractionLog
+        fields = '__all__'
+
+class ParentActionFeedbackSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = ParentActionFeedback
+        fields = '__all__'
+
+class BehaviorSignalSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = BehaviorSignal
+        fields = '__all__'
+
+
+================================================
+FILE: backend/apps/relationship_intelligence/urls.py
+================================================
+from django.urls import path
+from .views import RelationshipStateView, RecommendationView, MoodCheckInView, InteractionFeedbackView, BehaviorSignalView
+
+urlpatterns = [
+    path('state/', RelationshipStateView.as_view(), name='rel-state'),
+    path('recommendation/', RecommendationView.as_view(), name='rel-recommendation'),
+    path('mood-checkin/', MoodCheckInView.as_view(), name='rel-mood'),
+    path('feedback/', InteractionFeedbackView.as_view(), name='rel-feedback'),
+    path('signal/', BehaviorSignalView.as_view(), name='rel-signal'),
+]
+
+
+================================================
+FILE: backend/apps/relationship_intelligence/views.py
+================================================
+from rest_framework import status, permissions
+from rest_framework.response import Response
+from rest_framework.views import APIView
+from django.shortcuts import get_object_or_404
+from apps.children.models import Child
+from .models import MoodCheckIn, InteractionLog, ParentActionFeedback, BehaviorSignal
+from .serializers import MoodCheckInSerializer, InteractionLogSerializer, ParentActionFeedbackSerializer, RelationshipStateSerializer
+from .services.decision_engine import DecisionEngine
+from .services.ai_prompts import get_ai_recommendation
+
+class RelationshipStateView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        child_id = request.query_params.get('child_id')
+        child = get_object_or_404(Child, id=child_id, parent=request.user)
+        engine = DecisionEngine(request.user, child)
+        state = engine.state
+        serializer = RelationshipStateSerializer(state)
+        return Response(serializer.data)
+
+class RecommendationView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        child_id = request.query_params.get('child_id')
+        child = get_object_or_404(Child, id=child_id, parent=request.user)
+        engine = DecisionEngine(request.user, child)
+        rec = engine.get_recommendation()
+        return Response(rec)
+
+class MoodCheckInView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request):
+        serializer = MoodCheckInSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        serializer.save(user=request.user)
+        # Optionally update relationship state
+        child_id = request.data.get('child')
+        if child_id:
+            child = Child.objects.get(id=child_id, parent=request.user)
+            engine = DecisionEngine(request.user, child)
+            engine.update_state_from_signals()
+        return Response(serializer.data, status=status.HTTP_201_CREATED)
+
+class InteractionFeedbackView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request):
+        # Expects: { interaction_id, followed, outcome_rating, corrective_tip_given? }
+        data = request.data
+        interaction = get_object_or_404(InteractionLog, id=data['interaction_id'], parent=request.user)
+        feedback = ParentActionFeedback.objects.create(
+            parent=request.user,
+            child=interaction.child,
+            interaction=interaction,
+            followed=data.get('followed', False),
+            outcome_rating=data.get('outcome_rating'),
+            corrective_tip_given=data.get('corrective_tip_given', '')
+        )
+        # Update interaction outcome if provided
+        if data.get('outcome'):
+            interaction.outcome = data['outcome']
+            interaction.save()
+        # Recalculate state
+        engine = DecisionEngine(request.user, interaction.child)
+        engine.update_state_from_signals()
+        return Response({'status': 'ok'})
+
+class BehaviorSignalView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request):
+        # Can be called internally or by other apps (e.g., when a teen ignores a message)
+        child_id = request.data.get('child_id')
+        signal_type = request.data.get('signal_type')
+        value = request.data.get('value', {})
+        child = get_object_or_404(Child, id=child_id, parent=request.user)
+        BehaviorSignal.objects.create(
+            parent=request.user,
+            child=child,
+            signal_type=signal_type,
+            value=value
+        )
+        engine = DecisionEngine(request.user, child)
+        engine.update_state_from_signals()
+        return Response({'status': 'recorded'})
+
+
+================================================
+FILE: backend/apps/relationship_intelligence/management/commands/init_relationship_states.py
+================================================
+from django.core.management.base import BaseCommand
+from apps.children.models import Child
+from apps.relationship_intelligence.models import RelationshipState
+
+class Command(BaseCommand):
+    help = 'Create RelationshipState for all existing parent-child pairs'
+
+    def handle(self, *args, **options):
+        children = Child.objects.all()
+        created = 0
+        for child in children:
+            obj, c = RelationshipState.objects.get_or_create(parent=child.parent, child=child)
+            if c:
+                created += 1
+        self.stdout.write(self.style.SUCCESS(f'Created {created} relationship states.'))
+
+
+================================================
+FILE: backend/apps/relationship_intelligence/migrations/0001_initial.py
+================================================
+# Generated by Django 4.2 on 2026-04-09 05:51
+
+from django.conf import settings
+from django.db import migrations, models
+import django.db.models.deletion
+
+
+class Migration(migrations.Migration):
+
+    initial = True
+
+    dependencies = [
+        ('children', '0006_alter_child_stage'),
+        migrations.swappable_dependency(settings.AUTH_USER_MODEL),
+    ]
+
+    operations = [
+        migrations.CreateModel(
+            name='InteractionLog',
+            fields=[
+                ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
+                ('suggested_action', models.JSONField()),
+                ('action_taken', models.CharField(blank=True, max_length=50)),
+                ('outcome', models.CharField(choices=[('positive', 'Positive'), ('neutral', 'Neutral'), ('negative', 'Negative')], max_length=10, null=True)),
+                ('mode_before', models.CharField(max_length=20)),
+                ('mode_after', models.CharField(max_length=20)),
+                ('created_at', models.DateTimeField(auto_now_add=True)),
+                ('child', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, to='children.child')),
+                ('parent', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='rel_interactions', to=settings.AUTH_USER_MODEL)),
+            ],
+        ),
+        migrations.CreateModel(
+            name='ParentActionFeedback',
+            fields=[
+                ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
+                ('followed', models.BooleanField(default=False)),
+                ('outcome_rating', models.IntegerField(blank=True, null=True)),
+                ('corrective_tip_given', models.TextField(blank=True)),
+                ('created_at', models.DateTimeField(auto_now_add=True)),
+                ('child', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, to='children.child')),
+                ('interaction', models.ForeignKey(null=True, on_delete=django.db.models.deletion.CASCADE, to='relationship_intelligence.interactionlog')),
+                ('parent', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, to=settings.AUTH_USER_MODEL)),
+            ],
+        ),
+        migrations.CreateModel(
+            name='MoodCheckIn',
+            fields=[
+                ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
+                ('mood', models.CharField(choices=[('happy', 'Happy'), ('neutral', 'Neutral'), ('low', 'Low'), ('stressed', 'Stressed')], max_length=10)),
+                ('notes', models.TextField(blank=True)),
+                ('timestamp', models.DateTimeField(auto_now_add=True)),
+                ('child', models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.CASCADE, to='children.child')),
+                ('user', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='mood_checkins', to=settings.AUTH_USER_MODEL)),
+            ],
+        ),
+        migrations.CreateModel(
+            name='BehaviorSignal',
+            fields=[
+                ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
+                ('signal_type', models.CharField(choices=[('response_delay', 'Response Delay'), ('skipped_interaction', 'Skipped Interaction'), ('app_usage', 'App Usage'), ('negative_feedback', 'Negative Feedback')], max_length=20)),
+                ('value', models.JSONField(default=dict)),
+                ('timestamp', models.DateTimeField(auto_now_add=True)),
+                ('child', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, to='children.child')),
+                ('parent', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='behavior_signals', to=settings.AUTH_USER_MODEL)),
+            ],
+        ),
+        migrations.CreateModel(
+            name='RelationshipState',
+            fields=[
+                ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
+                ('trust_score', models.IntegerField(default=50)),
+                ('engagement_level', models.CharField(choices=[('high', 'High'), ('medium', 'Medium'), ('low', 'Low')], default='medium', max_length=10)),
+                ('current_mode', models.CharField(choices=[('normal', 'Normal'), ('trust_rebuilding', 'Trust Rebuilding'), ('resistance_handling', 'Resistance Handling')], default='normal', max_length=20)),
+                ('last_updated', models.DateTimeField(auto_now=True)),
+                ('engagement_history', models.JSONField(default=list)),
+                ('trust_history', models.JSONField(default=list)),
+                ('child', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='rel_states', to='children.child')),
+                ('parent', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='rel_parent_states', to=settings.AUTH_USER_MODEL)),
+            ],
+            options={
+                'unique_together': {('parent', 'child')},
+            },
+        ),
+    ]
+
+
+
+================================================
+FILE: backend/apps/relationship_intelligence/migrations/__init__.py
+================================================
+
+
+
+================================================
+FILE: backend/apps/relationship_intelligence/services/ai_prompts.py
+================================================
+import google.generativeai as genai
+from django.conf import settings
+import json
+import re
+
+genai.configure(api_key=settings.GEMINI_API_KEY)
+
+SYSTEM_PROMPTS = {
+    "normal": """
+You are a relationship intelligence assistant for a parent of a growing child (age 6-12 or teen). 
+The current mode is NORMAL â€“ communication is healthy, trust is good.
+Generate a very light, daily conversation prompt that maintains connection without pressure.
+Keep it short, positive, and open-ended.
+Return ONLY a JSON object with these keys:
+{
+  "recommended_action": "string (e.g., 'Ask about their day', 'Share a fun fact')",
+  "conversation_prompts": ["string", "string"],
+  "alternative_actions": ["string"],
+  "do": "string (one tip)",
+  "dont": "string",
+  "parent_micro_tip": "string (very short actionable tip)",
+  "escalation_alert": "string (empty unless needed)"
+}
+""",
+    "trust_rebuilding": """
+Mode: TRUST REBUILDING â€“ trust score is low (<40) or there have been repeated failed conversations.
+Strategy: NO direct questioning. Focus on presence-based bonding. Actions should be nonâ€‘intrusive.
+Generate a suggestion that does NOT ask the child to talk. Instead, suggest silent parallel activities or very lowâ€‘pressure shared presence.
+Return JSON:
+{
+  "recommended_action": "e.g., 'Sit together without talking while watching a short video'",
+  "conversation_prompts": ["No need to talk, just wanted to be around you", ...],
+  "alternative_actions": ["...", "..."],
+  "do": "Focus on being present, not on extracting information",
+  "dont": "Avoid asking 'why' or 'what happened'",
+  "parent_micro_tip": "One tiny action to rebuild safety",
+  "escalation_alert": "empty unless severe"
+}
+""",
+    "resistance_handling": """
+Mode: RESISTANCE HANDLING â€“ engagement level is low (oneâ€‘word replies, no interaction).
+Strategy: Replace conversation with lowâ€‘effort interactions. Suggest sharing a meme, a funny video, or a casual observation.
+Avoid emotional or heavy topics.
+Return JSON:
+{
+  "recommended_action": "e.g., 'Send them a funny meme without any text'",
+  "conversation_prompts": ["Check this out, made me laugh", ...],
+  "alternative_actions": ["Leave a note on their desk", "Play a short game together silently"],
+  "do": "Keep it light, no expectations of reply",
+  "dont": "Do not ask for explanations or opinions",
+  "parent_micro_tip": "One lowâ€‘effort bonding idea",
+  "escalation_alert": "empty"
+}
+"""
+}
+
+def get_ai_recommendation(mode, trust_score, engagement_level, parent_style, child_history, best_time):
+    prompt = SYSTEM_PROMPTS.get(mode, SYSTEM_PROMPTS["normal"])
+    user_context = f"""
+Parent style: {parent_style}
+Child recent response history: {child_history}
+Best time of day for interaction: {best_time}
+Trust score: {trust_score}, Engagement: {engagement_level}
+"""
+    full_prompt = f"{prompt}\n\nContext:\n{user_context}\n\nGenerate JSON output only, no extra text."
+    try:
+        model = genai.GenerativeModel("gemini-2.5-flash")
+        response = model.generate_content(full_prompt)
+        raw = response.text.strip()
+        raw = re.sub(r"^```json\s*", "", raw)
+        raw = re.sub(r"\s*```$", "", raw)
+        data = json.loads(raw)
+    except Exception as e:
+        # Fallback static responses
+        data = {
+            "recommended_action": "Spend 10 minutes together without screens.",
+            "conversation_prompts": ["I'm here if you want to talk, no pressure."],
+            "alternative_actions": ["Cook together", "Take a short walk"],
+            "do": "Listen more than you speak.",
+            "dont": "Don't interrupt.",
+            "parent_micro_tip": "Smile and maintain eye contact.",
+            "escalation_alert": ""
+        }
+    return data
+
+
+================================================
+FILE: backend/apps/relationship_intelligence/services/decision_engine.py
+================================================
+import logging
+from datetime import datetime, timedelta
+from django.utils import timezone
+from django.db.models import Avg, Count
+from apps.relationship_intelligence.models import RelationshipState, MoodCheckIn, BehaviorSignal, InteractionLog
+from apps.relationship_intelligence.services.ai_prompts import get_ai_recommendation
+
+logger = logging.getLogger(__name__)
+
+class DecisionEngine:
+    def __init__(self, parent, child):
+        self.parent = parent
+        self.child = child
+        self.state, _ = RelationshipState.objects.get_or_create(parent=parent, child=child)
+
+    def update_state_from_signals(self):
+        """Recalculate trust_score and engagement_level based on recent signals."""
+        # Engagement from mood check-ins last 7 days
+        recent_moods = MoodCheckIn.objects.filter(child=self.child, timestamp__gte=timezone.now() - timedelta(days=7))
+        if recent_moods.exists():
+            mood_map = {'happy': 3, 'neutral': 2, 'low': 1, 'stressed': 0}
+            avg_mood = sum(mood_map[m.mood] for m in recent_moods) / len(recent_moods)
+            self.state.trust_score = int(avg_mood * 33)  # 0-100
+        else:
+            self.state.trust_score = max(0, self.state.trust_score - 5)
+
+        # Engagement from interaction logs last 7 days
+        interactions = InteractionLog.objects.filter(parent=self.parent, child=self.child, created_at__gte=timezone.now() - timedelta(days=7))
+        followed = interactions.filter(action_taken='followed', outcome='positive').count()
+        total = interactions.count()
+        if total == 0:
+            self.state.engagement_level = 'low'
+        else:
+            ratio = followed / total
+            if ratio >= 0.6:
+                self.state.engagement_level = 'high'
+            elif ratio >= 0.3:
+                self.state.engagement_level = 'medium'
+            else:
+                self.state.engagement_level = 'low'
+
+        # Mode determination
+        if self.state.trust_score < 40:
+            self.state.current_mode = 'trust_rebuilding'
+        elif self.state.engagement_level == 'low':
+            self.state.current_mode = 'resistance_handling'
+        else:
+            self.state.current_mode = 'normal'
+
+        # Save history
+        self.state.trust_history.append({'date': timezone.now().isoformat(), 'score': self.state.trust_score})
+        self.state.engagement_history.append({'date': timezone.now().isoformat(), 'level': self.state.engagement_level})
+        if len(self.state.trust_history) > 30:
+            self.state.trust_history = self.state.trust_history[-30:]
+        if len(self.state.engagement_history) > 30:
+            self.state.engagement_history = self.state.engagement_history[-30:]
+        self.state.save()
+        return self.state
+
+    def get_recommendation(self):
+        """Generate structured output for the parent."""
+        self.update_state_from_signals()
+        # Gather personalization data
+        parent_style = self._infer_parent_style()
+        child_response_history = self._get_child_response_history()
+        best_time = self._best_time_of_day()
+
+        # Call AI prompt (see ai_prompts.py)
+        ai_output = get_ai_recommendation(
+            mode=self.state.current_mode,
+            trust_score=self.state.trust_score,
+            engagement_level=self.state.engagement_level,
+            parent_style=parent_style,
+            child_history=child_response_history,
+            best_time=best_time,
+        )
+        # Combine with deterministic fields
+        recommendation = {
+            "mode": self.state.current_mode,
+            "emotional_state": self._detect_emotional_state(),
+            "confidence": self._calculate_confidence(),
+            "best_time_to_interact": best_time,
+            "recommended_action": ai_output.get("recommended_action", ""),
+            "conversation_prompts": ai_output.get("conversation_prompts", []),
+            "alternative_actions": ai_output.get("alternative_actions", []),
+            "do": ai_output.get("do", ""),
+            "dont": ai_output.get("dont", ""),
+            "parent_micro_tip": ai_output.get("parent_micro_tip", ""),
+            "escalation_alert": ai_output.get("escalation_alert", ""),
+        }
+        return recommendation
+
+    def _infer_parent_style(self):
+        interactions = InteractionLog.objects.filter(parent=self.parent, child=self.child)[:10]
+        if not interactions:
+            return "casual"
+        # Count types of actions taken
+        actions = [i.action_taken for i in interactions if i.action_taken]
+        if actions.count('followed') / len(actions) > 0.7:
+            return "soft"
+        elif actions.count('ignored') / len(actions) > 0.3:
+            return "direct"
+        return "casual"
+
+    def _get_child_response_history(self):
+        interactions = InteractionLog.objects.filter(parent=self.parent, child=self.child, outcome__isnull=False)[:20]
+        return [{"outcome": i.outcome, "mode_before": i.mode_before} for i in interactions]
+
+    def _detect_emotional_state(self):
+        last_mood = MoodCheckIn.objects.filter(child=self.child).order_by('-timestamp').first()
+        if last_mood:
+            return last_mood.mood
+        return "neutral"
+
+    def _calculate_confidence(self):
+        interactions = InteractionLog.objects.filter(parent=self.parent, child=self.child)
+        if interactions.count() < 5:
+            return 0.6
+        success_rate = interactions.filter(outcome='positive').count() / interactions.count()
+        return min(0.95, 0.5 + success_rate * 0.5)
+
+    def _best_time_of_day(self):
+        # Analyze past successful interactions by hour
+        successes = InteractionLog.objects.filter(parent=self.parent, child=self.child, outcome='positive')
+        if successes.count() < 3:
+            return "Evening (7-9 PM)"
+        hour_counts = {}
+        for log in successes:
+            hour = log.created_at.hour
+            hour_counts[hour] = hour_counts.get(hour, 0) + 1
+        if hour_counts:
+            best_hour = max(hour_counts, key=hour_counts.get)
+            return f"{best_hour}:00 - {best_hour+1}:00"
+        return "Evening (7-9 PM)"
 
 
 ================================================
@@ -7034,6 +7610,7 @@ INSTALLED_APPS = [
     'apps.study_planner',
     'apps.mentorship',
     'apps.screen_monitor',
+    'apps.relationship_intelligence',
 ]
 
 MIDDLEWARE = [
@@ -7164,6 +7741,7 @@ urlpatterns = [
     path('api/', include('apps.study_planner.urls')),
     path('api/mentorship/', include('apps.mentorship.urls')),
     path('api/', include('apps.screen_monitor.urls')),
+    path('api/relationship/', include('apps.relationship_intelligence.urls')),
 ]
 
 if settings.DEBUG:
@@ -7322,6 +7900,7 @@ import ParentRouter from './components/ParentRouter';
 import GoogleCallback from './pages/GoogleCallback';
 import VoiceAssessmentPage from './pages/VoiceAssessmentPage';
 import MentorChatPageWrapper from './pages/MentorChatPageWrapper';
+import RelationshipDashboard from './pages/RelationshipDashboard';   // <-- NEW
 import { useAuth } from './context/AuthContext';
 
 import ScreenTimePage from './pages/ScreenTimePage';
@@ -7348,7 +7927,7 @@ function App() {
           <Route path="/signup/teen" element={<SignupTeen />} />
           <Route path="/google-callback" element={<GoogleCallback />} />
 
-          {/* NEW: Voice Assessment page */}
+          {/* Voice Assessment page */}
           <Route
             path="/voice-assessment"
             element={
@@ -7358,6 +7937,7 @@ function App() {
             }
           />
 
+          {/* Parent dashboards */}
           <Route
             path="/dashboard/parent"
             element={
@@ -7376,6 +7956,7 @@ function App() {
             }
           />
 
+          {/* Teen dashboard */}
           <Route
             path="/dashboard/teen"
             element={
@@ -7385,7 +7966,7 @@ function App() {
             }
           />
 
-          {/* Mentor Chat â€” accessible to parents, teens, and mentors */}
+          {/* Mentor Chat routes */}
           <Route
             path="/mentor-chat"
             element={
@@ -7411,6 +7992,17 @@ function App() {
             }
           />
 
+          {/* NEW: Relationship Intelligence Dashboard */}
+          <Route
+            path="/relationship"
+            element={
+              <AuthGuard role="parent">
+                <RelationshipDashboard />
+              </AuthGuard>
+            }
+          />
+
+          {/* Fallback routes */}
           <Route path="/dashboard" element={<Navigate to="/" />} />
           <Route path="*" element={<NotFound />} />
         </Routes>
@@ -10190,6 +10782,195 @@ FILE: frontend/src/components/Pricing/PricingPage.jsx
 FILE: frontend/src/components/Pricing/UpgradeModal.jsx
 ================================================
 
+
+
+================================================
+FILE: frontend/src/components/Relationship/ParentRelationshipWidget.jsx
+================================================
+import React, { useState, useEffect } from 'react';
+import api from '../../services/api';
+
+export default function ParentRelationshipWidget({ childId }) {
+    const [recommendation, setRecommendation] = useState(null);
+    const [loading, setLoading] = useState(true);
+    const [feedbackSent, setFeedbackSent] = useState(false);
+
+    useEffect(() => {
+        fetchRecommendation();
+    }, [childId]);
+
+    const fetchRecommendation = async () => {
+        try {
+            const res = await api.get(`/relationship/recommendation/?child_id=${childId}`);
+            setRecommendation(res.data);
+        } catch (err) {
+            console.error(err);
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const sendFeedback = async (outcome) => {
+        try {
+            // We would need an interaction ID; for simplicity we'll create one on the fly
+            // But the backend expects an interaction_id; we should modify to accept child_id + action_taken
+            await api.post('/relationship/feedback/', {
+                child_id: childId,
+                action_taken: 'followed',
+                outcome: outcome,
+            });
+            setFeedbackSent(true);
+            setTimeout(() => setFeedbackSent(false), 3000);
+        } catch (err) {
+            console.error(err);
+        }
+    };
+
+    if (loading) return <div className="animate-pulse p-4 bg-gray-100 dark:bg-slate-800 rounded-2xl">Loading insight...</div>;
+    if (!recommendation) return null;
+
+    const getModeColor = () => {
+        switch (recommendation.mode) {
+            case 'trust_rebuilding': return 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-400';
+            case 'resistance_handling': return 'bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-400';
+            default: return 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400';
+        }
+    };
+
+    return (
+        <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-md border border-gray-100 dark:border-slate-800 p-6 mb-6">
+            <div className="flex items-center justify-between mb-4">
+                <h3 className="text-xl font-bold dark:text-white flex items-center gap-2">
+                    <span className="p-2 bg-pink-100 dark:bg-pink-500/10 rounded-lg">🤝</span>
+                    Relationship Intelligence
+                </h3>
+                <div className="flex items-center gap-3">
+                    <span className={`text-xs font-bold px-3 py-1 rounded-full ${getModeColor()}`}>
+                        {recommendation.mode === 'trust_rebuilding' ? '🔄 Trust Rebuilding' :
+                         recommendation.mode === 'resistance_handling' ? '⚡ Resistance Handling' : '✅ Normal'}
+                    </span>
+                    <a href="/relationship" className="text-sm text-pink-600 hover:text-pink-700 dark:text-pink-400 hover:underline font-semibold">
+                        View Details →
+                    </a>
+                </div>
+            </div>
+
+            <div className="mb-4">
+                <p className="text-sm text-gray-500 dark:text-slate-400">Recommended action</p>
+                <p className="text-lg font-semibold text-gray-800 dark:text-white">{recommendation.recommended_action}</p>
+            </div>
+
+            {recommendation.conversation_prompts.length > 0 && (
+                <div className="mb-4 p-4 bg-gray-50 dark:bg-slate-800 rounded-xl">
+                    <p className="text-xs font-bold uppercase text-gray-400 dark:text-slate-500 mb-2">💬 Conversation Prompt</p>
+                    <p className="text-gray-700 dark:text-slate-300 italic">"{recommendation.conversation_prompts[0]}"</p>
+                </div>
+            )}
+
+            <div className="grid grid-cols-2 gap-3 text-sm mb-4">
+                <div className="p-3 bg-green-50 dark:bg-green-900/20 rounded-lg">
+                    <p className="font-semibold text-green-700 dark:text-green-400">✅ Do</p>
+                    <p className="text-gray-600 dark:text-slate-300">{recommendation.do}</p>
+                </div>
+                <div className="p-3 bg-red-50 dark:bg-red-900/20 rounded-lg">
+                    <p className="font-semibold text-red-700 dark:text-red-400">❌ Don't</p>
+                    <p className="text-gray-600 dark:text-slate-300">{recommendation.dont}</p>
+                </div>
+            </div>
+
+            {recommendation.parent_micro_tip && (
+                <div className="mb-4 p-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg text-sm">
+                    <span className="font-bold text-blue-600 dark:text-blue-400">💡 Tip:</span> {recommendation.parent_micro_tip}
+                </div>
+            )}
+
+            {recommendation.escalation_alert && (
+                <div className="mb-4 p-3 bg-red-100 dark:bg-red-900/40 rounded-lg text-sm text-red-700 dark:text-red-400">
+                    ⚠️ {recommendation.escalation_alert}
+                </div>
+            )}
+
+            <div className="flex gap-3 mt-4">
+                <button
+                    onClick={() => sendFeedback('positive')}
+                    className="px-4 py-2 bg-green-600 text-white rounded-xl text-sm font-bold hover:bg-green-700 transition"
+                >
+                    👍 Helped
+                </button>
+                <button
+                    onClick={() => sendFeedback('negative')}
+                    className="px-4 py-2 bg-gray-200 dark:bg-slate-700 text-gray-700 dark:text-white rounded-xl text-sm font-bold hover:bg-gray-300 dark:hover:bg-slate-600 transition"
+                >
+                    👎 Not helpful
+                </button>
+            </div>
+            {feedbackSent && <p className="text-xs text-green-600 mt-2">Thank you for feedback!</p>}
+        </div>
+    );
+}
+
+
+================================================
+FILE: frontend/src/components/Relationship/TeenMoodCheckin.jsx
+================================================
+import React, { useState } from 'react';
+import api from '../../services/api';
+
+const moods = [
+    { value: 'happy', emoji: '😊', label: 'Happy' },
+    { value: 'neutral', emoji: '😐', label: 'Neutral' },
+    { value: 'low', emoji: '😔', label: 'Low' },
+    { value: 'stressed', emoji: '😫', label: 'Stressed' },
+];
+
+export default function TeenMoodCheckin({ childId }) {
+    const [selectedMood, setSelectedMood] = useState(null);
+    const [submitted, setSubmitted] = useState(false);
+
+    const handleSubmit = async () => {
+        if (!selectedMood) return;
+        try {
+            await api.post('/relationship/mood-checkin/', {
+                child: childId,
+                mood: selectedMood,
+            });
+            setSubmitted(true);
+            setTimeout(() => setSubmitted(false), 3000);
+        } catch (err) {
+            console.error(err);
+        }
+    };
+
+    return (
+        <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-md border p-5 mb-6">
+            <h3 className="text-md font-bold dark:text-white mb-3 flex items-center gap-2">🎭 How are you feeling right now?</h3>
+            <div className="flex gap-3 mb-4">
+                {moods.map(m => (
+                    <button
+                        key={m.value}
+                        onClick={() => setSelectedMood(m.value)}
+                        className={`flex-1 py-3 rounded-xl text-center transition-all ${
+                            selectedMood === m.value
+                                ? 'bg-pink-600 text-white scale-105 shadow-lg'
+                                : 'bg-gray-100 dark:bg-slate-800 text-gray-600 dark:text-slate-300 hover:bg-gray-200 dark:hover:bg-slate-700'
+                        }`}
+                    >
+                        <div className="text-2xl">{m.emoji}</div>
+                        <div className="text-xs font-semibold">{m.label}</div>
+                    </button>
+                ))}
+            </div>
+            <button
+                onClick={handleSubmit}
+                disabled={!selectedMood}
+                className="w-full py-2 bg-pink-600 text-white rounded-xl font-bold disabled:opacity-50"
+            >
+                Share mood
+            </button>
+            {submitted && <p className="text-green-600 text-sm mt-2 text-center">Thanks for sharing! 🌟</p>}
+        </div>
+    );
+}
 
 
 ================================================
@@ -14897,6 +15678,7 @@ import ChildSelfAssessment from '../components/Child/ChildSelfAssessment';
 import ResultsDisplay from '../components/Assessment/ResultsDisplay';
 import Loading from '../components/Common/Loading';
 import { getCareerDiscoveryResults, deleteCareerDiscoveryResult } from '../services/assessmentService';
+import ParentRelationshipWidget from '../components/Relationship/ParentRelationshipWidget';  // <-- NEW
 
 function ParentDashboard() {
     const { token } = useAuth();
@@ -15096,7 +15878,15 @@ function ParentDashboard() {
             ) : (
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                     {children.map((child) => (
-                        <ChildCard key={child.id} child={child} onTakeAssessment={handleTakeChildSelfAssessment} />
+                        <div key={child.id}>
+                            <ChildCard child={child} onTakeAssessment={handleTakeChildSelfAssessment} />
+                            {/* ─── Relationship Intelligence Widget (only for non-pregnancy children) ─── */}
+                            {child.stage !== 'pregnancy' && (
+                                <div className="mt-4">
+                                    <ParentRelationshipWidget childId={child.id} />
+                                </div>
+                            )}
+                        </div>
                     ))}
                 </div>
             )}
@@ -15860,6 +16650,65 @@ export default PricingPage;
 
 
 ================================================
+FILE: frontend/src/pages/RelationshipDashboard.jsx
+================================================
+import React, { useState, useEffect } from 'react';
+import { useAuth } from '../context/AuthContext';
+import api from '../services/api';
+import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
+
+export default function RelationshipDashboard() {
+    const { user } = useAuth();
+    const [state, setState] = useState(null);
+    const [history, setHistory] = useState([]);
+
+    useEffect(() => {
+        if (user?.role === 'parent') {
+            // fetch first child's state
+            api.get('/children/').then(res => {
+                const child = res.data.results[0];
+                if (child) {
+                    api.get(`/relationship/state/?child_id=${child.id}`).then(res2 => setState(res2.data));
+                    api.get(`/relationship/history/?child_id=${child.id}`).then(res3 => setHistory(res3.data));
+                }
+            });
+        }
+    }, [user]);
+
+    if (!state) return <div className="p-8 text-center">Loading relationship insights...</div>;
+
+    const chartData = state.trust_history.map(h => ({ date: new Date(h.date).toLocaleDateString(), trust: h.score }));
+
+    return (
+        <div className="max-w-4xl mx-auto p-6">
+            <h1 className="text-3xl font-bold dark:text-white mb-6">Relationship Compass</h1>
+            <div className="bg-white dark:bg-slate-900 rounded-2xl p-6 shadow mb-6">
+                <div className="flex justify-between items-center mb-4">
+                    <h2 className="text-xl font-bold">Current Trust Score</h2>
+                    <span className="text-3xl font-black text-pink-600">{state.trust_score}%</span>
+                </div>
+                <div className="w-full bg-gray-200 rounded-full h-3">
+                    <div className="bg-pink-600 h-3 rounded-full" style={{ width: `${state.trust_score}%` }}></div>
+                </div>
+                <p className="text-sm text-gray-500 mt-2">Mode: <strong>{state.current_mode.replace('_',' ')}</strong></p>
+            </div>
+            <div className="bg-white dark:bg-slate-900 rounded-2xl p-6 shadow">
+                <h3 className="font-bold mb-4">Trust History (last 30 days)</h3>
+                <ResponsiveContainer width="100%" height={200}>
+                    <LineChart data={chartData}>
+                        <XAxis dataKey="date" stroke="#94a3b8" fontSize={10} />
+                        <YAxis domain={[0,100]} stroke="#94a3b8" />
+                        <Tooltip />
+                        <Line type="monotone" dataKey="trust" stroke="#ec4899" strokeWidth={2} />
+                    </LineChart>
+                </ResponsiveContainer>
+            </div>
+        </div>
+    );
+}
+
+
+================================================
 FILE: frontend/src/pages/ScreenTimePage.jsx
 ================================================
 // frontend/src/pages/ScreenTimePage.jsx
@@ -15896,6 +16745,7 @@ import {
     updateTaskStatus,
     deleteTask,
 } from '../services/studyPlannerService';
+import TeenMoodCheckin from '../components/Relationship/TeenMoodCheckin';  // <-- NEW
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
@@ -15966,9 +16816,6 @@ function GoogleCalendarBanner({ connected, onConnect, connecting }) {
 }
 
 // ─── Multi-task preview card ────────────────────────────────────────────────
-//
-// Shows all tasks parsed from one voice/text input so the teen can review them
-// before confirming. Each task is shown as its own compact card inside the list.
 
 function MultiTaskPreview({ tasks, onConfirm, onDiscard, saving }) {
     if (!tasks || tasks.length === 0) return null;
@@ -15988,7 +16835,6 @@ function MultiTaskPreview({ tasks, onConfirm, onDiscard, saving }) {
                         key={idx}
                         className="p-3 bg-violet-50 dark:bg-violet-900/10 border border-violet-100 dark:border-violet-800/30 rounded-xl"
                     >
-                        {/* Task number badge */}
                         <div className="flex items-center gap-2 mb-2">
                             <span className="w-5 h-5 rounded-full bg-violet-600 text-white text-xs flex items-center justify-center font-bold flex-shrink-0">
                                 {idx + 1}
@@ -16052,7 +16898,6 @@ function StudyPlanner() {
     const [isListening, setIsListening]   = useState(false);
     const [parsing, setParsing]           = useState(false);
     const [saving, setSaving]             = useState(false);
-    // previews is now ALWAYS an array of task dicts (or null)
     const [previews, setPreviews]         = useState(null);
     const [feedback, setFeedback]         = useState(null);
     const [clarify, setClarify]           = useState(false);
@@ -16073,8 +16918,6 @@ function StudyPlanner() {
     useEffect(() => {
         fetchTasks(activeTab);
     }, [activeTab, fetchTasks]);
-
-    // ── voice input ──────────────────────────────────────────────────────────
 
     const startListening = () => {
         const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
@@ -16101,8 +16944,6 @@ function StudyPlanner() {
         setIsListening(false);
     };
 
-    // ── preview (parse only, no save) ────────────────────────────────────────
-
     const handleParse = async () => {
         if (!voiceText.trim()) return;
         setParsing(true);
@@ -16115,7 +16956,6 @@ function StudyPlanner() {
                 setClarify(true);
                 setFeedback({ type: 'warn', message: data.question });
             } else {
-                // data.parsed is always an array now
                 setPreviews(data.parsed);
             }
         } catch {
@@ -16124,8 +16964,6 @@ function StudyPlanner() {
             setParsing(false);
         }
     };
-
-    // ── confirm & save all tasks ─────────────────────────────────────────────
 
     const handleConfirmSave = async () => {
         if (!voiceText.trim()) return;
@@ -16139,7 +16977,6 @@ function StudyPlanner() {
                 return;
             }
 
-            // Build success message
             const count = data.count ?? 0;
             const skipped = data.skipped_duplicates ?? [];
             let msg = '';
@@ -16166,8 +17003,6 @@ function StudyPlanner() {
         }
     };
 
-    // ── task status / delete ─────────────────────────────────────────────────
-
     const toggleStatus = async (task) => {
         const next = task.status === 'Pending' ? 'Completed' : 'Pending';
         try {
@@ -16187,8 +17022,6 @@ function StudyPlanner() {
             setFeedback({ type: 'error', message: 'Delete failed.' });
         }
     };
-
-    // ── UI ───────────────────────────────────────────────────────────────────
 
     const TABS = [
         { key: 'upcoming',  label: '📅 Upcoming' },
@@ -16212,7 +17045,6 @@ function StudyPlanner() {
                 <span className="text-xs text-gray-400 dark:text-slate-500">AI-powered scheduler</span>
             </div>
 
-            {/* ── Voice / Text Input ─────────────────────────────────────── */}
             <div className="mb-6 p-5 bg-violet-50 dark:bg-violet-900/10 border border-violet-200 dark:border-violet-800/40 rounded-2xl">
                 <p className="text-sm font-semibold text-violet-700 dark:text-violet-300 mb-1">
                     🎤 Speak or type one or more tasks
@@ -16263,7 +17095,6 @@ function StudyPlanner() {
                 </div>
             </div>
 
-            {/* ── Feedback banner ─────────────────────────────────────────── */}
             {feedback && (
                 <div className={`mb-4 p-3 rounded-xl border text-sm font-medium ${feedbackStyle[feedback.type]}`}>
                     {feedback.message}
@@ -16271,7 +17102,6 @@ function StudyPlanner() {
                 </div>
             )}
 
-            {/* ── Multi-task Preview ──────────────────────────────────────── */}
             {previews && previews.length > 0 && (
                 <MultiTaskPreview
                     tasks={previews}
@@ -16281,7 +17111,6 @@ function StudyPlanner() {
                 />
             )}
 
-            {/* ── Tabs ────────────────────────────────────────────────────── */}
             <div className="flex gap-2 mb-5 border-b border-gray-100 dark:border-slate-800 pb-3">
                 {TABS.map((t) => (
                     <button
@@ -16296,7 +17125,6 @@ function StudyPlanner() {
                         {t.label}
                     </button>
                 ))}
-                {/* Task count badge */}
                 {!loading && (
                     <span className="ml-auto self-center text-xs text-gray-400 dark:text-slate-500">
                         {tasks.length} task{tasks.length !== 1 ? 's' : ''}
@@ -16304,7 +17132,6 @@ function StudyPlanner() {
                 )}
             </div>
 
-            {/* ── Task List ───────────────────────────────────────────────── */}
             {loading ? (
                 <div className="text-center py-8 text-gray-400 text-sm">Loading…</div>
             ) : tasks.length === 0 ? (
@@ -16323,7 +17150,6 @@ function StudyPlanner() {
                                     : 'bg-white dark:bg-slate-800 border-gray-100 dark:border-slate-700 hover:shadow-md'
                             }`}
                         >
-                            {/* Status toggle */}
                             <button
                                 onClick={() => toggleStatus(task)}
                                 title="Toggle status"
@@ -16345,7 +17171,6 @@ function StudyPlanner() {
                                     </span>
                                     <Badge text={task.priority} color={PRIORITY_COLORS[task.priority]} />
                                     <Badge text={task.task_type} color="bg-violet-100 text-violet-700 dark:bg-violet-900/30 dark:text-violet-300" />
-                                    {/* Google Calendar sync indicator */}
                                     {task.google_calendar_event_id && (
                                         <span className="text-xs text-blue-600 dark:text-blue-400" title="Synced to Google Calendar">📅✓</span>
                                     )}
@@ -16388,7 +17213,6 @@ export default function TeenDashboard() {
     const [showCareerDiscovery, setShowCareerDiscovery] = useState(false);
     const [showCareerHistory, setShowCareerHistory] = useState(false);
 
-    // Google Calendar connection state
     const [googleConnected, setGoogleConnected]   = useState(null);
     const [connectingGoogle, setConnectingGoogle] = useState(false);
 
@@ -16495,6 +17319,9 @@ export default function TeenDashboard() {
                 Your Growth <span className="dark:text-pink-500 text-blue-600">Dashboard</span>
             </h1>
 
+            {/* ─── NEW: Mood Check‑In for Teens ───────────────────────────────── */}
+            <TeenMoodCheckin childId={user.id} />
+
             {/* Google Calendar banner */}
             {googleConnected !== null && (
                 <GoogleCalendarBanner
@@ -16511,7 +17338,7 @@ export default function TeenDashboard() {
                 />
             )}
 
-            {/* Study Planner (always visible) */}
+            {/* Study Planner */}
             <StudyPlanner />
 
             {/* Career Discovery Journey */}

@@ -64,7 +64,7 @@ Trust score: {trust_score}, Engagement: {engagement_level}
 """
     full_prompt = f"{prompt}\n\nContext:\n{user_context}\n\nGenerate JSON output only, no extra text."
     try:
-        model = genai.GenerativeModel("gemini-2.5-flash")
+        model = genai.GenerativeModel("gemini-1.5-flash")
         response = model.generate_content(full_prompt)
         raw = response.text.strip()
         raw = re.sub(r"^```json\s*", "", raw)

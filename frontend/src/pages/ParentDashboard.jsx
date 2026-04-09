@@ -12,7 +12,6 @@ import ChildSelfAssessment from '../components/Child/ChildSelfAssessment';
 import ResultsDisplay from '../components/Assessment/ResultsDisplay';
 import Loading from '../components/Common/Loading';
 import { getCareerDiscoveryResults, deleteCareerDiscoveryResult } from '../services/assessmentService';
-import ParentRelationshipWidget from '../components/Relationship/ParentRelationshipWidget';  // <-- NEW
 
 function ParentDashboard() {
     const { token } = useAuth();
@@ -214,12 +213,7 @@ function ParentDashboard() {
                     {children.map((child) => (
                         <div key={child.id}>
                             <ChildCard child={child} onTakeAssessment={handleTakeChildSelfAssessment} />
-                            {/* ─── Relationship Intelligence Widget (only for non-pregnancy children) ─── */}
-                            {child.stage !== 'pregnancy' && (
-                                <div className="mt-4">
-                                    <ParentRelationshipWidget childId={child.id} />
-                                </div>
-                            )}
+
                         </div>
                     ))}
                 </div>

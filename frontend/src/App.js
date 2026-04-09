@@ -16,7 +16,7 @@ import ParentRouter from './components/ParentRouter';
 import GoogleCallback from './pages/GoogleCallback';
 import VoiceAssessmentPage from './pages/VoiceAssessmentPage';
 import MentorChatPageWrapper from './pages/MentorChatPageWrapper';
-import RelationshipDashboard from './pages/RelationshipDashboard';   // <-- NEW
+import RelationshipIntelligencePage from './pages/RelationshipIntelligencePage';   // <-- NEW
 import { useAuth } from './context/AuthContext';
 
 import ScreenTimePage from './pages/ScreenTimePage';
@@ -110,10 +110,10 @@ function App() {
 
           {/* NEW: Relationship Intelligence Dashboard */}
           <Route
-            path="/relationship"
+            path="/relationship-intelligence"
             element={
               <AuthGuard role="parent">
-                <RelationshipDashboard />
+                <RelationshipIntelligencePage />
               </AuthGuard>
             }
           />
