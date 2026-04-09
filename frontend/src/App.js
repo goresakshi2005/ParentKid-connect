@@ -17,7 +17,6 @@ import GoogleCallback from './pages/GoogleCallback';
 import VoiceAssessmentPage from './pages/VoiceAssessmentPage';
 import MentorChatPageWrapper from './pages/MentorChatPageWrapper';
 import RelationshipIntelligencePage from './pages/RelationshipIntelligencePage';
-import RelationshipIntelligenceDashboard from './pages/RelationshipIntelligenceDashboard';
 import { useAuth } from './context/AuthContext';
 
 import ScreenTimePage from './pages/ScreenTimePage';
@@ -74,15 +73,6 @@ function App() {
             }
           />
           
-          {/* Relationship Intelligence Dashboard (Charts) */}
-          <Route
-            path="/relationship-intelligence-dashboard"
-            element={
-              <AuthGuard role="parent">
-                <RelationshipIntelligenceDashboard />
-              </AuthGuard>
-            }
-          />
 
           <Route
             path="/dashboard/pregnancy"

@@ -60,7 +60,8 @@ const RelationshipIntelligencePage = () => {
             setResult(response.data);
         } catch (err) {
             console.error("Analysis failed:", err);
-            alert("Failed to analyze communication. Please try again.");
+            const errorMessage = err.response?.data?.error || "Failed to analyze communication. Please try again.";
+            alert(errorMessage);
         } finally {
             setAnalyzing(false);
         }

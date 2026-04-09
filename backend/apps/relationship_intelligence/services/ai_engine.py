@@ -149,12 +149,29 @@ class RelationshipIntelligenceEngine:
             model = genai.GenerativeModel('gemini-2.5-flash')
             response = model.generate_content(prompt)
             
+            if not response or not response.text:
+                return {"error": "AI returned an empty response. Please try with more descriptive input."}
+                
             # Extract JSON from response
-            json_match = re.search(r'\{.*\}', response.text, re.DOTALL)
+            raw_text = response.text.strip()
+            
+            # Remove markdown formatting if present
+            raw_text = re.sub(r'^```json\s*', '', raw_text)
+            raw_text = re.sub(r'\s*```$', '', raw_text)
+            
+            json_match = re.search(r'\{.*\}', raw_text, re.DOTALL)
             if json_match:
-                return json.loads(json_match.group(0))
+                try:
+                    return json.loads(json_match.group(0))
+                except json.JSONDecodeError as je:
+                    return {"error": "Failed to parse AI insights. Please try again.", "details": str(je), "raw": raw_text[:500]}
             else:
-                return {"error": "Could not parse AI response", "raw": response.text}
+                return {"error": "AI response format was invalid. Please try again.", "raw": raw_text[:500]}
+                
         except Exception as e:
-            return {"error": str(e)}
+            error_msg = str(e)
+            if "429" in error_msg or "quota" in error_msg.lower():
+                return {"error": "AI Service is temporarily busy due to high demand. Please wait 30-60 seconds and try again."}
+            print(f"Relationship AI Error: {error_msg}")
+            return {"error": f"Communication analysis failed: {error_msg}"}
 

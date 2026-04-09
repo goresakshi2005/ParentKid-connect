@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import ProgressTracking from './ProgressTracking';
-import { FiUser, FiCalendar, FiBarChart2, FiClipboard, FiZap, FiHeart } from 'react-icons/fi';
+import { FiUser, FiCalendar, FiBarChart2, FiClipboard, FiZap } from 'react-icons/fi';
 
 function ChildCard({ child, onTakeAssessment }) {
     const [showResults, setShowResults] = useState(false);
@@ -64,16 +64,6 @@ function ChildCard({ child, onTakeAssessment }) {
                             className="col-span-2 px-4 py-3 bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-xl hover:from-indigo-700 hover:to-purple-700 font-bold shadow-lg transition-all flex items-center justify-center gap-2 mt-1"
                         >
                             <FiZap className="text-yellow-400" /> Relationship Intelligence AI
-                        </button>
-                    )}
-
-                    {/* Dashboard View - The charts and history (if wanted alongside) */}
-                    {child.stage === 'growing_stage' && (
-                        <button
-                            onClick={() => navigate(`/relationship-intelligence-dashboard?child_id=${child.id}`)}
-                            className="col-span-2 px-4 py-3 bg-gradient-to-r from-pink-500 to-violet-600 text-white rounded-xl hover:from-pink-600 hover:to-violet-700 font-bold shadow-lg transition-all flex items-center justify-center gap-2"
-                        >
-                            <FiHeart /> Relationship Dashboard
                         </button>
                     )}
                 </div>
