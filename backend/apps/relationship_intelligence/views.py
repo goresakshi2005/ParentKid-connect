@@ -7,6 +7,7 @@ from .models import MoodCheckIn, InteractionLog, ParentActionFeedback, BehaviorS
 from .serializers import MoodCheckInSerializer, InteractionLogSerializer, ParentActionFeedbackSerializer, RelationshipStateSerializer
 from .services.decision_engine import DecisionEngine
 from .services.ai_prompts import get_ai_recommendation
+from .services.ai_engine import RelationshipIntelligenceEngine
 
 class RelationshipStateView(APIView):
     permission_classes = [permissions.IsAuthenticated]
@@ -86,3 +87,23 @@ class BehaviorSignalView(APIView):
         engine = DecisionEngine(request.user, child)
         engine.update_state_from_signals()
         return Response({'status': 'recorded'})
+
+class RelationshipAnalysisView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request):
+        parent_data = request.data.get('parent', {})
+        child_data = request.data.get('child', {})
+
+        if not parent_data or not child_data:
+            return Response(
+                {"error": "Both parent and child data are required"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        analysis = RelationshipIntelligenceEngine.analyze_communication(parent_data, child_data)
+        
+        if "error" in analysis:
+            return Response(analysis, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            
+        return Response(analysis, status=status.HTTP_200_OK)

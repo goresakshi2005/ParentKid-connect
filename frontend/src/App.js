@@ -16,7 +16,8 @@ import ParentRouter from './components/ParentRouter';
 import GoogleCallback from './pages/GoogleCallback';
 import VoiceAssessmentPage from './pages/VoiceAssessmentPage';
 import MentorChatPageWrapper from './pages/MentorChatPageWrapper';
-import RelationshipIntelligencePage from './pages/RelationshipIntelligencePage';   // <-- NEW
+import RelationshipIntelligencePage from './pages/RelationshipIntelligencePage';
+import RelationshipIntelligenceDashboard from './pages/RelationshipIntelligenceDashboard';
 import { useAuth } from './context/AuthContext';
 
 import ScreenTimePage from './pages/ScreenTimePage';
@@ -62,6 +63,26 @@ function App() {
               </AuthGuard>
             }
           />
+          
+          {/* Interactive AI Relationship Intelligence Page */}
+          <Route
+            path="/relationship-intelligence/:childId"
+            element={
+              <AuthGuard role="parent">
+                <RelationshipIntelligencePage />
+              </AuthGuard>
+            }
+          />
+          
+          {/* Relationship Intelligence Dashboard (Charts) */}
+          <Route
+            path="/relationship-intelligence-dashboard"
+            element={
+              <AuthGuard role="parent">
+                <RelationshipIntelligenceDashboard />
+              </AuthGuard>
+            }
+          />
 
           <Route
             path="/dashboard/pregnancy"
@@ -104,16 +125,6 @@ function App() {
             element={
               <AuthGuard role="mentor">
                 <MentorChatPageWrapper />
-              </AuthGuard>
-            }
-          />
-
-          {/* NEW: Relationship Intelligence Dashboard */}
-          <Route
-            path="/relationship-intelligence"
-            element={
-              <AuthGuard role="parent">
-                <RelationshipIntelligencePage />
               </AuthGuard>
             }
           />
