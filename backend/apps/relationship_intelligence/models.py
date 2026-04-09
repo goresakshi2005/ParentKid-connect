@@ -66,3 +66,36 @@ class ParentActionFeedback(models.Model):
     outcome_rating = models.IntegerField(null=True, blank=True)  # 1-5
     corrective_tip_given = models.TextField(blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
+
+
+# backend/apps/relationship_intelligence/models.py
+
+from django.db import models
+from django.conf import settings
+from apps.children.models import Child
+
+User = settings.AUTH_USER_MODEL
+
+# ... existing models (RelationshipState, MoodCheckIn, etc.) ...
+
+class RelationshipAnalysis(models.Model):
+    """
+    Stores the full AI-generated relationship intelligence report for a parent-child pair.
+    """
+    parent = models.ForeignKey(User, on_delete=models.CASCADE, related_name='rel_analyses')
+    child = models.ForeignKey(Child, on_delete=models.CASCADE, related_name='rel_analyses')
+    
+    # Input data (what the user submitted)
+    parent_input = models.JSONField()   # { mood, thoughts, problem }
+    child_input = models.JSONField()    # { mood, thoughts, problem }
+    
+    # Full AI response (the JSON returned by Gemini)
+    analysis_result = models.JSONField()
+    
+    created_at = models.DateTimeField(auto_now_add=True)
+    
+    class Meta:
+        ordering = ['-created_at']
+    
+    def __str__(self):
+        return f"Analysis for {self.child.name} on {self.created_at.date()}"

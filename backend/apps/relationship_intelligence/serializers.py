@@ -26,3 +26,21 @@ class BehaviorSignalSerializer(serializers.ModelSerializer):
     class Meta:
         model = BehaviorSignal
         fields = '__all__'
+
+# backend/apps/relationship_intelligence/serializers.py
+
+from rest_framework import serializers
+from .models import RelationshipState, MoodCheckIn, InteractionLog, ParentActionFeedback, BehaviorSignal, RelationshipAnalysis
+
+# ... existing serializers ...
+
+class RelationshipAnalysisSerializer(serializers.ModelSerializer):
+    child_name = serializers.CharField(source='child.name', read_only=True)
+    
+    class Meta:
+        model = RelationshipAnalysis
+        fields = [
+            'id', 'parent', 'child', 'child_name',
+            'parent_input', 'child_input', 'analysis_result', 'created_at'
+        ]
+        read_only_fields = ['id', 'created_at']

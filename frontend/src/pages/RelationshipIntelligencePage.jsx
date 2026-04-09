@@ -1,3 +1,5 @@
+// frontend/src/pages/RelationshipIntelligencePage.jsx
+
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import axios from 'axios';
@@ -15,6 +17,9 @@ const RelationshipIntelligencePage = () => {
     const [loading, setLoading] = useState(false);
     const [analyzing, setAnalyzing] = useState(false);
     const [result, setResult] = useState(null);
+    const [history, setHistory] = useState([]);
+    const [showHistory, setShowHistory] = useState(false);
+    const [selectedHistory, setSelectedHistory] = useState(null);
 
     const [parentInput, setParentInput] = useState({
         mood: '',
@@ -29,17 +34,22 @@ const RelationshipIntelligencePage = () => {
     });
 
     useEffect(() => {
-        const fetchChild = async () => {
+        const fetchChildAndHistory = async () => {
             try {
-                const response = await axios.get(`${process.env.REACT_APP_API_URL}/children/${childId}/`, {
+                const childRes = await axios.get(`${process.env.REACT_APP_API_URL}/children/${childId}/`, {
                     headers: { Authorization: `Bearer ${token}` }
                 });
-                setChild(response.data);
+                setChild(childRes.data);
+                
+                const historyRes = await axios.get(`${process.env.REACT_APP_API_URL}/relationship/history/${childId}/`, {
+                    headers: { Authorization: `Bearer ${token}` }
+                });
+                setHistory(historyRes.data);
             } catch (err) {
-                console.error("Error fetching child:", err);
+                console.error("Error fetching data:", err);
             }
         };
-        if (token && childId) fetchChild();
+        if (token && childId) fetchChildAndHistory();
     }, [childId, token]);
 
     const handleAnalyze = async () => {
@@ -52,12 +62,18 @@ const RelationshipIntelligencePage = () => {
         try {
             const response = await axios.post(`${process.env.REACT_APP_API_URL}/relationship/analyze/`, {
                 parent: parentInput,
-                child: childInput
+                child: childInput,
+                child_id: childId
             }, {
                 headers: { Authorization: `Bearer ${token}` }
             });
 
-            setResult(response.data);
+            setResult(response.data.analysis);
+            // Refresh history to include the new one
+            const historyRes = await axios.get(`${process.env.REACT_APP_API_URL}/relationship/history/${childId}/`, {
+                headers: { Authorization: `Bearer ${token}` }
+            });
+            setHistory(historyRes.data);
         } catch (err) {
             console.error("Analysis failed:", err);
             const errorMessage = err.response?.data?.error || "Failed to analyze communication. Please try again.";
@@ -65,6 +81,14 @@ const RelationshipIntelligencePage = () => {
         } finally {
             setAnalyzing(false);
         }
+    };
+
+    const loadHistoryAnalysis = (item) => {
+        setSelectedHistory(item);
+        setResult(item.analysis_result);
+        setParentInput(item.parent_input);
+        setChildInput(item.child_input);
+        setShowHistory(false);
     };
 
     if (!child && !loading) return <div className="p-10 text-center">Loading child data...</div>;
@@ -87,6 +111,61 @@ const RelationshipIntelligencePage = () => {
                         Bridging the gap between you and <span className="font-bold text-indigo-600 dark:text-indigo-400">{child?.name}</span>
                     </p>
                 </div>
+
+                {/* History Toggle Button */}
+                {history.length > 0 && (
+                    <div className="flex justify-end mb-4">
+                        <button
+                            onClick={() => setShowHistory(!showHistory)}
+                            className="flex items-center gap-2 px-4 py-2 bg-indigo-100 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300 rounded-xl text-sm font-semibold hover:bg-indigo-200 dark:hover:bg-indigo-800/40 transition"
+                        >
+                            <FiClock /> {showHistory ? "Hide Past Analyses" : `Show Past Analyses (${history.length})`}
+                        </button>
+                    </div>
+                )}
+
+                {/* History List */}
+                {showHistory && history.length > 0 && (
+                    <div className="mb-8 bg-white dark:bg-slate-900 rounded-2xl shadow-md border border-slate-100 dark:border-slate-800 overflow-hidden">
+                        <div className="p-4 border-b border-slate-100 dark:border-slate-800">
+                            <h3 className="font-bold dark:text-white">Past Analyses for {child?.name}</h3>
+                        </div>
+                        <div className="divide-y divide-slate-100 dark:divide-slate-800">
+                            {history.map((item) => (
+                                <div key={item.id} className="p-4 hover:bg-slate-50 dark:hover:bg-slate-800/50 cursor-pointer transition" onClick={() => loadHistoryAnalysis(item)}>
+                                    <div className="flex justify-between items-center">
+                                        <div>
+                                            <p className="text-sm font-medium dark:text-white">
+                                                {new Date(item.created_at).toLocaleDateString()} at {new Date(item.created_at).toLocaleTimeString()}
+                                            </p>
+                                            <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+                                                Root cause: {item.analysis_result.insights?.root_cause?.substring(0, 60)}...
+                                            </p>
+                                        </div>
+                                        <span className="text-indigo-500 text-sm">Load →</span>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                )}
+
+                {/* If a history item is loaded, show a "New Analysis" button */}
+                {selectedHistory && (
+                    <div className="mb-4 flex justify-end">
+                        <button
+                            onClick={() => {
+                                setSelectedHistory(null);
+                                setResult(null);
+                                setParentInput({ mood: '', thoughts: '', problem: '' });
+                                setChildInput({ mood: '', thoughts: '', problem: '' });
+                            }}
+                            className="text-sm text-indigo-600 dark:text-indigo-400 hover:underline"
+                        >
+                            + Start New Analysis
+                        </button>
+                    </div>
+                )}
 
                 {!result ? (
                     <div className="grid md:grid-cols-2 gap-8">
@@ -383,9 +462,14 @@ const RelationshipIntelligencePage = () => {
                             </div>
                         </div>
 
-                        <div className="flex justify-center pb-12">
+                        <div className="flex justify-center gap-4 pb-12">
                             <button 
-                                onClick={() => setResult(null)}
+                                onClick={() => {
+                                    setResult(null);
+                                    setSelectedHistory(null);
+                                    setParentInput({ mood: '', thoughts: '', problem: '' });
+                                    setChildInput({ mood: '', thoughts: '', problem: '' });
+                                }}
                                 className="px-8 py-3 border-2 border-slate-200 dark:border-slate-800 rounded-xl text-slate-500 dark:text-slate-400 font-bold hover:bg-slate-100 dark:hover:bg-slate-800 transition-all"
                             >
                                 Start New Analysis
