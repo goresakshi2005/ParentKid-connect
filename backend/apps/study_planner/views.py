@@ -72,7 +72,7 @@ Respond ONLY with a valid JSON array. No explanation, no markdown backticks.
 
 Voice input: "{voice_text}"
 """
-    model = genai.GenerativeModel("gemini-2.5-flash")
+    model = genai.GenerativeModel("gemini-3-flash-preview")
     response = model.generate_content(prompt)
     raw = response.text.strip()
 

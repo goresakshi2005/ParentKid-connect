@@ -21,8 +21,12 @@ Directory structure:
     │                       └── activity_main.xml
     ├── backend/
     │   ├── db.sqlite3
+    │   ├── list_models.py
     │   ├── manage.py
     │   ├── requirements.txt
+    │   ├── test_gemini.py
+    │   ├── test_gemini_prompt.py
+    │   ├── test_models_quota.py
     │   ├── apps/
     │   │   ├── __init__.py
     │   │   ├── assessments/
@@ -88,6 +92,8 @@ Directory structure:
     │   │   │       ├── 0001_initial.py
     │   │   │       └── __init__.py
     │   │   ├── relationship_intelligence/
+    │   │   │   ├── __init__.py
+    │   │   │   ├── apps.py
     │   │   │   ├── models.py
     │   │   │   ├── serializers.py
     │   │   │   ├── urls.py
@@ -99,6 +105,8 @@ Directory structure:
     │   │   │   │   ├── 0001_initial.py
     │   │   │   │   └── __init__.py
     │   │   │   └── services/
+    │   │   │       ├── __init__.py
+    │   │   │       ├── ai_engine.py
     │   │   │       ├── ai_prompts.py
     │   │   │       └── decision_engine.py
     │   │   ├── reports/
@@ -266,6 +274,7 @@ Directory structure:
             │   ├── PregnancyDashboard.jsx
             │   ├── PricingPage.jsx
             │   ├── RelationshipDashboard.jsx
+            │   ├── RelationshipIntelligencePage.jsx
             │   ├── ScreenTimePage.jsx
             │   ├── TeenDashboard.jsx
             │   └── VoiceAssessmentPage.jsx
@@ -902,6 +911,29 @@ FILE: backend/db.sqlite3
 
 
 ================================================
+FILE: backend/list_models.py
+================================================
+import google.generativeai as genai
+import os
+from dotenv import load_dotenv
+
+# Load .env from backend
+load_dotenv('e:/Orderocks/ParentKid-Connect/parentkid-connect/backend/.env')
+
+api_key = os.getenv('GEMINI_API_KEY')
+genai.configure(api_key=api_key)
+
+try:
+    print("Listing available models:")
+    for m in genai.list_models():
+        if 'generateContent' in m.supported_generation_methods:
+            print(m.name)
+except Exception as e:
+    print(f"Failed to list models: {e}")
+
+
+
+================================================
 FILE: backend/manage.py
 ================================================
 #!/usr/bin/env python
@@ -967,6 +999,144 @@ librosa>=0.10.0
 soundfile>=0.12.0
 scipy>=1.10.0
 numpy>=1.24.0
+
+
+================================================
+FILE: backend/test_gemini.py
+================================================
+import google.generativeai as genai
+import os
+from dotenv import load_dotenv
+
+# Load .env from backend
+load_dotenv('e:/Orderocks/ParentKid-Connect/parentkid-connect/backend/.env')
+
+api_key = os.getenv('GEMINI_API_KEY')
+print(f"API Key: {api_key[:5]}...{api_key[-5:]}")
+
+genai.configure(api_key=api_key)
+
+try:
+    model = genai.GenerativeModel('gemini-1.5-flash') # Testing known good model
+    response = model.generate_content("Hello, say 'Test successful'")
+    print(f"1.5-flash response: {response.text}")
+except Exception as e:
+    print(f"1.5-flash failed: {e}")
+
+try:
+    model = genai.GenerativeModel('gemini-2.5-flash')
+    response = model.generate_content("Hello, say 'Test successful'")
+    print(f"2.5-flash response: {response.text}")
+except Exception as e:
+    print(f"2.5-flash failed: {e}")
+
+
+
+================================================
+FILE: backend/test_gemini_prompt.py
+================================================
+import google.generativeai as genai
+import os
+import json
+import re
+from dotenv import load_dotenv
+
+# Load .env from backend
+load_dotenv('e:/Orderocks/ParentKid-Connect/parentkid-connect/backend/.env')
+
+api_key = os.getenv('GEMINI_API_KEY')
+genai.configure(api_key=api_key)
+
+parent_data = {
+    'mood': 'Concerned',
+    'thoughts': 'My child is spending too much time on phone',
+    'problem': 'Screen time conflict'
+}
+child_data = {
+    'mood': 'Frustrated',
+    'thoughts': 'My parent is always nagging me about phone',
+    'problem': 'Lack of freedom'
+}
+
+prompt = f"""
+You are an expert Relationship Intelligence AI specializing in parentâ€“teen communication.
+Your role is to deeply analyze inputs from BOTH parent and child, detect emotional gaps, and generate practical, real-world communication guidance separately for each.
+INPUT:
+Parent:
+- Mood: {parent_data.get('mood')}
+- Thoughts: {parent_data.get('thoughts')}
+- Problem: {parent_data.get('problem')}
+Child:
+- Mood: {child_data.get('mood')}
+- Thoughts: {child_data.get('thoughts')}
+- Problem: {child_data.get('problem')}
+
+OUTPUT FORMAT (STRICT JSON):
+{{
+  "emotion_analysis": {{
+    "parent": {{ "emotion": "", "intensity": "" }},
+    "child": {{ "emotion": "", "intensity": "" }}
+  }},
+  "parent_guidance": {{ "child_feelings": "", "avoid": "", "say_this": "", "tone": "", "timing": "" }},
+  "child_guidance": {{ "parent_intent": "", "avoid": "", "say_this": "", "approach": "", "timing": "" }},
+  "insights": {{
+    "root_cause": "",
+    "mismatch": "",
+    "communication_styles": {{ "parent": "", "child": "" }},
+    "alignment_score": 0,
+    "summary": ""
+  }},
+  "conversation_preview": [
+    {{"parent": ""}},
+    {{"child": ""}}
+  ],
+  "actions": [],
+  "confidence_score": 0
+}}
+"""
+
+try:
+    model = genai.GenerativeModel('gemini-2.5-flash')
+    response = model.generate_content(prompt)
+    print(f"Response text: {response.text}")
+    json_match = re.search(r'\{.*\}', response.text, re.DOTALL)
+    if json_match:
+        data = json.loads(json_match.group(0))
+        print("Successfully parsed JSON")
+    else:
+        print("Could not parse AI response")
+except Exception as e:
+    print(f"Failed: {e}")
+
+
+
+================================================
+FILE: backend/test_models_quota.py
+================================================
+import google.generativeai as genai
+import os
+from dotenv import load_dotenv
+
+load_dotenv('e:/Orderocks/ParentKid-Connect/parentkid-connect/backend/.env')
+api_key = os.getenv('GEMINI_API_KEY')
+genai.configure(api_key=api_key)
+
+models_to_try = [
+    'gemini-2.0-flash',
+    'gemini-flash-latest',
+    'gemini-2.0-flash-lite',
+    'gemini-2.5-flash'
+]
+
+for model_name in models_to_try:
+    try:
+        print(f"Trying {model_name}...")
+        model = genai.GenerativeModel(model_name)
+        response = model.generate_content("Say hello")
+        print(f"Success with {model_name}: {response.text}")
+    except Exception as e:
+        print(f"Failed with {model_name}: {e}")
+
 
 
 ================================================
@@ -3368,6 +3538,24 @@ FILE: backend/apps/mentorship/migrations/__init__.py
 
 
 ================================================
+FILE: backend/apps/relationship_intelligence/__init__.py
+================================================
+# relationship_intelligence app
+
+
+
+================================================
+FILE: backend/apps/relationship_intelligence/apps.py
+================================================
+from django.apps import AppConfig
+
+class RelationshipIntelligenceConfig(AppConfig):
+    default_auto_field = 'django.db.models.BigAutoField'
+    name = 'apps.relationship_intelligence'
+
+
+
+================================================
 FILE: backend/apps/relationship_intelligence/models.py
 ================================================
 from django.db import models
@@ -3477,15 +3665,12 @@ class BehaviorSignalSerializer(serializers.ModelSerializer):
 FILE: backend/apps/relationship_intelligence/urls.py
 ================================================
 from django.urls import path
-from .views import RelationshipStateView, RecommendationView, MoodCheckInView, InteractionFeedbackView, BehaviorSignalView
+from .views import RelationshipAnalysisView
 
 urlpatterns = [
-    path('state/', RelationshipStateView.as_view(), name='rel-state'),
-    path('recommendation/', RecommendationView.as_view(), name='rel-recommendation'),
-    path('mood-checkin/', MoodCheckInView.as_view(), name='rel-mood'),
-    path('feedback/', InteractionFeedbackView.as_view(), name='rel-feedback'),
-    path('signal/', BehaviorSignalView.as_view(), name='rel-signal'),
+    path('analyze/', RelationshipAnalysisView.as_view(), name='relationship-analyze'),
 ]
+
 
 
 ================================================
@@ -3494,91 +3679,28 @@ FILE: backend/apps/relationship_intelligence/views.py
 from rest_framework import status, permissions
 from rest_framework.response import Response
 from rest_framework.views import APIView
-from django.shortcuts import get_object_or_404
-from apps.children.models import Child
-from .models import MoodCheckIn, InteractionLog, ParentActionFeedback, BehaviorSignal
-from .serializers import MoodCheckInSerializer, InteractionLogSerializer, ParentActionFeedbackSerializer, RelationshipStateSerializer
-from .services.decision_engine import DecisionEngine
-from .services.ai_prompts import get_ai_recommendation
+from .services.ai_engine import RelationshipIntelligenceEngine
 
-class RelationshipStateView(APIView):
-    permission_classes = [permissions.IsAuthenticated]
-
-    def get(self, request):
-        child_id = request.query_params.get('child_id')
-        child = get_object_or_404(Child, id=child_id, parent=request.user)
-        engine = DecisionEngine(request.user, child)
-        state = engine.state
-        serializer = RelationshipStateSerializer(state)
-        return Response(serializer.data)
-
-class RecommendationView(APIView):
-    permission_classes = [permissions.IsAuthenticated]
-
-    def get(self, request):
-        child_id = request.query_params.get('child_id')
-        child = get_object_or_404(Child, id=child_id, parent=request.user)
-        engine = DecisionEngine(request.user, child)
-        rec = engine.get_recommendation()
-        return Response(rec)
-
-class MoodCheckInView(APIView):
+class RelationshipAnalysisView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def post(self, request):
-        serializer = MoodCheckInSerializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
-        serializer.save(user=request.user)
-        # Optionally update relationship state
-        child_id = request.data.get('child')
-        if child_id:
-            child = Child.objects.get(id=child_id, parent=request.user)
-            engine = DecisionEngine(request.user, child)
-            engine.update_state_from_signals()
-        return Response(serializer.data, status=status.HTTP_201_CREATED)
+        parent_data = request.data.get('parent', {})
+        child_data = request.data.get('child', {})
 
-class InteractionFeedbackView(APIView):
-    permission_classes = [permissions.IsAuthenticated]
+        if not parent_data or not child_data:
+            return Response(
+                {"error": "Both parent and child data are required"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
 
-    def post(self, request):
-        # Expects: { interaction_id, followed, outcome_rating, corrective_tip_given? }
-        data = request.data
-        interaction = get_object_or_404(InteractionLog, id=data['interaction_id'], parent=request.user)
-        feedback = ParentActionFeedback.objects.create(
-            parent=request.user,
-            child=interaction.child,
-            interaction=interaction,
-            followed=data.get('followed', False),
-            outcome_rating=data.get('outcome_rating'),
-            corrective_tip_given=data.get('corrective_tip_given', '')
-        )
-        # Update interaction outcome if provided
-        if data.get('outcome'):
-            interaction.outcome = data['outcome']
-            interaction.save()
-        # Recalculate state
-        engine = DecisionEngine(request.user, interaction.child)
-        engine.update_state_from_signals()
-        return Response({'status': 'ok'})
+        analysis = RelationshipIntelligenceEngine.analyze_communication(parent_data, child_data)
+        
+        if "error" in analysis:
+            return Response(analysis, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            
+        return Response(analysis, status=status.HTTP_200_OK)
 
-class BehaviorSignalView(APIView):
-    permission_classes = [permissions.IsAuthenticated]
-
-    def post(self, request):
-        # Can be called internally or by other apps (e.g., when a teen ignores a message)
-        child_id = request.data.get('child_id')
-        signal_type = request.data.get('signal_type')
-        value = request.data.get('value', {})
-        child = get_object_or_404(Child, id=child_id, parent=request.user)
-        BehaviorSignal.objects.create(
-            parent=request.user,
-            child=child,
-            signal_type=signal_type,
-            value=value
-        )
-        engine = DecisionEngine(request.user, child)
-        engine.update_state_from_signals()
-        return Response({'status': 'recorded'})
 
 
 ================================================
@@ -3698,6 +3820,196 @@ FILE: backend/apps/relationship_intelligence/migrations/__init__.py
 
 
 ================================================
+FILE: backend/apps/relationship_intelligence/services/__init__.py
+================================================
+# services for relationship_intelligence
+
+
+
+================================================
+FILE: backend/apps/relationship_intelligence/services/ai_engine.py
+================================================
+import google.generativeai as genai
+from django.conf import settings
+import json
+import re
+
+genai.configure(api_key=settings.GEMINI_API_KEY)
+
+class RelationshipIntelligenceEngine:
+    @staticmethod
+    def analyze_communication(parent_data, child_data):
+        prompt = f"""
+        You are an expert Relationship Intelligence AI specializing in parentâ€“teen communication.
+
+        Your role is to deeply analyze inputs from BOTH parent and child, detect emotional gaps, and generate practical, real-world communication guidance separately for each.
+
+        --------------------------------------------------
+
+        INPUT:
+
+        Parent:
+        - Mood: {parent_data.get('mood')}
+        - Thoughts: {parent_data.get('thoughts')}
+        - Problem: {parent_data.get('problem')}
+
+        Child:
+        - Mood: {child_data.get('mood')}
+        - Thoughts: {child_data.get('thoughts')}
+        - Problem: {child_data.get('problem')}
+
+        --------------------------------------------------
+
+        TASKS:
+
+        1. Emotion Detection
+        - Identify clear and hidden emotions for both parent and child
+        - Use labels like: stress, frustration, fear, pressure, care, confusion, anger, sadness
+
+        2. Emotion Intensity
+        - Assign intensity (Low / Medium / High)
+
+        3. Mismatch Detection
+        - Identify misunderstanding between parent and child
+        - Highlight mismatch between intention vs perception
+
+        4. Root Cause Identification
+        - Identify the deeper issue (not surface-level)
+        (e.g., pressure, lack of trust, communication gap, expectations mismatch, emotional disconnect)
+
+        5. Communication Style Analysis
+        Classify:
+        - Parent: (strict / emotional / logical / reactive / supportive)
+        - Child: (defensive / expressive / sensitive / avoidant / confused)
+
+        6. Generate SEPARATE Guidance:
+
+        For Parent:
+        - What child is actually feeling (clear insight)
+        - What NOT to say (1â€“2 lines)
+        - What TO say (2â€“3 exact sentences, calm & supportive)
+        - Tone to use
+        - Best timing to talk
+
+        For Child:
+        - What parent actually means (clear insight)
+        - What NOT to say
+        - What TO say (2â€“3 respectful sentences)
+        - How to express feelings properly
+        - Best approach to start conversation
+
+        7. Conversation Preview
+        - Generate a short ideal conversation (3â€“4 exchanges)
+
+        8. Alignment Score
+        - Score from 0â€“100
+        - Based on emotional alignment + understanding
+
+        9. Actionable Suggestions
+        - Give 2â€“3 specific real-life actions (not generic advice)
+
+        10. Confidence Score
+        - Score from 0â€“100
+        - Based on:
+          - clarity of inputs
+          - completeness of emotional data
+
+        --------------------------------------------------
+
+        OUTPUT FORMAT (STRICT JSON):
+
+        {{
+          "emotion_analysis": {{
+            "parent": {{
+              "emotion": "",
+              "intensity": ""
+            }},
+            "child": {{
+              "emotion": "",
+              "intensity": ""
+            }}
+          }},
+          "parent_guidance": {{
+            "child_feelings": "",
+            "avoid": "",
+            "say_this": "",
+            "tone": "",
+            "timing": ""
+          }},
+          "child_guidance": {{
+            "parent_intent": "",
+            "avoid": "",
+            "say_this": "",
+            "approach": "",
+            "timing": ""
+          }},
+          "insights": {{
+            "root_cause": "",
+            "mismatch": "",
+            "communication_styles": {{
+              "parent": "",
+              "child": ""
+            }},
+            "alignment_score": "",
+            "summary": ""
+          }},
+          "conversation_preview": [
+            {{"parent": ""}},
+            {{"child": ""}},
+            {{"parent": ""}},
+            {{"child": ""}}
+          ],
+          "actions": [],
+          "confidence_score": ""
+        }}
+
+        --------------------------------------------------
+
+        RULES:
+
+        - Be practical and realistic (no theory)
+        - Use simple, human-friendly language
+        - Do NOT blame parent or child
+        - Focus on resolving communication gap
+        - Avoid generic advice
+        - Keep suggestions emotionally safe and actionable
+        - Ensure "say_this" outputs are natural and usable in real life
+        """
+        
+        try:
+            model = genai.GenerativeModel('gemini-2.5-flash')
+            response = model.generate_content(prompt)
+            
+            if not response or not response.text:
+                return {"error": "AI returned an empty response. Please try with more descriptive input."}
+                
+            # Extract JSON from response
+            raw_text = response.text.strip()
+            
+            # Remove markdown formatting if present
+            raw_text = re.sub(r'^```json\s*', '', raw_text)
+            raw_text = re.sub(r'\s*```$', '', raw_text)
+            
+            json_match = re.search(r'\{.*\}', raw_text, re.DOTALL)
+            if json_match:
+                try:
+                    return json.loads(json_match.group(0))
+                except json.JSONDecodeError as je:
+                    return {"error": "Failed to parse AI insights. Please try again.", "details": str(je), "raw": raw_text[:500]}
+            else:
+                return {"error": "AI response format was invalid. Please try again.", "raw": raw_text[:500]}
+                
+        except Exception as e:
+            error_msg = str(e)
+            if "429" in error_msg or "quota" in error_msg.lower():
+                return {"error": "AI Service is temporarily busy due to high demand. Please wait 30-60 seconds and try again."}
+            print(f"Relationship AI Error: {error_msg}")
+            return {"error": f"Communication analysis failed: {error_msg}"}
+
+
+
+
+================================================
 FILE: backend/apps/relationship_intelligence/services/ai_prompts.py
 ================================================
 import google.generativeai as genai
@@ -3709,49 +4021,52 @@ genai.configure(api_key=settings.GEMINI_API_KEY)
 
 SYSTEM_PROMPTS = {
     "normal": """
-You are a relationship intelligence assistant for a parent of a growing child (age 6-12 or teen). 
-The current mode is NORMAL â€“ communication is healthy, trust is good.
-Generate a very light, daily conversation prompt that maintains connection without pressure.
-Keep it short, positive, and open-ended.
-Return ONLY a JSON object with these keys:
+You are an expert child psychologist and relationship behavioral analyst.
+You are advising a parent of a growing child (age 6-12) or teen.
+The current mode is NORMAL â€“ communication is generally healthy, and trust is stable.
+Your goal is to provide deep, non-obvious, actionable insights that help the parent elevate the relationship from "okay" to "thriving."
+Avoid generic advice like "ask them about their day." Instead, offer a specific psychological insight on how children this age process emotions, and suggest a subtle, powerful micro-action to build resilience, self-esteem, or deeper emotional security.
+Return ONLY a JSON object with these exact keys:
 {
-  "recommended_action": "string (e.g., 'Ask about their day', 'Share a fun fact')",
-  "conversation_prompts": ["string", "string"],
-  "alternative_actions": ["string"],
-  "do": "string (one tip)",
-  "dont": "string",
-  "parent_micro_tip": "string (very short actionable tip)",
-  "escalation_alert": "string (empty unless needed)"
+  "recommended_action": "string (e.g., 'Validate an unspoken emotion rather than just asking how they are doing')",
+  "conversation_prompts": ["string (an insightful, deeply engaging question)", "string"],
+  "alternative_actions": ["string (a small bonding activity)"],
+  "do": "string (Specific actionable psychological technique)",
+  "dont": "string (A common parenting trap to avoid right now)",
+  "parent_micro_tip": "string (A hidden psychological truth for the parent, e.g., 'At this age, kids often reject advice because they are testing autonomy, not because they disrespect you.')",
+  "escalation_alert": "string (Leave empty unless you detect a massive red flag)"
 }
 """,
     "trust_rebuilding": """
-Mode: TRUST REBUILDING â€“ trust score is low (<40) or there have been repeated failed conversations.
-Strategy: NO direct questioning. Focus on presence-based bonding. Actions should be nonâ€‘intrusive.
-Generate a suggestion that does NOT ask the child to talk. Instead, suggest silent parallel activities or very lowâ€‘pressure shared presence.
-Return JSON:
+You are an expert child psychologist specializing in trauma, estrangement, and family mediation.
+The current mode is TRUST REBUILDING â€“ the trust score is low (<40) or there is a pattern of conversational failure. The child/teen may feel judged, smothered, or disconnected.
+Your strategy is to focus entirely on psychological safety. Do NOT suggest interrogating the child, lecturing them, or demanding they "open up."
+Provide guidance on parallel play, low-stakes presence, and radically accepting their current state. Explain *why* the child might be pulling away.
+Return ONLY a JSON object with these exact keys:
 {
-  "recommended_action": "e.g., 'Sit together without talking while watching a short video'",
-  "conversation_prompts": ["No need to talk, just wanted to be around you", ...],
-  "alternative_actions": ["...", "..."],
-  "do": "Focus on being present, not on extracting information",
-  "dont": "Avoid asking 'why' or 'what happened'",
-  "parent_micro_tip": "One tiny action to rebuild safety",
-  "escalation_alert": "empty unless severe"
+  "recommended_action": "string (e.g., 'Lower the emotional stakes. Just exist in the same room without making demands.')",
+  "conversation_prompts": ["string (A purely observational or supportive statement needing NO reply)", "string"],
+  "alternative_actions": ["string (A silent, shared activity like bringing them a snack and leaving)", "string"],
+  "do": "string (Focus on creating a zero-pressure environment)",
+  "dont": "string (Do NOT ask 'why are you so quiet?' or 'did I do something wrong?')",
+  "parent_micro_tip": "string (E.g., 'Their withdrawal is a defense mechanism. They need to see that your love doesn't vanish when they are difficult.')",
+  "escalation_alert": "string (e.g., 'Watch for signs of complete isolation, which might require professional support.')"
 }
 """,
     "resistance_handling": """
-Mode: RESISTANCE HANDLING â€“ engagement level is low (oneâ€‘word replies, no interaction).
-Strategy: Replace conversation with lowâ€‘effort interactions. Suggest sharing a meme, a funny video, or a casual observation.
-Avoid emotional or heavy topics.
-Return JSON:
+You are an expert child behavioral therapist. 
+The current mode is RESISTANCE HANDLING â€“ engagement is low. The child might be giving one-word replies, eye-rolls, or active defiance.
+Your strategy: Do not engage in power struggles. Teach the parent how to slip under the radar of the child's defenses using "side-door" communication (e.g., sharing a meme, talking briefly while driving so there is no forced eye contact).
+Explain the psychology of resistance in kids/teens (e.g., it's often a bid for autonomy, not a personal attack).
+Return ONLY a JSON object with these exact keys:
 {
-  "recommended_action": "e.g., 'Send them a funny meme without any text'",
-  "conversation_prompts": ["Check this out, made me laugh", ...],
-  "alternative_actions": ["Leave a note on their desk", "Play a short game together silently"],
-  "do": "Keep it light, no expectations of reply",
-  "dont": "Do not ask for explanations or opinions",
-  "parent_micro_tip": "One lowâ€‘effort bonding idea",
-  "escalation_alert": "empty"
+  "recommended_action": "string (e.g., 'Use asynchronous communication. Send a text or meme with no expectation of a reply.')",
+  "conversation_prompts": ["string (A closed or highly specific, low-effort statement, e.g., 'I saw this and thought of you.')", "string"],
+  "alternative_actions": ["string (e.g., 'Take them on a short drive to run an errandâ€”the lack of eye contact lowers defenses.')"],
+  "do": "string (Accept minimum viable engagement. A grunt is still an acknowledgment.)",
+  "dont": "string (Do not take the bait if they try to start a pointless argument.)",
+  "parent_micro_tip": "string (E.g., 'Resistance is often fear of control. Give them a safe space to say \"no\" to something tiny so they feel empowered.')",
+  "escalation_alert": "string (Leave empty unless defiance is unsafe)"
 }
 """
 }
@@ -3773,14 +4088,14 @@ Trust score: {trust_score}, Engagement: {engagement_level}
         raw = re.sub(r"\s*```$", "", raw)
         data = json.loads(raw)
     except Exception as e:
-        # Fallback static responses
+        # Fallback static responses based on psychological depth
         data = {
-            "recommended_action": "Spend 10 minutes together without screens.",
-            "conversation_prompts": ["I'm here if you want to talk, no pressure."],
-            "alternative_actions": ["Cook together", "Take a short walk"],
-            "do": "Listen more than you speak.",
-            "dont": "Don't interrupt.",
-            "parent_micro_tip": "Smile and maintain eye contact.",
+            "recommended_action": "Opt for 'side-door' communication like a brief car ride or a walk together where eye contact isn't required.",
+            "conversation_prompts": ["I was thinking about that thing you mentioned the other day..."],
+            "alternative_actions": ["Send them a low-stakes text or meme without expecting a reply.", "Leave their favorite snack on their desk without saying anything."],
+            "do": "Focus on their physical presence. A shared silent activity builds more trust than a forced conversation.",
+            "dont": "Don't pepper them with questions the moment they walk through the door.",
+            "parent_micro_tip": "Children often reject direct advice as a way of testing their own autonomy, not because they disrespect you. Give them space to have their own opinions.",
             "escalation_alert": ""
         }
     return data
@@ -7900,7 +8215,7 @@ import ParentRouter from './components/ParentRouter';
 import GoogleCallback from './pages/GoogleCallback';
 import VoiceAssessmentPage from './pages/VoiceAssessmentPage';
 import MentorChatPageWrapper from './pages/MentorChatPageWrapper';
-import RelationshipDashboard from './pages/RelationshipDashboard';   // <-- NEW
+import RelationshipIntelligencePage from './pages/RelationshipIntelligencePage';
 import { useAuth } from './context/AuthContext';
 
 import ScreenTimePage from './pages/ScreenTimePage';
@@ -7946,6 +8261,17 @@ function App() {
               </AuthGuard>
             }
           />
+          
+          {/* Interactive AI Relationship Intelligence Page */}
+          <Route
+            path="/relationship-intelligence/:childId"
+            element={
+              <AuthGuard role="parent">
+                <RelationshipIntelligencePage />
+              </AuthGuard>
+            }
+          />
+          
 
           <Route
             path="/dashboard/pregnancy"
@@ -7988,16 +8314,6 @@ function App() {
             element={
               <AuthGuard role="mentor">
                 <MentorChatPageWrapper />
-              </AuthGuard>
-            }
-          />
-
-          {/* NEW: Relationship Intelligence Dashboard */}
-          <Route
-            path="/relationship"
-            element={
-              <AuthGuard role="parent">
-                <RelationshipDashboard />
               </AuthGuard>
             }
           />
@@ -10336,14 +10652,14 @@ export default AssessmentView;
 ================================================
 FILE: frontend/src/components/Parent/ChildCard.jsx
 ================================================
-// frontend/src/components/Parent/ChildCard.jsx
-
 import React, { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import ProgressTracking from './ProgressTracking';
-import { FiUser, FiCalendar, FiBarChart2, FiClipboard } from 'react-icons/fi';
+import { FiUser, FiCalendar, FiBarChart2, FiClipboard, FiZap } from 'react-icons/fi';
 
 function ChildCard({ child, onTakeAssessment }) {
     const [showResults, setShowResults] = useState(false);
+    const navigate = useNavigate();
 
     const getStageLabel = (stage) => {
         const stages = {
@@ -10354,6 +10670,8 @@ function ChildCard({ child, onTakeAssessment }) {
         };
         return stages[stage] || stage;
     };
+
+    const isGrowingOrTeen = child.stage === 'growing_stage' || child.stage === 'teen_age';
 
     return (
         <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-lg overflow-hidden transition-all duration-300 hover:shadow-xl border border-gray-100 dark:border-slate-800">
@@ -10379,19 +10697,29 @@ function ChildCard({ child, onTakeAssessment }) {
             </div>
 
             <div className="p-5 space-y-4">
-                <div className="flex gap-3">
+                <div className="grid grid-cols-2 gap-3">
                     <button
                         onClick={() => onTakeAssessment(child.id)}
-                        className="flex-1 px-4 py-2.5 bg-blue-600 text-white rounded-xl hover:bg-blue-700 dark:bg-pink-600 dark:hover:bg-pink-700 font-semibold shadow-md transition-all flex items-center justify-center gap-2"
+                        className="px-4 py-2.5 bg-blue-600 text-white rounded-xl hover:bg-blue-700 dark:bg-indigo-600 dark:hover:bg-indigo-700 font-semibold shadow-md transition-all flex items-center justify-center gap-2"
                     >
-                        <FiClipboard /> Take Assessment
+                        <FiClipboard /> Assessment
                     </button>
                     <button
                         onClick={() => setShowResults(!showResults)}
-                        className="flex-1 px-4 py-2.5 border border-blue-600 text-blue-600 rounded-xl hover:bg-blue-50 dark:border-pink-500 dark:text-pink-400 dark:hover:bg-pink-500/10 font-semibold transition-all flex items-center justify-center gap-2"
+                        className="px-4 py-2.5 border border-blue-600 text-blue-600 rounded-xl hover:bg-blue-50 dark:border-pink-500 dark:text-pink-400 dark:hover:bg-pink-500/10 font-semibold transition-all flex items-center justify-center gap-2"
                     >
-                        <FiBarChart2 /> {showResults ? 'Hide Results' : 'View Results'}
+                        <FiBarChart2 /> {showResults ? 'Hide' : 'Results'}
                     </button>
+                    
+                    {/* Relationship Intelligence AI - The interactive AI Analysis */}
+                    {isGrowingOrTeen && (
+                        <button
+                            onClick={() => navigate(`/relationship-intelligence/${child.id}`)}
+                            className="col-span-2 px-4 py-3 bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-xl hover:from-indigo-700 hover:to-purple-700 font-bold shadow-lg transition-all flex items-center justify-center gap-2 mt-1"
+                        >
+                            <FiZap className="text-yellow-400" /> Relationship Intelligence AI
+                        </button>
+                    )}
                 </div>
 
                 {showResults && (
@@ -15678,7 +16006,6 @@ import ChildSelfAssessment from '../components/Child/ChildSelfAssessment';
 import ResultsDisplay from '../components/Assessment/ResultsDisplay';
 import Loading from '../components/Common/Loading';
 import { getCareerDiscoveryResults, deleteCareerDiscoveryResult } from '../services/assessmentService';
-import ParentRelationshipWidget from '../components/Relationship/ParentRelationshipWidget';  // <-- NEW
 
 function ParentDashboard() {
     const { token } = useAuth();
@@ -15880,12 +16207,7 @@ function ParentDashboard() {
                     {children.map((child) => (
                         <div key={child.id}>
                             <ChildCard child={child} onTakeAssessment={handleTakeChildSelfAssessment} />
-                            {/* ─── Relationship Intelligence Widget (only for non-pregnancy children) ─── */}
-                            {child.stage !== 'pregnancy' && (
-                                <div className="mt-4">
-                                    <ParentRelationshipWidget childId={child.id} />
-                                </div>
-                            )}
+
                         </div>
                     ))}
                 </div>
@@ -16706,6 +17028,413 @@ export default function RelationshipDashboard() {
         </div>
     );
 }
+
+
+================================================
+FILE: frontend/src/pages/RelationshipIntelligencePage.jsx
+================================================
+import React, { useState, useEffect } from 'react';
+import { useParams, useNavigate } from 'react-router-dom';
+import axios from 'axios';
+import { 
+  FiArrowLeft, FiSend, FiZap, FiActivity, FiMessageCircle, 
+  FiAlertCircle, FiCheckCircle, FiClock, FiTarget, FiUser, FiInfo
+} from 'react-icons/fi';
+import { useAuth } from '../context/AuthContext';
+
+const RelationshipIntelligencePage = () => {
+    const { childId } = useParams();
+    const navigate = useNavigate();
+    const { token } = useAuth();
+    const [child, setChild] = useState(null);
+    const [loading, setLoading] = useState(false);
+    const [analyzing, setAnalyzing] = useState(false);
+    const [result, setResult] = useState(null);
+
+    const [parentInput, setParentInput] = useState({
+        mood: '',
+        thoughts: '',
+        problem: ''
+    });
+
+    const [childInput, setChildInput] = useState({
+        mood: '',
+        thoughts: '',
+        problem: ''
+    });
+
+    useEffect(() => {
+        const fetchChild = async () => {
+            try {
+                const response = await axios.get(`${process.env.REACT_APP_API_URL}/children/${childId}/`, {
+                    headers: { Authorization: `Bearer ${token}` }
+                });
+                setChild(response.data);
+            } catch (err) {
+                console.error("Error fetching child:", err);
+            }
+        };
+        if (token && childId) fetchChild();
+    }, [childId, token]);
+
+    const handleAnalyze = async () => {
+        if (!parentInput.mood || !childInput.mood) {
+            alert("Please fill in at least the mood for both parent and child.");
+            return;
+        }
+
+        setAnalyzing(true);
+        try {
+            const response = await axios.post(`${process.env.REACT_APP_API_URL}/relationship/analyze/`, {
+                parent: parentInput,
+                child: childInput
+            }, {
+                headers: { Authorization: `Bearer ${token}` }
+            });
+
+            setResult(response.data);
+        } catch (err) {
+            console.error("Analysis failed:", err);
+            const errorMessage = err.response?.data?.error || "Failed to analyze communication. Please try again.";
+            alert(errorMessage);
+        } finally {
+            setAnalyzing(false);
+        }
+    };
+
+    if (!child && !loading) return <div className="p-10 text-center">Loading child data...</div>;
+
+    return (
+        <div className="min-h-screen bg-slate-50 dark:bg-slate-950 p-4 md:p-8">
+            <div className="max-w-6xl mx-auto">
+                <button 
+                    onClick={() => navigate(-1)}
+                    className="flex items-center gap-2 text-slate-600 dark:text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 mb-6 transition-colors"
+                >
+                    <FiArrowLeft /> Back to Dashboard
+                </button>
+
+                <div className="mb-10 text-center">
+                    <h1 className="text-4xl font-extrabold bg-clip-text text-transparent bg-gradient-to-r from-indigo-600 to-purple-600 dark:from-indigo-400 dark:to-purple-400">
+                        Relationship Intelligence AI
+                    </h1>
+                    <p className="text-slate-600 dark:text-slate-400 mt-2 text-lg">
+                        Bridging the gap between you and <span className="font-bold text-indigo-600 dark:text-indigo-400">{child?.name}</span>
+                    </p>
+                </div>
+
+                {!result ? (
+                    <div className="grid md:grid-cols-2 gap-8">
+                        {/* Parent Input Card */}
+                        <div className="bg-white dark:bg-slate-900 rounded-3xl p-8 shadow-xl border border-slate-100 dark:border-slate-800">
+                            <div className="flex items-center gap-3 mb-6">
+                                <div className="p-3 bg-indigo-100 dark:bg-indigo-500/20 rounded-2xl text-indigo-600 dark:text-indigo-400">
+                                    <FiUser size={24} />
+                                </div>
+                                <h2 className="text-2xl font-bold dark:text-white">Parent's Perspective</h2>
+                            </div>
+                            
+                            <div className="space-y-4">
+                                <div>
+                                    <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">How are you feeling?</label>
+                                    <input 
+                                        type="text"
+                                        placeholder="e.g. Stressed, concerned, hopeful..."
+                                        className="w-full bg-slate-50 dark:bg-slate-800 border-none rounded-xl p-4 focus:ring-2 focus:ring-indigo-500 dark:text-white transition-all"
+                                        value={parentInput.mood}
+                                        onChange={(e) => setParentInput({...parentInput, mood: e.target.value})}
+                                    />
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">What's on your mind?</label>
+                                    <textarea 
+                                        placeholder="Briefly describe your thoughts..."
+                                        className="w-full bg-slate-50 dark:bg-slate-800 border-none rounded-xl p-4 focus:ring-2 focus:ring-indigo-500 dark:text-white transition-all h-24"
+                                        value={parentInput.thoughts}
+                                        onChange={(e) => setParentInput({...parentInput, thoughts: e.target.value})}
+                                    />
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">The main problem/conflict?</label>
+                                    <input 
+                                        type="text"
+                                        placeholder="e.g. Screen time, academic pressure, chores..."
+                                        className="w-full bg-slate-50 dark:bg-slate-800 border-none rounded-xl p-4 focus:ring-2 focus:ring-indigo-500 dark:text-white transition-all"
+                                        value={parentInput.problem}
+                                        onChange={(e) => setParentInput({...parentInput, problem: e.target.value})}
+                                    />
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Child Input Card */}
+                        <div className="bg-white dark:bg-slate-900 rounded-3xl p-8 shadow-xl border border-slate-100 dark:border-slate-800">
+                            <div className="flex items-center gap-3 mb-6">
+                                <div className="p-3 bg-purple-100 dark:bg-purple-500/20 rounded-2xl text-purple-600 dark:text-purple-400">
+                                    <FiMessageCircle size={24} />
+                                </div>
+                                <h2 className="text-2xl font-bold dark:text-white">{child?.name}'s Perspective</h2>
+                            </div>
+                            
+                            <div className="space-y-4">
+                                <div>
+                                    <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Their likely mood?</label>
+                                    <input 
+                                        type="text"
+                                        placeholder="e.g. Defensive, sad, frustrated..."
+                                        className="w-full bg-slate-50 dark:bg-slate-800 border-none rounded-xl p-4 focus:ring-2 focus:ring-purple-500 dark:text-white transition-all"
+                                        value={childInput.mood}
+                                        onChange={(e) => setChildInput({...childInput, mood: e.target.value})}
+                                    />
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">What are they thinking?</label>
+                                    <textarea 
+                                        placeholder="From their perspective, what's going on?"
+                                        className="w-full bg-slate-50 dark:bg-slate-800 border-none rounded-xl p-4 focus:ring-2 focus:ring-purple-500 dark:text-white transition-all h-24"
+                                        value={childInput.thoughts}
+                                        onChange={(e) => setChildInput({...childInput, thoughts: e.target.value})}
+                                    />
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">The problem as they see it?</label>
+                                    <input 
+                                        type="text"
+                                        placeholder="e.g. Not being heard, lack of freedom..."
+                                        className="w-full bg-slate-50 dark:bg-slate-800 border-none rounded-xl p-4 focus:ring-2 focus:ring-purple-500 dark:text-white transition-all"
+                                        value={childInput.problem}
+                                        onChange={(e) => setChildInput({...childInput, problem: e.target.value})}
+                                    />
+                                </div>
+                            </div>
+                        </div>
+
+                        <div className="md:col-span-2 flex justify-center mt-4">
+                            <button 
+                                onClick={handleAnalyze}
+                                disabled={analyzing}
+                                className="px-12 py-5 bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-2xl font-bold text-xl shadow-2xl hover:scale-105 transition-all flex items-center gap-3 disabled:opacity-70 disabled:hover:scale-100"
+                            >
+                                {analyzing ? (
+                                    <>
+                                        <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-white"></div>
+                                        Analyzing Dynamics...
+                                    </>
+                                ) : (
+                                    <>
+                                        <FiZap className="text-yellow-300 text-2xl" />
+                                        Generate Intelligence Report
+                                    </>
+                                )}
+                            </button>
+                        </div>
+                    </div>
+                ) : (
+                    <div className="space-y-8 animate-in fade-in slide-in-from-bottom-5 duration-700">
+                        {/* Summary Header */}
+                        <div className="bg-gradient-to-r from-indigo-600 to-purple-700 rounded-3xl p-8 text-white shadow-2xl">
+                            <div className="flex flex-col md:flex-row justify-between items-center gap-6">
+                                <div>
+                                    <div className="flex items-center gap-2 mb-2">
+                                        <FiActivity className="text-indigo-200" />
+                                        <span className="uppercase tracking-widest text-xs font-bold text-indigo-100">Root Cause Identified</span>
+                                    </div>
+                                    <h3 className="text-3xl font-bold">{result.insights.root_cause}</h3>
+                                    <p className="text-indigo-100 mt-2 max-w-2xl">{result.insights.summary}</p>
+                                </div>
+                                <div className="flex flex-col md:flex-row gap-4">
+                                    <div className="bg-white/10 backdrop-blur-md rounded-2xl p-6 text-center border border-white/20 min-w-[140px]">
+                                        <div className="text-4xl font-black">{result.insights.alignment_score}%</div>
+                                        <div className="text-[10px] uppercase mt-1 text-indigo-200 font-bold tracking-tighter">Alignment</div>
+                                    </div>
+                                    <div className="bg-white/10 backdrop-blur-md rounded-2xl p-6 text-center border border-white/20 min-w-[140px]">
+                                        <div className="text-4xl font-black">{result.confidence_score}%</div>
+                                        <div className="text-[10px] uppercase mt-1 text-indigo-200 font-bold tracking-tighter">AI Confidence</div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Analysis Grid */}
+                        <div className="grid md:grid-cols-3 gap-6">
+                            <div className="bg-white dark:bg-slate-900 rounded-3xl p-6 shadow-lg border border-slate-100 dark:border-slate-800">
+                                <h4 className="text-slate-400 dark:text-slate-500 uppercase text-xs font-bold mb-4 flex items-center gap-2">
+                                    <FiInfo /> Communication Styles
+                                </h4>
+                                <div className="space-y-3">
+                                    <div className="flex justify-between items-center bg-slate-50 dark:bg-slate-800 p-3 rounded-xl">
+                                        <span className="text-xs dark:text-slate-300">Parent</span>
+                                        <span className="font-bold text-indigo-600 dark:text-indigo-400 text-sm capitalize">{result.insights.communication_styles.parent}</span>
+                                    </div>
+                                    <div className="flex justify-between items-center bg-slate-50 dark:bg-slate-800 p-3 rounded-xl">
+                                        <span className="text-xs dark:text-slate-300">Child</span>
+                                        <span className="font-bold text-purple-600 dark:text-purple-400 text-sm capitalize">{result.insights.communication_styles.child}</span>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div className="bg-white dark:bg-slate-900 rounded-3xl p-6 shadow-lg border border-slate-100 dark:border-slate-800">
+                                <h4 className="text-slate-400 dark:text-slate-500 uppercase text-xs font-bold mb-4 flex items-center gap-2">
+                                    <FiActivity /> Emotion Detection
+                                </h4>
+                                <div className="space-y-3">
+                                    <div className="bg-slate-50 dark:bg-slate-800 p-3 rounded-xl">
+                                        <div className="flex justify-between items-center mb-1">
+                                            <span className="text-[10px] font-bold text-slate-400 uppercase">Parent</span>
+                                            <span className={`text-[10px] font-bold px-2 py-0.5 rounded ${
+                                                result.emotion_analysis.parent.intensity === 'High' ? 'bg-red-100 text-red-600' : 
+                                                result.emotion_analysis.parent.intensity === 'Medium' ? 'bg-orange-100 text-orange-600' : 'bg-green-100 text-green-600'
+                                            }`}>
+                                                {result.emotion_analysis.parent.intensity}
+                                            </span>
+                                        </div>
+                                        <p className="font-bold text-indigo-600 dark:text-indigo-400 text-sm capitalize">{result.emotion_analysis.parent.emotion}</p>
+                                    </div>
+                                    <div className="bg-slate-50 dark:bg-slate-800 p-3 rounded-xl">
+                                        <div className="flex justify-between items-center mb-1">
+                                            <span className="text-[10px] font-bold text-slate-400 uppercase">Child</span>
+                                            <span className={`text-[10px] font-bold px-2 py-0.5 rounded ${
+                                                result.emotion_analysis.child.intensity === 'High' ? 'bg-red-100 text-red-600' : 
+                                                result.emotion_analysis.child.intensity === 'Medium' ? 'bg-orange-100 text-orange-600' : 'bg-green-100 text-green-600'
+                                            }`}>
+                                                {result.emotion_analysis.child.intensity}
+                                            </span>
+                                        </div>
+                                        <p className="font-bold text-purple-600 dark:text-purple-400 text-sm capitalize">{result.emotion_analysis.child.emotion}</p>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div className="bg-white dark:bg-slate-900 rounded-3xl p-6 shadow-lg border border-slate-100 dark:border-slate-800">
+                                <h4 className="text-slate-400 dark:text-slate-500 uppercase text-xs font-bold mb-4 flex items-center gap-2">
+                                    <FiAlertCircle /> The Mismatch
+                                </h4>
+                                <p className="text-slate-700 dark:text-slate-300 italic text-sm leading-relaxed">
+                                    "{result.insights.mismatch}"
+                                </p>
+                            </div>
+                        </div>
+
+                        {/* Separate Guidance */}
+                        <div className="grid md:grid-cols-2 gap-8">
+                            {/* For Parent */}
+                            <div className="bg-indigo-50 dark:bg-indigo-500/5 rounded-3xl p-8 border border-indigo-100 dark:border-indigo-500/10">
+                                <div className="flex items-center gap-3 mb-6">
+                                    <div className="p-2 bg-indigo-600 rounded-lg text-white font-bold text-sm">PARA</div>
+                                    <h3 className="text-2xl font-bold dark:text-white">Guidance for Parent</h3>
+                                </div>
+                                <div className="space-y-6">
+                                    <div>
+                                        <p className="text-xs font-bold uppercase text-indigo-500 dark:text-indigo-400 mb-1">Heart of the Matter</p>
+                                        <p className="text-slate-700 dark:text-slate-300">{result.parent_guidance.child_feelings}</p>
+                                    </div>
+                                    <div className="bg-white dark:bg-slate-900 rounded-2xl p-4 border-l-4 border-red-500">
+                                        <p className="text-xs font-bold uppercase text-red-500 mb-1 flex items-center gap-1"><FiAlertCircle /> What NOT to say</p>
+                                        <p className="text-slate-600 dark:text-slate-400 text-sm font-medium">"{result.parent_guidance.avoid}"</p>
+                                    </div>
+                                    <div className="bg-white dark:bg-slate-900 rounded-2xl p-4 border-l-4 border-green-500">
+                                        <p className="text-xs font-bold uppercase text-green-500 mb-1 flex items-center gap-1"><FiTarget /> What TO say</p>
+                                        <p className="text-indigo-600 dark:text-indigo-400 font-bold leading-relaxed">{result.parent_guidance.say_this}</p>
+                                    </div>
+                                    <div className="flex gap-4">
+                                        <div className="flex-1">
+                                            <p className="text-xs font-bold uppercase text-indigo-500 dark:text-indigo-400 mb-1 flex items-center gap-1"><FiMessageCircle /> Tone</p>
+                                            <p className="text-sm dark:text-slate-300">{result.parent_guidance.tone}</p>
+                                        </div>
+                                        <div className="flex-1">
+                                            <p className="text-xs font-bold uppercase text-indigo-500 dark:text-indigo-400 mb-1 flex items-center gap-1"><FiClock /> Best Timing</p>
+                                            <p className="text-sm dark:text-slate-300">{result.parent_guidance.timing}</p>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* For Child */}
+                            <div className="bg-purple-50 dark:bg-purple-500/5 rounded-3xl p-8 border border-purple-100 dark:border-purple-500/10">
+                                <div className="flex items-center gap-3 mb-6">
+                                    <div className="p-2 bg-purple-600 rounded-lg text-white font-bold text-sm">KID</div>
+                                    <h3 className="text-2xl font-bold dark:text-white">Guidance for {child?.name}</h3>
+                                </div>
+                                <div className="space-y-6">
+                                    <div>
+                                        <p className="text-xs font-bold uppercase text-purple-500 dark:text-purple-400 mb-1">What your Parent means</p>
+                                        <p className="text-slate-700 dark:text-slate-300">{result.child_guidance.parent_intent}</p>
+                                    </div>
+                                    <div className="bg-white dark:bg-slate-900 rounded-2xl p-4 border-l-4 border-red-500">
+                                        <p className="text-xs font-bold uppercase text-red-500 mb-1 flex items-center gap-1"><FiAlertCircle /> What NOT to say</p>
+                                        <p className="text-slate-600 dark:text-slate-400 text-sm font-medium">"{result.child_guidance.avoid}"</p>
+                                    </div>
+                                    <div className="bg-white dark:bg-slate-900 rounded-2xl p-4 border-l-4 border-green-500">
+                                        <p className="text-xs font-bold uppercase text-green-500 mb-1 flex items-center gap-1"><FiTarget /> What TO say</p>
+                                        <p className="text-purple-600 dark:text-purple-400 font-bold leading-relaxed">{result.child_guidance.say_this}</p>
+                                    </div>
+                                    <div className="flex gap-4">
+                                        <div className="flex-1">
+                                            <p className="text-xs font-bold uppercase text-purple-500 dark:text-purple-400 mb-1 flex items-center gap-1"><FiMessageCircle /> Approach</p>
+                                            <p className="text-sm dark:text-slate-300">{result.child_guidance.approach}</p>
+                                        </div>
+                                        <div className="flex-1">
+                                            <p className="text-xs font-bold uppercase text-purple-500 dark:text-purple-400 mb-1 flex items-center gap-1"><FiClock /> Best Timing</p>
+                                            <p className="text-sm dark:text-slate-300">{result.child_guidance.timing}</p>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Conversation Preview */}
+                        <div className="bg-white dark:bg-slate-900 rounded-3xl p-8 shadow-xl border border-slate-100 dark:border-slate-800">
+                            <h3 className="text-2xl font-bold mb-6 flex items-center gap-2 dark:text-white">
+                                <FiMessageCircle className="text-indigo-500" /> Ideal Conversation Preview
+                            </h3>
+                            <div className="space-y-4 max-w-3xl mx-auto">
+                                {result.conversation_preview.map((msg, idx) => (
+                                    <div key={idx} className={`flex ${msg.parent ? 'justify-start' : 'justify-end'}`}>
+                                        <div className={`max-w-[80%] p-4 rounded-2xl shadow-sm ${
+                                            msg.parent 
+                                            ? 'bg-indigo-50 dark:bg-indigo-500/10 text-slate-800 dark:text-slate-200 rounded-tl-none border border-indigo-100 dark:border-indigo-500/20' 
+                                            : 'bg-purple-600 text-white rounded-tr-none shadow-purple-500/20'
+                                        }`}>
+                                            <p className="text-xs font-bold uppercase opacity-60 mb-1">{msg.parent ? 'Parent' : child?.name}</p>
+                                            <p className="text-lg leading-snug">{msg.parent || msg.child}</p>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+
+                        {/* Action Suggestions */}
+                        <div className="bg-slate-900 dark:bg-black rounded-3xl p-8 text-white">
+                            <h3 className="text-2xl font-bold mb-6 flex items-center gap-2">
+                                <FiCheckCircle className="text-green-400" /> Actionable Next Steps
+                            </h3>
+                            <div className="grid md:grid-cols-2 gap-4">
+                                {result.actions.map((action, idx) => (
+                                    <div key={idx} className="bg-white/5 border border-white/10 p-5 rounded-2xl flex items-start gap-4">
+                                        <div className="bg-indigo-500 h-8 w-8 rounded-full flex-shrink-0 flex items-center justify-center font-bold">{idx + 1}</div>
+                                        <p className="text-lg text-slate-200">{action}</p>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+
+                        <div className="flex justify-center pb-12">
+                            <button 
+                                onClick={() => setResult(null)}
+                                className="px-8 py-3 border-2 border-slate-200 dark:border-slate-800 rounded-xl text-slate-500 dark:text-slate-400 font-bold hover:bg-slate-100 dark:hover:bg-slate-800 transition-all"
+                            >
+                                Start New Analysis
+                            </button>
+                        </div>
+                    </div>
+                )}
+            </div>
+        </div>
+    );
+};
+
+export default RelationshipIntelligencePage;
+
 
 
 ================================================

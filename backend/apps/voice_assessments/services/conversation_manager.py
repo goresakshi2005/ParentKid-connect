@@ -62,7 +62,7 @@ def get_initial_question():
 
 def process_response_and_get_next(audio_path, vocal_features, history, current_turn):
     # Transcribe using Gemini
-    model = genai.GenerativeModel('gemini-2.5-flash')
+    model = genai.GenerativeModel('gemini-3-flash-preview')
     # For transcription, we can use a simple prompt
     audio_file = genai.upload_file(audio_path, mime_type="audio/webm")
     transcript_response = model.generate_content(
@@ -125,7 +125,7 @@ def compute_final_report(conversation_history):
         vf = entry.get('vocal_features', {})
         history_str += f"Turn {idx}:\nQuestion: {entry['question']}\nAnswer: {entry['answer_text']}\nVocal features: pitch={vf.get('pitch_mean',0)}Hz, rate={vf.get('speaking_rate',0)} wps, energy={vf.get('energy_mean',0)}, hesitation={vf.get('hesitation_ratio',0)}\n\n"
 
-    model = genai.GenerativeModel('gemini-2.5-flash')
+    model = genai.GenerativeModel('gemini-3-flash-preview')
     prompt = FINAL_SCORING_PROMPT.format(history=history_str)
     response = model.generate_content(prompt)
     raw = response.text.strip()

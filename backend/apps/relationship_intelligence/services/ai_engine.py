@@ -146,7 +146,7 @@ class RelationshipIntelligenceEngine:
         """
         
         try:
-            model = genai.GenerativeModel('gemini-2.5-flash')
+            model = genai.GenerativeModel('gemini-3-flash-preview')
             response = model.generate_content(prompt)
             
             if not response or not response.text:

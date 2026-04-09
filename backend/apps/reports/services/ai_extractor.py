@@ -34,7 +34,7 @@ def extract_appointment_from_text(report_text: str) -> dict:
     Sends report text to Gemini and extracts appointment details.
     Returns a dict: { date, time, doctor }
     """
-    model = genai.GenerativeModel("gemini-2.5-flash")  # ✅ updated model name
+    model = genai.GenerativeModel("gemini-3-flash-preview")  # ✅ updated model name
 
     prompt = EXTRACTION_PROMPT.format(report_text=report_text[:4000])
 
