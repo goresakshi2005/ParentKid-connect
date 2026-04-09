@@ -191,6 +191,28 @@ export default function RelationshipIntelligencePage() {
                                     <p className="italic text-gray-600 dark:text-gray-300">"{recommendation.conversation_prompts[0]}"</p>
                                 </div>
                             )}
+                            
+                            {recommendation.parent_micro_tip && (
+                                <div className="bg-blue-50/50 dark:bg-blue-900/20 p-4 rounded-xl border border-blue-100 dark:border-blue-800/50">
+                                    <h4 className="text-xs font-bold text-blue-600 dark:text-blue-400 uppercase tracking-wider mb-2 flex items-center gap-1">
+                                        <FiStar className="w-3 h-3" /> Micro-Tip
+                                    </h4>
+                                    <p className="text-sm text-gray-700 dark:text-gray-300 font-medium">
+                                        {recommendation.parent_micro_tip}
+                                    </p>
+                                </div>
+                            )}
+
+                            {recommendation.escalation_alert && (
+                                <div className="bg-red-50/50 dark:bg-red-900/20 p-4 rounded-xl border border-red-200 dark:border-red-800/50">
+                                    <h4 className="text-xs font-bold text-red-600 dark:text-red-400 uppercase tracking-wider mb-2">
+                                        Important Notice
+                                    </h4>
+                                    <p className="text-sm text-red-800 dark:text-red-200 font-medium">
+                                        {recommendation.escalation_alert}
+                                    </p>
+                                </div>
+                            )}
                         </div>
                     ) : (
                         <div className="py-8 text-center text-gray-500">
