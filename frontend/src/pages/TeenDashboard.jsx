@@ -21,6 +21,7 @@ import {
     updateTaskStatus,
     deleteTask,
 } from '../services/studyPlannerService';
+import TeenMoodCheckin from '../components/Relationship/TeenMoodCheckin';  // <-- NEW
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
@@ -91,9 +92,6 @@ function GoogleCalendarBanner({ connected, onConnect, connecting }) {
 }
 
 // ─── Multi-task preview card ────────────────────────────────────────────────
-//
-// Shows all tasks parsed from one voice/text input so the teen can review them
-// before confirming. Each task is shown as its own compact card inside the list.
 
 function MultiTaskPreview({ tasks, onConfirm, onDiscard, saving }) {
     if (!tasks || tasks.length === 0) return null;
@@ -113,7 +111,6 @@ function MultiTaskPreview({ tasks, onConfirm, onDiscard, saving }) {
                         key={idx}
                         className="p-3 bg-violet-50 dark:bg-violet-900/10 border border-violet-100 dark:border-violet-800/30 rounded-xl"
                     >
-                        {/* Task number badge */}
                         <div className="flex items-center gap-2 mb-2">
                             <span className="w-5 h-5 rounded-full bg-violet-600 text-white text-xs flex items-center justify-center font-bold flex-shrink-0">
                                 {idx + 1}
@@ -177,7 +174,6 @@ function StudyPlanner() {
     const [isListening, setIsListening]   = useState(false);
     const [parsing, setParsing]           = useState(false);
     const [saving, setSaving]             = useState(false);
-    // previews is now ALWAYS an array of task dicts (or null)
     const [previews, setPreviews]         = useState(null);
     const [feedback, setFeedback]         = useState(null);
     const [clarify, setClarify]           = useState(false);
@@ -198,8 +194,6 @@ function StudyPlanner() {
     useEffect(() => {
         fetchTasks(activeTab);
     }, [activeTab, fetchTasks]);
-
-    // ── voice input ──────────────────────────────────────────────────────────
 
     const startListening = () => {
         const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
@@ -226,8 +220,6 @@ function StudyPlanner() {
         setIsListening(false);
     };
 
-    // ── preview (parse only, no save) ────────────────────────────────────────
-
     const handleParse = async () => {
         if (!voiceText.trim()) return;
         setParsing(true);
@@ -240,7 +232,6 @@ function StudyPlanner() {
                 setClarify(true);
                 setFeedback({ type: 'warn', message: data.question });
             } else {
-                // data.parsed is always an array now
                 setPreviews(data.parsed);
             }
         } catch {
@@ -249,8 +240,6 @@ function StudyPlanner() {
             setParsing(false);
         }
     };
-
-    // ── confirm & save all tasks ─────────────────────────────────────────────
 
     const handleConfirmSave = async () => {
         if (!voiceText.trim()) return;
@@ -264,7 +253,6 @@ function StudyPlanner() {
                 return;
             }
 
-            // Build success message
             const count = data.count ?? 0;
             const skipped = data.skipped_duplicates ?? [];
             let msg = '';
@@ -291,8 +279,6 @@ function StudyPlanner() {
         }
     };
 
-    // ── task status / delete ─────────────────────────────────────────────────
-
     const toggleStatus = async (task) => {
         const next = task.status === 'Pending' ? 'Completed' : 'Pending';
         try {
@@ -312,8 +298,6 @@ function StudyPlanner() {
             setFeedback({ type: 'error', message: 'Delete failed.' });
         }
     };
-
-    // ── UI ───────────────────────────────────────────────────────────────────
 
     const TABS = [
         { key: 'upcoming',  label: '📅 Upcoming' },
@@ -337,7 +321,6 @@ function StudyPlanner() {
                 <span className="text-xs text-gray-400 dark:text-slate-500">AI-powered scheduler</span>
             </div>
 
-            {/* ── Voice / Text Input ─────────────────────────────────────── */}
             <div className="mb-6 p-5 bg-violet-50 dark:bg-violet-900/10 border border-violet-200 dark:border-violet-800/40 rounded-2xl">
                 <p className="text-sm font-semibold text-violet-700 dark:text-violet-300 mb-1">
                     🎤 Speak or type one or more tasks
@@ -388,7 +371,6 @@ function StudyPlanner() {
                 </div>
             </div>
 
-            {/* ── Feedback banner ─────────────────────────────────────────── */}
             {feedback && (
                 <div className={`mb-4 p-3 rounded-xl border text-sm font-medium ${feedbackStyle[feedback.type]}`}>
                     {feedback.message}
@@ -396,7 +378,6 @@ function StudyPlanner() {
                 </div>
             )}
 
-            {/* ── Multi-task Preview ──────────────────────────────────────── */}
             {previews && previews.length > 0 && (
                 <MultiTaskPreview
                     tasks={previews}
@@ -406,7 +387,6 @@ function StudyPlanner() {
                 />
             )}
 
-            {/* ── Tabs ────────────────────────────────────────────────────── */}
             <div className="flex gap-2 mb-5 border-b border-gray-100 dark:border-slate-800 pb-3">
                 {TABS.map((t) => (
                     <button
@@ -421,7 +401,6 @@ function StudyPlanner() {
                         {t.label}
                     </button>
                 ))}
-                {/* Task count badge */}
                 {!loading && (
                     <span className="ml-auto self-center text-xs text-gray-400 dark:text-slate-500">
                         {tasks.length} task{tasks.length !== 1 ? 's' : ''}
@@ -429,7 +408,6 @@ function StudyPlanner() {
                 )}
             </div>
 
-            {/* ── Task List ───────────────────────────────────────────────── */}
             {loading ? (
                 <div className="text-center py-8 text-gray-400 text-sm">Loading…</div>
             ) : tasks.length === 0 ? (
@@ -448,7 +426,6 @@ function StudyPlanner() {
                                     : 'bg-white dark:bg-slate-800 border-gray-100 dark:border-slate-700 hover:shadow-md'
                             }`}
                         >
-                            {/* Status toggle */}
                             <button
                                 onClick={() => toggleStatus(task)}
                                 title="Toggle status"
@@ -470,7 +447,6 @@ function StudyPlanner() {
                                     </span>
                                     <Badge text={task.priority} color={PRIORITY_COLORS[task.priority]} />
                                     <Badge text={task.task_type} color="bg-violet-100 text-violet-700 dark:bg-violet-900/30 dark:text-violet-300" />
-                                    {/* Google Calendar sync indicator */}
                                     {task.google_calendar_event_id && (
                                         <span className="text-xs text-blue-600 dark:text-blue-400" title="Synced to Google Calendar">📅✓</span>
                                     )}
@@ -513,7 +489,6 @@ export default function TeenDashboard() {
     const [showCareerDiscovery, setShowCareerDiscovery] = useState(false);
     const [showCareerHistory, setShowCareerHistory] = useState(false);
 
-    // Google Calendar connection state
     const [googleConnected, setGoogleConnected]   = useState(null);
     const [connectingGoogle, setConnectingGoogle] = useState(false);
 
@@ -620,6 +595,9 @@ export default function TeenDashboard() {
                 Your Growth <span className="dark:text-pink-500 text-blue-600">Dashboard</span>
             </h1>
 
+            {/* ─── NEW: Mood Check‑In for Teens ───────────────────────────────── */}
+            <TeenMoodCheckin childId={user.id} />
+
             {/* Google Calendar banner */}
             {googleConnected !== null && (
                 <GoogleCalendarBanner
@@ -636,7 +614,7 @@ export default function TeenDashboard() {
                 />
             )}
 
-            {/* Study Planner (always visible) */}
+            {/* Study Planner */}
             <StudyPlanner />
 
             {/* Career Discovery Journey */}

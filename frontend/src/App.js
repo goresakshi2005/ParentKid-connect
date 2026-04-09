@@ -16,6 +16,7 @@ import ParentRouter from './components/ParentRouter';
 import GoogleCallback from './pages/GoogleCallback';
 import VoiceAssessmentPage from './pages/VoiceAssessmentPage';
 import MentorChatPageWrapper from './pages/MentorChatPageWrapper';
+import RelationshipDashboard from './pages/RelationshipDashboard';   // <-- NEW
 import { useAuth } from './context/AuthContext';
 
 import ScreenTimePage from './pages/ScreenTimePage';
@@ -42,7 +43,7 @@ function App() {
           <Route path="/signup/teen" element={<SignupTeen />} />
           <Route path="/google-callback" element={<GoogleCallback />} />
 
-          {/* NEW: Voice Assessment page */}
+          {/* Voice Assessment page */}
           <Route
             path="/voice-assessment"
             element={
@@ -52,6 +53,7 @@ function App() {
             }
           />
 
+          {/* Parent dashboards */}
           <Route
             path="/dashboard/parent"
             element={
@@ -70,6 +72,7 @@ function App() {
             }
           />
 
+          {/* Teen dashboard */}
           <Route
             path="/dashboard/teen"
             element={
@@ -79,7 +82,7 @@ function App() {
             }
           />
 
-          {/* Mentor Chat — accessible to parents, teens, and mentors */}
+          {/* Mentor Chat routes */}
           <Route
             path="/mentor-chat"
             element={
@@ -105,6 +108,17 @@ function App() {
             }
           />
 
+          {/* NEW: Relationship Intelligence Dashboard */}
+          <Route
+            path="/relationship"
+            element={
+              <AuthGuard role="parent">
+                <RelationshipDashboard />
+              </AuthGuard>
+            }
+          />
+
+          {/* Fallback routes */}
           <Route path="/dashboard" element={<Navigate to="/" />} />
           <Route path="*" element={<NotFound />} />
         </Routes>

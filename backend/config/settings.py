@@ -31,6 +31,7 @@ INSTALLED_APPS = [
     'apps.study_planner',
     'apps.mentorship',
     'apps.screen_monitor',
+    'apps.relationship_intelligence',
 ]
 
 MIDDLEWARE = [

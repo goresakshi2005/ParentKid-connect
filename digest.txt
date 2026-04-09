@@ -42,6 +42,7 @@ Directory structure:
     │   │   │       ├── 0003_initial.py
     │   │   │       ├── 0004_assessment_tier.py
     │   │   │       ├── 0005_careerdiscoveryresult.py
+    │   │   │       ├── 0006_careerdiscoveryresult_task.py
     │   │   │       └── __init__.py
     │   │   ├── children/
     │   │   │   ├── __init__.py
@@ -1062,6 +1063,7 @@ class CareerDiscoveryResult(models.Model):
     best_career_title = models.CharField(max_length=200)
     best_career_emoji = models.CharField(max_length=10, blank=True)
     best_career_why = models.TextField(blank=True)
+    task = models.TextField(blank=True)
     
     alternatives = models.JSONField(default=list)
     
@@ -1079,6 +1081,7 @@ class CareerDiscoveryResult(models.Model):
 ================================================
 FILE: backend/apps/assessments/scoring.py
 ================================================
+import json
 import google.generativeai as genai
 from django.conf import settings
 
@@ -1284,6 +1287,54 @@ Keep it brief, practical, and encouraging.
             'recommendations': recommendations,
         }
 
+class CareerDiscoveryEngine:
+    @staticmethod
+    def generate_career_path(trait_labels, scores):
+        try:
+            prompt = f"""
+You are an advanced AI career discovery engine designed specifically for teenagers.
+Your goal is to analyze a teenager's personality traits and scores and recommend the most suitable career path from ALL POSSIBLE FIELDS in the real world.
+You MUST follow a deep exploration approach, not shallow suggestions.
+
+INPUT:
+* Trait labels: {trait_labels}
+* Trait scores: {scores}
+
+STEP 1: TRAIT ANALYSIS
+* Identify top 4 dominant traits
+* Identify hidden/secondary traits
+* Understand personality pattern (analytical, creative, social, practical, etc.)
+
+STEP 2: BROAD DOMAIN MAPPING
+* Map traits to ALL possible domains
+
+STEP 3: Niche Career Identification
+* Find specific real-world roles.
+
+Important: Return ONLY a valid JSON object matching this schema exactly, and nothing else (no markdown wrappers like ```json ... ```, just the raw JSON object string):
+{{
+    "best_career_title": "string",
+    "best_career_emoji": "emoji string",
+    "best_career_why": "string explaining why based on traits",
+    "task": "A Try-It-Now Challenge string to let the teen practically try out the career",
+    "alternatives": ["emoji string 1", "emoji string 2", "emoji string 3"]
+}}
+"""
+            model = genai.GenerativeModel('gemini-2.5-flash')
+            response = model.generate_content(prompt)
+            # Remove any markdown formatting if present
+            response_text = response.text.strip()
+            if response_text.startswith("```json"):
+                response_text = response_text[7:]
+            if response_text.endswith("```"):
+                response_text = response_text[:-3]
+            
+            return json.loads(response_text)
+            
+        except Exception as e:
+            print(f"Error generating career recommendations: {str(e)}")
+            return None
+
 
 ================================================
 FILE: backend/apps/assessments/serializers.py
@@ -1318,7 +1369,7 @@ class CareerDiscoveryResultSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'user', 'child', 'child_details',
             'trait_labels', 'scores', 'best_career_title', 
-            'best_career_emoji', 'best_career_why', 'alternatives',
+            'best_career_emoji', 'best_career_why', 'task', 'alternatives',
             'created_at', 'updated_at'
         ]
 
@@ -1514,15 +1565,36 @@ class CareerDiscoveryViewSet(viewsets.ModelViewSet):
             except Child.DoesNotExist:
                 return Response({'error': 'Child not found'}, status=404)
                 
+        best_career_title = data.get('best_career_title', '')
+        best_career_emoji = data.get('best_career_emoji', '')
+        best_career_why = data.get('best_career_why', '')
+        task = ''
+        alternatives = data.get('alternatives', [])
+        
+        # Call AI if not fully provided (or force AI generation)
+        if not best_career_title or not best_career_why:
+            from .scoring import CareerDiscoveryEngine
+            ai_results = CareerDiscoveryEngine.generate_career_path(
+                trait_labels=data.get('trait_labels', []),
+                scores=data.get('scores', {})
+            )
+            if ai_results:
+                best_career_title = ai_results.get('best_career_title', best_career_title)
+                best_career_emoji = ai_results.get('best_career_emoji', best_career_emoji)
+                best_career_why = ai_results.get('best_career_why', best_career_why)
+                task = ai_results.get('task', '')
+                alternatives = ai_results.get('alternatives', alternatives)
+
         result = CareerDiscoveryResult.objects.create(
             user=user,
             child=child,
             trait_labels=data.get('trait_labels', []),
             scores=data.get('scores', {}),
-            best_career_title=data.get('best_career_title', ''),
-            best_career_emoji=data.get('best_career_emoji', ''),
-            best_career_why=data.get('best_career_why', ''),
-            alternatives=data.get('alternatives', [])
+            best_career_title=best_career_title,
+            best_career_emoji=best_career_emoji,
+            best_career_why=best_career_why,
+            task=task,
+            alternatives=alternatives
         )
         
         serializer = self.get_serializer(result)
@@ -2057,6 +2129,30 @@ class Migration(migrations.Migration):
             options={
                 'ordering': ['-created_at'],
             },
+        ),
+    ]
+
+
+
+================================================
+FILE: backend/apps/assessments/migrations/0006_careerdiscoveryresult_task.py
+================================================
+# Generated by Django 4.2 on 2026-04-08 05:00
+
+from django.db import migrations, models
+
+
+class Migration(migrations.Migration):
+
+    dependencies = [
+        ('assessments', '0005_careerdiscoveryresult'),
+    ]
+
+    operations = [
+        migrations.AddField(
+            model_name='careerdiscoveryresult',
+            name='task',
+            field=models.TextField(blank=True),
         ),
     ]
 
@@ -13437,6 +13533,7 @@ export default function CareerDiscovery({ onBack }) {
   const [stage, setStage] = useState('hook');
   const [animKey, setAnimKey] = useState(0);
   const [scores, setScores] = useState({});
+  const [apiResult, setApiResult] = useState(null);
 
   // Stage-specific state
   const [selectedWorlds, setSelectedWorlds] = useState([]);
@@ -13546,28 +13643,39 @@ export default function CareerDiscovery({ onBack }) {
   const handleShowResult = async () => {
     setAnalyzing(true);
     
-    // Pre-calculate to save to backend
+    // Pre-calculate fallback to save to backend
     const computedResults = getBestCareer(scores, realityAnswers);
+    let finalBest = computedResults.best;
+    let finalAlts = (computedResults.alternatives || []).map(a => `${a.emoji} ${a.title}`);
     
     try {
-      await saveCareerDiscoveryResult({
+      const resp = await saveCareerDiscoveryResult({
         trait_labels: traitLabels,
         scores: scores,
-        best_career_title: computedResults.best?.title || '',
-        best_career_emoji: computedResults.best?.emoji || '',
-        best_career_why: computedResults.best?.why || '',
-        alternatives: (computedResults.alternatives || []).map(a => `${a.emoji} ${a.title}`)
+        best_career_title: '',
+        best_career_emoji: '',
+        best_career_why: '',
+        alternatives: []
       });
+      const data = resp.data || resp;
+      if (data && data.best_career_title) {
+        finalBest = {
+          title: data.best_career_title,
+          emoji: data.best_career_emoji,
+          why: data.best_career_why,
+          task: data.task || "Start exploring this field today with a small project!"
+        };
+        finalAlts = data.alternatives || [];
+      }
     } catch (error) {
-      console.error("Failed to save career discovery results to backend:", error);
+      console.error("Failed to save/get AI career discovery results:", error);
     }
 
-    setTimeout(() => {
-      setAnalyzing(false);
-      setShowConfetti(true);
-      goStage('result');
-      setTimeout(() => setShowConfetti(false), 4000);
-    }, 2500);
+    setApiResult({ best: finalBest, alternatives: finalAlts });
+    setAnalyzing(false);
+    setShowConfetti(true);
+    goStage('result');
+    setTimeout(() => setShowConfetti(false), 4000);
   };
 
   // ── Render helpers ────────────────────────────────────────────────────
@@ -13875,29 +13983,29 @@ export default function CareerDiscovery({ onBack }) {
         )}
 
         {/* ═══════════ STAGE 8: FINAL RESULT ═══════════ */}
-        {stage === 'result' && bestCareer && (
+        {stage === 'result' && apiResult?.best && (
           <div className="cd-stage-enter cd-result" key={`result-${animKey}`}>
             <div className="cd-result-trophy">🏆</div>
             <div className="cd-result-title-label">🎯 Your Best Career Match</div>
             <h2 className="cd-result-career">
-              {bestCareer.emoji} {bestCareer.title}
+              {apiResult.best.emoji} {apiResult.best.title}
             </h2>
 
             <div className="cd-result-why">
               <div className="cd-result-why-label">💡 Why This Fits You</div>
-              <p className="cd-result-why-text">{bestCareer.why}</p>
+              <p className="cd-result-why-text">{apiResult.best.why}</p>
             </div>
 
-            {alternatives.length > 0 && (
+            {apiResult.alternatives?.length > 0 && (
               <div className="cd-result-alternatives">
                 <div className="cd-result-alt-label">🔁 Alternative Paths</div>
                 <div className="cd-result-alt-list">
-                  {alternatives.map((alt, i) => (
+                  {apiResult.alternatives.map((alt, i) => (
                     <span className="cd-result-alt-tag" key={i}>
-                      {alt.emoji} {alt.title}
+                      {alt}
                     </span>
                   ))}
-                  {bestCareer.alts.map((a, i) => (
+                  {apiResult.best.alts?.map((a, i) => (
                     <span className="cd-result-alt-tag" key={`sub-${i}`}>✦ {a}</span>
                   ))}
                 </div>
@@ -13906,7 +14014,7 @@ export default function CareerDiscovery({ onBack }) {
 
             <div className="cd-result-bonus">
               <div className="cd-result-bonus-label">🎁 Try-It-Now Challenge</div>
-              <p className="cd-result-bonus-text">{bestCareer.task}</p>
+              <p className="cd-result-bonus-text">{apiResult.best.task}</p>
             </div>
 
             <div className="cd-result-actions">
@@ -13917,6 +14025,7 @@ export default function CareerDiscovery({ onBack }) {
                 className="cd-btn-secondary"
                 onClick={() => {
                   setStage('hook');
+                  setApiResult(null);
                   setScores({});
                   setSelectedWorlds([]);
                   setRfIndex(0);
@@ -14787,7 +14896,7 @@ import AssessmentView from '../components/Parent/AssessmentView';
 import ChildSelfAssessment from '../components/Child/ChildSelfAssessment';
 import ResultsDisplay from '../components/Assessment/ResultsDisplay';
 import Loading from '../components/Common/Loading';
-import { getCareerDiscoveryResults } from '../services/assessmentService';
+import { getCareerDiscoveryResults, deleteCareerDiscoveryResult } from '../services/assessmentService';
 
 function ParentDashboard() {
     const { token } = useAuth();
@@ -14798,6 +14907,7 @@ function ParentDashboard() {
     const [parentResult, setParentResult] = useState(null);
     const [showParentResult, setShowParentResult] = useState(false);
     const [careerResults, setCareerResults] = useState([]);
+    const [showCareerHistory, setShowCareerHistory] = useState(false);
 
     useEffect(() => {
         fetchChildren();
@@ -14842,6 +14952,16 @@ function ParentDashboard() {
     const handleTakeChildSelfAssessment = (childId) => setTakingChildSelfAssessment(childId);
     const handleChildAssessmentComplete = () => fetchChildren();
     const handleCloseChildAssessment = () => setTakingChildSelfAssessment(null);
+
+    const handleDeleteCareerResult = async (id) => {
+        if (!window.confirm('Delete this teen career discovery result?')) return;
+        try {
+            await deleteCareerDiscoveryResult(id);
+            setCareerResults((prev) => prev.filter(r => r.id !== id));
+        } catch (error) {
+            alert('Failed to delete career result.');
+        }
+    };
 
     const handleParentAssessmentComplete = (resultData) => {
         setParentResult(resultData);
@@ -14984,22 +15104,41 @@ function ParentDashboard() {
             {/* Career Discovery Insights for Teens */}
             {careerResults && careerResults.length > 0 && (
                 <div className="mt-12 mb-10">
-                    <h2 className="text-2xl font-bold mb-6 dark:text-white flex items-center gap-2">
-                        <span className="p-2 bg-violet-500/10 rounded-lg text-violet-500">🚀</span>
-                        Teen Career Discoveries
-                    </h2>
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                    <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4 mb-6">
+                        <h2 className="text-2xl font-bold dark:text-white flex items-center gap-2">
+                            <span className="p-2 bg-violet-500/10 rounded-lg text-violet-500">🚀</span>
+                            Teen Career Discoveries
+                        </h2>
+                        <button
+                            onClick={() => setShowCareerHistory(!showCareerHistory)}
+                            className="px-6 py-3 bg-violet-600 text-white rounded-xl font-bold hover:bg-violet-700 shadow-lg transition-all flex items-center gap-2 text-sm"
+                        >
+                            {showCareerHistory ? "Hide Career Discoveries" : "View Previous Career Discoveries"}
+                        </button>
+                    </div>
+                    
+                    {showCareerHistory && (
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                         {careerResults.map((cres, idx) => {
                             const childName = cres.child_details?.name || 'Teen';
                             return (
                                 <div key={cres.id || idx} className="p-6 bg-gradient-to-br from-violet-50 to-fuchsia-50 dark:from-slate-800 dark:to-slate-900 rounded-2xl border border-violet-100 dark:border-slate-700 shadow-sm transition hover:shadow-md">
                                     <div className="flex justify-between items-start mb-4">
-                                        <span className="px-3 py-1 bg-violet-600 text-white rounded-full text-xs font-bold shadow-sm">
-                                            {childName}
-                                        </span>
-                                        <span className="text-xs text-gray-500 dark:text-gray-400 font-medium">
-                                            {new Date(cres.created_at).toLocaleDateString()}
-                                        </span>
+                                        <div className="flex items-center flex-wrap gap-2">
+                                            <span className="px-3 py-1 bg-violet-600 text-white rounded-full text-xs font-bold shadow-sm">
+                                                {childName}
+                                            </span>
+                                            <span className="text-xs text-gray-500 dark:text-gray-400 font-medium">
+                                                {new Date(cres.created_at).toLocaleDateString()}
+                                            </span>
+                                        </div>
+                                        <button
+                                            onClick={() => handleDeleteCareerResult(cres.id)}
+                                            title="Delete"
+                                            className="text-gray-400 hover:text-red-500 transition"
+                                        >
+                                            🗑
+                                        </button>
                                     </div>
                                     <h3 className="text-xl font-black text-gray-800 dark:text-white mb-2 leading-tight">
                                         {cres.best_career_emoji} {cres.best_career_title}
@@ -15021,7 +15160,8 @@ function ParentDashboard() {
                                 </div>
                             );
                         })}
-                    </div>
+                        </div>
+                    )}
                 </div>
             )}
         </div>
@@ -15747,7 +15887,7 @@ import { useAuth } from '../context/AuthContext';
 import { useSubscription } from '../context/SubscriptionContext';
 import AssessmentPrompt from '../components/Teen/AssessmentPrompt';
 import CareerDiscovery from '../components/Teen/CareerDiscovery';
-import { getCareerDiscoveryResults } from '../services/assessmentService';
+import { getCareerDiscoveryResults, deleteCareerDiscoveryResult } from '../services/assessmentService';
 import api from '../services/api';
 import {
     parseVoiceText,
@@ -16246,6 +16386,7 @@ export default function TeenDashboard() {
     const [takingAssessment, setTakingAssessment]       = useState(false);
     const [showAssessmentPrompt, setShowAssessmentPrompt] = useState(false);
     const [showCareerDiscovery, setShowCareerDiscovery] = useState(false);
+    const [showCareerHistory, setShowCareerHistory] = useState(false);
 
     // Google Calendar connection state
     const [googleConnected, setGoogleConnected]   = useState(null);
@@ -16300,6 +16441,16 @@ export default function TeenDashboard() {
         setTakingAssessment(false);
         setShowAssessmentPrompt(false);
         window.location.reload();
+    };
+
+    const handleDeleteCareerResult = async (id) => {
+        if (!window.confirm('Delete this career discovery result?')) return;
+        try {
+            await deleteCareerDiscoveryResult(id);
+            setCareerResults((prev) => prev.filter(r => r.id !== id));
+        } catch (error) {
+            alert('Failed to delete career result.');
+        }
     };
 
     if (loading) {
@@ -16411,7 +16562,18 @@ export default function TeenDashboard() {
 
             {/* Career Discovery Results History */}
             {careerResults && careerResults.length > 0 && (
-                <div className="card dark:bg-slate-900 border dark:border-slate-800 p-8 shadow-sm">
+                <div className="flex justify-center mb-6">
+                    <button
+                        onClick={() => setShowCareerHistory(!showCareerHistory)}
+                        className="px-6 py-3 bg-violet-600 text-white rounded-xl font-bold hover:bg-violet-700 shadow-lg transition-all flex items-center gap-2"
+                    >
+                        {showCareerHistory ? "Hide Career Discoveries" : "View Previous Career Discoveries"}
+                    </button>
+                </div>
+            )}
+
+            {showCareerHistory && careerResults && careerResults.length > 0 && (
+                <div className="card dark:bg-slate-900 border dark:border-slate-800 p-8 shadow-sm mb-8">
                     <div className="flex items-center justify-between mb-6">
                         <h2 className="text-2xl font-bold dark:text-white flex items-center gap-3">
                             <span className="p-2 bg-violet-500/10 rounded-lg text-violet-500">🏆</span>
@@ -16422,9 +16584,18 @@ export default function TeenDashboard() {
                     <div className="grid md:grid-cols-2 gap-6">
                         {careerResults.map((cres, idx) => (
                             <div key={cres.id || idx} className="p-6 bg-gradient-to-br from-violet-50 to-fuchsia-50 dark:from-slate-800 dark:to-slate-800/80 rounded-2xl border border-violet-100 dark:border-slate-700 shadow-sm transition hover:shadow-md">
-                                <span className="text-xs font-bold text-violet-600 dark:text-violet-400 mb-2 block uppercase tracking-wider">
-                                    {new Date(cres.created_at).toLocaleDateString('en-US', { day: 'numeric', month: 'short', year:'numeric' })}
-                                </span>
+                                <div className="flex justify-between items-start mb-2">
+                                    <span className="text-xs font-bold text-violet-600 dark:text-violet-400 block uppercase tracking-wider">
+                                        {new Date(cres.created_at).toLocaleDateString('en-US', { day: 'numeric', month: 'short', year:'numeric' })}
+                                    </span>
+                                    <button
+                                        onClick={() => handleDeleteCareerResult(cres.id)}
+                                        title="Delete"
+                                        className="text-gray-400 hover:text-red-500 transition ml-auto block"
+                                    >
+                                        🗑
+                                    </button>
+                                </div>
                                 <h3 className="text-xl md:text-2xl font-black text-gray-800 dark:text-white mb-2 flex items-center gap-2">
                                     {cres.best_career_emoji} {cres.best_career_title}
                                 </h3>
@@ -16650,6 +16821,10 @@ export const saveCareerDiscoveryResult = (resultData) => {
 
 export const getCareerDiscoveryResults = () => {
     return api.get('/career-discovery/');
+};
+
+export const deleteCareerDiscoveryResult = (id) => {
+    return api.delete(`/career-discovery/${id}/`);
 };
 
 
