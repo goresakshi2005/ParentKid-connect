@@ -17,6 +17,7 @@ import GoogleCallback from './pages/GoogleCallback';
 import VoiceAssessmentPage from './pages/VoiceAssessmentPage';
 import MentorChatPageWrapper from './pages/MentorChatPageWrapper';
 import RelationshipIntelligencePage from './pages/RelationshipIntelligencePage';
+import EarlyChildhoodIntelligencePage from './pages/EarlyChildhoodIntelligencePage';
 import { useAuth } from './context/AuthContext';
 
 import ScreenTimePage from './pages/ScreenTimePage';
@@ -69,6 +70,16 @@ function App() {
             element={
               <AuthGuard role="parent">
                 <RelationshipIntelligencePage />
+              </AuthGuard>
+            }
+          />
+          
+          {/* Early Childhood Tracking */}
+          <Route
+            path="/early-childhood/:childId"
+            element={
+              <AuthGuard role="parent">
+                <EarlyChildhoodIntelligencePage />
               </AuthGuard>
             }
           />

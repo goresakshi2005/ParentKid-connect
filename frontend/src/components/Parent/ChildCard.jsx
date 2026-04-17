@@ -10,7 +10,7 @@ function ChildCard({ child, onTakeAssessment }) {
     const getStageLabel = (stage) => {
         const stages = {
             pregnancy: 'Pregnancy',
-            early_childhood: 'Early Childhood (0-5)',
+            early_childhood: 'Childhood (0-5)',
             growing_stage: 'Growing (6-12)',
             teen_age: 'Teen (13-20)'
         };
@@ -18,6 +18,7 @@ function ChildCard({ child, onTakeAssessment }) {
     };
 
     const isGrowingOrTeen = child.stage === 'growing_stage' || child.stage === 'teen_age';
+    const isEarlyChildhood = child.stage === 'early_childhood';
 
     return (
         <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-lg overflow-hidden transition-all duration-300 hover:shadow-xl border border-gray-100 dark:border-slate-800">
@@ -56,7 +57,15 @@ function ChildCard({ child, onTakeAssessment }) {
                     >
                         <FiBarChart2 /> {showResults ? 'Hide' : 'Results'}
                     </button>
-                    
+                    {isEarlyChildhood && (
+                        <button
+                            onClick={() => navigate(`/early-childhood/${child.id}`)}
+                            className="col-span-2 px-4 py-3 bg-gradient-to-r from-green-500 to-teal-500 text-white rounded-xl hover:from-green-600 hover:to-teal-600 font-bold shadow-lg transition-all flex items-center justify-center gap-2 mt-1"
+                        >
+                            <FiZap className="text-yellow-300" /> Early Childhood Tracking
+                        </button>
+                    )}
+
                     {/* Relationship Intelligence AI - The interactive AI Analysis */}
                     {isGrowingOrTeen && (
                         <button

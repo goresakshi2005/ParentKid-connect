@@ -32,6 +32,7 @@ INSTALLED_APPS = [
     'apps.mentorship',
     'apps.screen_monitor',
     'apps.relationship_intelligence',
+    'apps.early_childhood',
 ]
 
 MIDDLEWARE = [

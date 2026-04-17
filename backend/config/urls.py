@@ -28,6 +28,7 @@ urlpatterns = [
     path('api/mentorship/', include('apps.mentorship.urls')),
     path('api/', include('apps.screen_monitor.urls')),
     path('api/relationship/', include('apps.relationship_intelligence.urls')),
+    path('api/early-childhood/', include('apps.early_childhood.urls')),
 ]
 
 if settings.DEBUG:
