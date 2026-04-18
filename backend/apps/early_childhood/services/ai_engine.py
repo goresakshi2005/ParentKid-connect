@@ -49,8 +49,8 @@ class EarlyChildhoodAIEngine:
         OUTPUT FORMAT (STRICT JSON):
         {{
             "deficiency": "Identify the primary deficiency or concern",
-            "why_it_is_happening": "Explain WHY it is happening based on existing data",
-            "what_to_do": "Suggest WHAT TO DO (Overall strategy)",
+            "why_it_is_happening": ["Reason 1 explained simply", "Reason 2 explained simply"],
+            "what_to_do": ["Clear point 1 of what needs to change", "Clear point 2 of the overall strategy"],
             "how_to_do": ["Step 1", "Step 2", "Step 3", "Step 4"],
             "good_habits": ["Good habit 1", "Good habit 2"],
             "bad_habits": ["Bad habit 1", "Bad habit 2"],
@@ -69,6 +69,7 @@ class EarlyChildhoodAIEngine:
         - Use simple, warm, and highly encouraging language tailored for parents.
         - The language of response/output MUST be extremely easy to understand for early childhood tracking.
         - Avoid technical or medical jargon; write at an easy reading level.
+        - For 'why_it_is_happening' and 'what_to_do', provide an array of short sentences, where EACH incoming item is exactly ONE sentence. This ensures each sentence formats neatly as a single bullet point.
         """
         
         try:

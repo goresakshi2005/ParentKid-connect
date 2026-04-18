@@ -248,10 +248,18 @@ const EarlyChildhoodIntelligencePage = () => {
                     <div className="grid md:grid-cols-2 gap-6">
                         <div className="bg-white dark:bg-slate-800 p-6 rounded-2xl border border-gray-100 dark:border-slate-700 shadow-sm">
                             <h3 className="font-bold text-lg mb-3">🧐 Why it is happening</h3>
-                            <p className="text-gray-700 dark:text-slate-300">{result.why_it_is_happening}</p>
+                            <ul className="list-disc pl-5 space-y-2 text-gray-700 dark:text-slate-300">
+                                {Array.isArray(result.why_it_is_happening) 
+                                    ? result.why_it_is_happening.map((reason, i) => <li key={i}>{reason}</li>)
+                                    : <li>{result.why_it_is_happening}</li>}
+                            </ul>
                             
                             <h3 className="font-bold text-lg mt-6 mb-3 text-green-600">✅ What to Do</h3>
-                            <p className="text-gray-700 dark:text-slate-300">{result.what_to_do}</p>
+                            <ul className="list-disc pl-5 space-y-2 text-gray-700 dark:text-slate-300">
+                                {Array.isArray(result.what_to_do)
+                                    ? result.what_to_do.map((action, i) => <li key={i}>{action}</li>)
+                                    : <li>{result.what_to_do}</li>}
+                            </ul>
                         </div>
 
                         <div className="bg-white dark:bg-slate-800 p-6 rounded-2xl border border-gray-100 dark:border-slate-700 shadow-sm">
