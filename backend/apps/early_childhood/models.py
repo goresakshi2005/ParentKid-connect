@@ -23,8 +23,13 @@ class EarlyChildhoodReport(models.Model):
     screen_time = models.FloatField(null=True, blank=True)
     
     problem_selected = models.CharField(max_length=255, blank=True)
+    symptoms = models.TextField(blank=True, null=True)
     parent_text = models.TextField(blank=True, null=True)
     input_confidence = models.CharField(max_length=50, blank=True)
+    
+    emotional_score = models.FloatField(null=True, blank=True)
+    routine_score = models.FloatField(null=True, blank=True)
+    behavior_score = models.FloatField(null=True, blank=True)
     
     # ai output results
     analysis_result = models.JSONField(blank=True, null=True)

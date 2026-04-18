@@ -52,8 +52,12 @@ class EarlyChildhoodAnalysisView(APIView):
             sleep_hours=data.get('sleep_hours'),
             screen_time=data.get('screen_time'),
             problem_selected=data.get('problem_selected', ''),
+            symptoms=data.get('symptoms', ''),
             parent_text=data.get('parent_text', ''),
             input_confidence=data.get('input_confidence', ''),
+            emotional_score=data.get('emotional_score'),
+            routine_score=data.get('routine_score'),
+            behavior_score=data.get('behavior_score'),
             analysis_result=analysis
         )
 

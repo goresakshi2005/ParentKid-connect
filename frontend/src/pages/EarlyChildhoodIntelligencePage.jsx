@@ -46,7 +46,11 @@ const EarlyChildhoodIntelligencePage = () => {
         sleep_hours: '',
         screen_time: '',
         problem_selected: '',
+        symptoms: '',
         parent_text: '',
+        emotional_score: '',
+        routine_score: '',
+        behavior_score: '',
         input_confidence: 'High'
     });
 
@@ -190,11 +194,31 @@ const EarlyChildhoodIntelligencePage = () => {
                         </div>
                     </div>
 
+                    <h3 className="font-bold text-lg dark:text-white mt-6 border-b pb-2">Scores</h3>
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        <div>
+                            <label className="block text-sm font-semibold mb-1 dark:text-white">Emotional Score (1-10)</label>
+                            <input type="number" name="emotional_score" className="w-full p-3 border rounded-xl dark:bg-slate-800 dark:border-slate-700 dark:text-white" onChange={handleChange} />
+                        </div>
+                        <div>
+                            <label className="block text-sm font-semibold mb-1 dark:text-white">Routine Score (1-10)</label>
+                            <input type="number" name="routine_score" className="w-full p-3 border rounded-xl dark:bg-slate-800 dark:border-slate-700 dark:text-white" onChange={handleChange} />
+                        </div>
+                        <div>
+                            <label className="block text-sm font-semibold mb-1 dark:text-white">Behavior Score (1-10)</label>
+                            <input type="number" name="behavior_score" className="w-full p-3 border rounded-xl dark:bg-slate-800 dark:border-slate-700 dark:text-white" onChange={handleChange} />
+                        </div>
+                    </div>
+
                     <h3 className="font-bold text-lg dark:text-white mt-6 border-b pb-2">Concerns</h3>
                     <div className="space-y-4">
                         <div>
                             <label className="block text-sm font-semibold mb-1 dark:text-white">Current Problem (Required)</label>
                             <input type="text" name="problem_selected" placeholder="e.g. Frequent tantrums" className="w-full p-3 border rounded-xl dark:bg-slate-800 dark:border-slate-700 dark:text-white" onChange={handleChange} />
+                        </div>
+                        <div>
+                            <label className="block text-sm font-semibold mb-1 dark:text-white">Symptoms</label>
+                            <input type="text" name="symptoms" placeholder="e.g. Crying, lack of appetite" className="w-full p-3 border rounded-xl dark:bg-slate-800 dark:border-slate-700 dark:text-white" onChange={handleChange} />
                         </div>
                         <div>
                             <label className="block text-sm font-semibold mb-1 dark:text-white">Parent Description Details</label>
@@ -212,75 +236,69 @@ const EarlyChildhoodIntelligencePage = () => {
                 </div>
             ) : (
                 <div className="space-y-6 animate-fade-in">
-                    <div className={`p-6 rounded-2xl shadow border-2 inline-block w-full ${result.current_status?.includes('Normal') ? 'bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800' : 'bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800'}`}>
+                    <div className="p-6 rounded-2xl shadow border-2 inline-block w-full bg-blue-50 dark:bg-slate-800 border-blue-200 dark:border-blue-800">
                         <h2 className="text-xl font-bold mb-2 dark:text-white">
-                            🟢 Current Status: <span className={result.current_status?.includes('Normal') ? 'text-green-700 dark:text-green-400' : 'text-red-600 dark:text-red-400'}>{result.current_status}</span>
+                            🔍 Identified Deficiency / Concern
                         </h2>
-                        <p className="text-gray-700 dark:text-slate-300">
-                            <strong className="dark:text-white">Progress Insight:</strong> {result.progress_insight}
+                        <p className="text-gray-700 dark:text-slate-300 font-medium">
+                            {result.deficiency}
                         </p>
                     </div>
 
                     <div className="grid md:grid-cols-2 gap-6">
                         <div className="bg-white dark:bg-slate-800 p-6 rounded-2xl border border-gray-100 dark:border-slate-700 shadow-sm">
-                            <h3 className="font-bold text-lg mb-3">📌 Key Observations</h3>
-                            <ul className="list-disc pl-5 space-y-2 text-gray-700 dark:text-slate-300">
-                                {result.key_observations?.map((o, i) => <li key={i}>{o}</li>)}
-                            </ul>
+                            <h3 className="font-bold text-lg mb-3">🧐 Why it is happening</h3>
+                            <p className="text-gray-700 dark:text-slate-300">{result.why_it_is_happening}</p>
                             
-                            <h3 className="font-bold text-lg mt-6 mb-3 text-yellow-600">📌 Possible Concern</h3>
-                            <p className="text-gray-700 dark:text-slate-300">{result.possible_concern}</p>
+                            <h3 className="font-bold text-lg mt-6 mb-3 text-green-600">✅ What to Do</h3>
+                            <p className="text-gray-700 dark:text-slate-300">{result.what_to_do}</p>
                         </div>
 
                         <div className="bg-white dark:bg-slate-800 p-6 rounded-2xl border border-gray-100 dark:border-slate-700 shadow-sm">
-                            <h3 className="font-bold text-lg mb-3 text-green-600">✅ Actionable Steps</h3>
-                            <ul className="list-disc pl-5 space-y-2 text-gray-700 dark:text-slate-300">
-                                {result.actionable_steps?.map((step, i) => <li key={i}>{step}</li>)}
+                            <h3 className="font-bold text-lg mb-3 text-blue-600">🛠️ How to Do (Step-by-Step)</h3>
+                            <ul className="list-decimal pl-5 space-y-2 text-gray-700 dark:text-slate-300">
+                                {result.how_to_do?.map((step, i) => <li key={i}>{step}</li>)}
                             </ul>
+                        </div>
+                    </div>
 
-                            <h3 className="font-bold text-lg mt-6 mb-3 text-red-500">❌ What to Avoid</h3>
+                    <div className="grid md:grid-cols-2 gap-6">
+                        <div className="bg-green-50 dark:bg-green-900/10 p-6 rounded-2xl border border-green-200 dark:border-green-800 shadow-sm">
+                            <h3 className="font-bold text-lg mb-3 text-green-700">🌟 Existing Good Habits</h3>
                             <ul className="list-disc pl-5 space-y-2 text-gray-700 dark:text-slate-300">
-                                {result.what_to_avoid?.map((item, i) => <li key={i}>{item}</li>)}
+                                {result.good_habits?.map((habit, i) => <li key={i}>{habit}</li>)}
+                            </ul>
+                        </div>
+                        
+                        <div className="bg-red-50 dark:bg-red-900/10 p-6 rounded-2xl border border-red-200 dark:border-red-800 shadow-sm">
+                            <h3 className="font-bold text-lg mb-3 text-red-700">⚠️ Existing Bad Habits</h3>
+                            <ul className="list-disc pl-5 space-y-2 text-gray-700 dark:text-slate-300">
+                                {result.bad_habits?.map((habit, i) => <li key={i}>{habit}</li>)}
                             </ul>
                         </div>
                     </div>
 
                     <div className="bg-blue-50 dark:bg-blue-900/30 p-6 rounded-2xl border border-blue-100 dark:border-blue-800 shadow-sm">
-                        <h3 className="font-bold text-lg mb-4 text-blue-800 dark:text-blue-300">🎯 Daily Routine micro-plan</h3>
+                        <h3 className="font-bold text-lg mb-4 text-blue-800 dark:text-blue-300">🎯 Daily Routine Plan</h3>
                         <div className="space-y-4">
                             <div className="flex gap-4">
                                 <span className="font-bold w-24">Morning</span>
-                                <span className="text-gray-700 dark:text-slate-300">{result.daily_routine?.morning}</span>
+                                <span className="text-gray-700 dark:text-slate-300">{result.daily_routine_plan?.morning}</span>
                             </div>
                             <div className="flex gap-4">
                                 <span className="font-bold w-24">Afternoon</span>
-                                <span className="text-gray-700 dark:text-slate-300">{result.daily_routine?.afternoon}</span>
+                                <span className="text-gray-700 dark:text-slate-300">{result.daily_routine_plan?.afternoon}</span>
                             </div>
                             <div className="flex gap-4">
                                 <span className="font-bold w-24">Evening</span>
-                                <span className="text-gray-700 dark:text-slate-300">{result.daily_routine?.evening}</span>
+                                <span className="text-gray-700 dark:text-slate-300">{result.daily_routine_plan?.evening}</span>
                             </div>
                         </div>
                     </div>
 
-                    <div className="grid md:grid-cols-2 gap-6">
-                        <div className="bg-gray-50 dark:bg-slate-800 p-6 rounded-2xl border border-gray-200 dark:border-slate-700">
-                            <h3 className="font-bold text-lg mb-3 flex items-center gap-2"><FiActivity className="text-blue-500"/> Next Step Plan</h3>
-                            <p className="text-gray-700 dark:text-slate-300 mb-4">{result.next_step_plan}</p>
-                            
-                            <h3 className="font-bold text-lg mb-3">📈 Signs of Improvement</h3>
-                            <ul className="list-disc pl-5 space-y-2 text-gray-700 dark:text-slate-300">
-                                {result.signs_of_improvement?.map((s, i) => <li key={i}>{s}</li>)}
-                            </ul>
-                        </div>
-                        
-                        <div className="bg-yellow-50 dark:bg-yellow-900/10 p-6 rounded-2xl border border-yellow-200 dark:border-yellow-800">
-                            <h3 className="font-bold text-lg mb-3 text-red-700">🚨 When to Seek Professional Help</h3>
-                            <p className="text-gray-700 dark:text-slate-300 mb-6">{result.when_to_seek_help}</p>
-
-                            <h3 className="font-bold text-lg mb-3 text-purple-600">💡 Smart Tip</h3>
-                            <p className="text-gray-700 dark:text-slate-300">{result.smart_tip}</p>
-                        </div>
+                    <div className="bg-purple-50 dark:bg-purple-900/10 p-6 rounded-2xl border border-purple-200 dark:border-purple-800 shadow-sm">
+                        <h3 className="font-bold text-lg mb-3 text-purple-700">⏳ Expected Improvement Timeline</h3>
+                        <p className="text-gray-700 dark:text-slate-300 text-lg">{result.expected_improvement_timeline}</p>
                     </div>
 
                     <button onClick={() => setResult(null)} className="w-full mt-6 py-4 bg-gray-200 hover:bg-gray-300 dark:bg-slate-700 dark:hover:bg-slate-600 text-gray-800 dark:text-white rounded-xl font-bold transition-all shadow-md">
