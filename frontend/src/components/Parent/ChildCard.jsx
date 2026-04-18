@@ -68,12 +68,20 @@ function ChildCard({ child, onTakeAssessment }) {
 
                     {/* Relationship Intelligence AI - The interactive AI Analysis */}
                     {isGrowingOrTeen && (
-                        <button
-                            onClick={() => navigate(`/relationship-intelligence/${child.id}`)}
-                            className="col-span-2 px-4 py-3 bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-xl hover:from-indigo-700 hover:to-purple-700 font-bold shadow-lg transition-all flex items-center justify-center gap-2 mt-1"
-                        >
-                            <FiZap className="text-yellow-400" /> Relationship Intelligence AI
-                        </button>
+                        <div className="col-span-2 flex flex-col gap-2 mt-1">
+                            <button
+                                onClick={() => navigate(`/relationship-intelligence/${child.id}`)}
+                                className="px-4 py-3 bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-xl hover:from-indigo-700 hover:to-purple-700 font-bold shadow-lg transition-all flex items-center justify-center gap-2"
+                            >
+                                <FiZap className="text-yellow-400" /> Relationship Intelligence AI
+                            </button>
+                            <button
+                                onClick={() => navigate(`/magic-fix/${child.id}`)}
+                                className="px-4 py-3 bg-gradient-to-r from-pink-500 to-rose-500 text-white rounded-xl hover:from-pink-600 hover:to-rose-600 font-bold shadow-lg transition-all flex items-center justify-center gap-2"
+                            >
+                                🪄 Magic Fix Engine
+                            </button>
+                        </div>
                     )}
                 </div>
 

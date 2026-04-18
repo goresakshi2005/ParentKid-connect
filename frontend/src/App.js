@@ -18,6 +18,7 @@ import VoiceAssessmentPage from './pages/VoiceAssessmentPage';
 import MentorChatPageWrapper from './pages/MentorChatPageWrapper';
 import RelationshipIntelligencePage from './pages/RelationshipIntelligencePage';
 import EarlyChildhoodIntelligencePage from './pages/EarlyChildhoodIntelligencePage';
+import MagicFixPage from './pages/MagicFixPage';
 import { useAuth } from './context/AuthContext';
 
 import ScreenTimePage from './pages/ScreenTimePage';
@@ -74,6 +75,16 @@ function App() {
             }
           />
           
+          {/* Magic Fix Engine */}
+          <Route
+            path="/magic-fix/:childId"
+            element={
+              <AuthGuard role="parent">
+                <MagicFixPage />
+              </AuthGuard>
+            }
+          />
+          
           {/* Early Childhood Tracking */}
           <Route
             path="/early-childhood/:childId"
@@ -83,7 +94,6 @@ function App() {
               </AuthGuard>
             }
           />
-          
 
           <Route
             path="/dashboard/pregnancy"

@@ -62,3 +62,30 @@ class RelationshipHistoryView(APIView):
         analyses = RelationshipAnalysis.objects.filter(child=child).order_by('-created_at')
         serializer = RelationshipAnalysisSerializer(analyses, many=True)
         return Response(serializer.data)
+
+
+class MagicFixView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request):
+        child_id = request.data.get('child_id')
+        problem = request.data.get('problem', '')
+        behavior = request.data.get('behavior', '')
+        mood = request.data.get('mood', 'normal')
+        context = request.data.get('context', '')
+        
+        if not child_id:
+            return Response({"error": "child_id is required"}, status=status.HTTP_400_BAD_REQUEST)
+
+        child = get_object_or_404(Child, id=child_id, parent=request.user)
+        age = child.get_age()
+
+        # import here to avoid circular imports if any, or we can import at top
+        from .services.ai_engine import MagicFixEngine
+        
+        result = MagicFixEngine.get_magic_fix(problem, behavior, age, mood, context)
+        
+        if "error" in result:
+            return Response(result, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            
+        return Response(result, status=status.HTTP_200_OK)

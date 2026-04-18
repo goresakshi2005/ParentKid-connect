@@ -175,3 +175,106 @@ class RelationshipIntelligenceEngine:
             print(f"Relationship AI Error: {error_msg}")
             return {"error": f"Communication analysis failed: {error_msg}"}
 
+
+class MagicFixEngine:
+    @staticmethod
+    def get_magic_fix(problem, behavior, age, mood, context):
+        prompt = f"""
+        You are the core engine behind a "Magic Fix" parenting tool.
+        You generate instant, swipeable solution cards that feel magical, fast, and easy.
+        
+        ========================
+        🪄 CORE GOAL:
+        ========================
+        - Instantly fix parent-child conflict
+        - Give super quick, practical actions
+        - Make it feel like magic (effortless, smooth, helpful)
+        - Zero thinking required from parent
+        
+        ========================
+        ⚠️ STRICT RULES:
+        ========================
+        - NO explanations or theory
+        - NO long text
+        - ONLY actions
+        - Max response length: 60-80 words
+        - Use very simple, friendly language
+        - Tone: calm, warm, reassuring
+        - NEVER suggest punishment or harsh discipline
+        - Focus on calming and resolving immediately
+        
+        ========================
+        🧠 SMART ADAPTATION:
+        ========================
+        - Age-aware response (6-18)
+        - Mood-aware:
+          Angry -> de-escalate
+          Sad -> comfort
+          Silent -> gentle approach
+          Resistant -> indirect approach
+        - Identify root cause in 1 short line
+        
+        ========================
+        ✨ MAGIC EXPERIENCE STYLE:
+        ========================
+        - Feels like: "I’ve got this 🤝"
+        - Each step should feel easy and natural
+        - Use soft action words (pause, sit, say, listen)
+        - No pressure, no judgment
+        
+        ========================
+        ⚡ OUTPUT FORMAT (STRICT JSON ONLY):
+        ========================
+        {{
+          "why": "1 very short reason",
+          "step1": "instant calming action",
+          "step2": "exact sentence parent should say",
+          "step3": "simple bonding action",
+          "next": "what to do after a few minutes",
+          "avoid": ["mistake 1", "mistake 2"]
+        }}
+        
+        ========================
+        📥 INPUT:
+        ========================
+        Parent Problem: {problem}
+        Child Behavior: {behavior}
+        Child Age: {age}
+        Child Mood: {mood}
+        Situation: {context}
+        
+        ========================
+        🎯 FINAL INSTRUCTION:
+        ========================
+        Return output like magical action cards. Keep it ultra-short, smooth, and instantly usable. Make the parent feel guided without thinking.
+        Ensure your response is valid JSON format.
+        """
+        
+        try:
+            # Using standard recommended model
+            model = genai.GenerativeModel('gemini-3-flash-preview')
+            response = model.generate_content(prompt)
+            
+            if not response or not response.text:
+                return {"error": "AI returned an empty response. Please try with more descriptive input."}
+                
+            raw_text = response.text.strip()
+            raw_text = re.sub(r'^```json\s*', '', raw_text)
+            raw_text = re.sub(r'\s*```$', '', raw_text)
+            
+            json_match = re.search(r'\{.*\}', raw_text, re.DOTALL)
+            if json_match:
+                try:
+                    return json.loads(json_match.group(0))
+                except json.JSONDecodeError as je:
+                    return {"error": "Failed to parse Magic Fix response. Please try again.", "details": str(je), "raw": raw_text[:500]}
+            else:
+                return {"error": "AI response format was invalid. Please try again.", "raw": raw_text[:500]}
+                
+        except Exception as e:
+            error_msg = str(e)
+            if "429" in error_msg or "quota" in error_msg.lower():
+                return {"error": "AI Service is temporarily busy due to high demand. Please wait 30-60 seconds and try again."}
+            print(f"Magic Fix AI Error: {error_msg}")
+            return {"error": f"Magic Fix failed: {error_msg}"}
+
