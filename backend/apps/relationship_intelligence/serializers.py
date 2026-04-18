@@ -44,3 +44,17 @@ class RelationshipAnalysisSerializer(serializers.ModelSerializer):
             'parent_input', 'child_input', 'analysis_result', 'created_at'
         ]
         read_only_fields = ['id', 'created_at']
+
+from .models import MagicFixHistory
+
+class MagicFixHistorySerializer(serializers.ModelSerializer):
+    child_name = serializers.CharField(source='child.name', read_only=True)
+
+    class Meta:
+        model = MagicFixHistory
+        fields = [
+            'id', 'parent', 'child', 'child_name',
+            'problem', 'behavior', 'mood', 'context',
+            'fix_result', 'created_at'
+        ]
+        read_only_fields = ['id', 'created_at']

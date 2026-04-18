@@ -13,6 +13,8 @@ function MagicFixPage() {
     const [child, setChild] = useState(null);
     const [loadingInfo, setLoadingInfo] = useState(true);
     const [isSubmitting, setIsSubmitting] = useState(false);
+    const [history, setHistory] = useState([]);
+    const [showHistory, setShowHistory] = useState(false);
     
     const [form, setForm] = useState({
         problem: '',
@@ -25,19 +27,24 @@ function MagicFixPage() {
     const [currentStep, setCurrentStep] = useState(0); // For "swipeable" cards interaction
 
     useEffect(() => {
-        const fetchChild = async () => {
+        const fetchData = async () => {
             try {
-                const res = await axios.get(`${process.env.REACT_APP_API_URL}/children/${childId}/`, {
+                const childRes = await axios.get(`${process.env.REACT_APP_API_URL}/children/${childId}/`, {
                     headers: { Authorization: `Bearer ${token}` }
                 });
-                setChild(res.data);
+                setChild(childRes.data);
+                
+                const historyRes = await axios.get(`${process.env.REACT_APP_API_URL}/relationship/magic-fix-history/${childId}/`, {
+                    headers: { Authorization: `Bearer ${token}` }
+                });
+                setHistory(historyRes.data);
             } catch (err) {
-                console.error("Failed to load child", err);
+                console.error("Failed to load data", err);
             } finally {
                 setLoadingInfo(false);
             }
         };
-        fetchChild();
+        fetchData();
     }, [childId, token]);
 
     const handleGenerate = async (e) => {
@@ -61,8 +68,20 @@ function MagicFixPage() {
             if (res.data.error) {
                 alert(res.data.error);
             } else {
-                setResult(res.data);
+                setResult(res.data.magic_fix || res.data);
                 setCurrentStep(0); // Reset to first card
+                
+                if (res.data.saved_id) {
+                    setHistory(prev => [{
+                        id: res.data.saved_id,
+                        created_at: res.data.created_at,
+                        problem: form.problem,
+                        behavior: form.behavior,
+                        mood: form.mood,
+                        context: form.context,
+                        fix_result: res.data.magic_fix || res.data
+                    }, ...prev]);
+                }
             }
         } catch (err) {
             console.error(err);
@@ -76,9 +95,18 @@ function MagicFixPage() {
 
     const renderForm = () => (
         <div className="max-w-2xl mx-auto bg-white dark:bg-slate-900 p-8 rounded-3xl shadow-xl border border-pink-100 dark:border-slate-800 transition-all">
-            <h2 className="text-3xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-pink-500 to-violet-500 mb-6 flex items-center gap-3">
-                <FiZap className="text-pink-500" /> Magic Fix Engine
-            </h2>
+            <div className="flex justify-between items-center mb-6">
+                <h2 className="text-3xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-pink-500 to-violet-500 flex items-center gap-3">
+                    <FiZap className="text-pink-500" /> Magic Fix Engine
+                </h2>
+                <button 
+                    type="button" 
+                    onClick={() => setShowHistory(true)} 
+                    className="text-sm font-bold text-slate-500 dark:text-slate-400 hover:text-pink-500 transition-colors bg-slate-100 dark:bg-slate-800 py-2 px-4 rounded-xl flex items-center gap-2"
+                >
+                    View History
+                </button>
+            </div>
             <p className="text-slate-500 dark:text-slate-400 mb-8 font-medium">
                 Instant, zero-theory actions to de-escalate and resolve conflict with {child?.name || 'your child'}.
             </p>
@@ -239,7 +267,7 @@ function MagicFixPage() {
                         {card.icon}
                     </div>
                     <h3 className="text-xl font-bold text-slate-800 dark:text-white mb-6 uppercase tracking-wider">{card.title}</h3>
-                    <div className={`text-lg dark:text-slate-200 ${card.content.includes && card.content.includes('"') ? 'text-2xl font-serif text-pink-700 dark:text-pink-300 leading-relaxed' : 'text-slate-700 font-medium'}`}>
+                    <div className={`text-lg dark:text-slate-200 ${typeof card.content === 'string' && card.content.includes('"') ? 'text-2xl font-serif text-pink-700 dark:text-pink-300 leading-relaxed' : 'text-slate-700 font-medium'}`}>
                         {card.content}
                     </div>
                 </div>
@@ -273,6 +301,53 @@ function MagicFixPage() {
         );
     };
 
+    const renderHistory = () => (
+        <div className="max-w-2xl mx-auto bg-white dark:bg-slate-900 p-8 rounded-3xl shadow-xl border border-slate-100 dark:border-slate-800 transition-all">
+            <div className="flex justify-between items-center mb-6">
+                <h2 className="text-2xl font-bold text-slate-800 dark:text-white flex items-center gap-2">
+                    <FiZap className="text-pink-500" /> Past Magic Fixes
+                </h2>
+                <button 
+                    onClick={() => setShowHistory(false)}
+                    className="text-pink-500 hover:text-pink-600 font-bold text-sm"
+                >
+                    Back to Form
+                </button>
+            </div>
+            
+            {history.length === 0 ? (
+                <p className="text-slate-500 dark:text-slate-400 text-center py-8">
+                    No magic fixes generated yet. Try generating your first one!
+                </p>
+            ) : (
+                <div className="space-y-4 max-h-[60vh] overflow-y-auto pr-2">
+                    {history.map(item => (
+                        <div key={item.id} className="p-4 rounded-xl border border-slate-200 dark:border-slate-700 hover:border-pink-300 dark:hover:border-pink-700 transition">
+                            <div className="flex justify-between items-start mb-2">
+                                <h3 className="font-bold text-slate-800 dark:text-white">{item.problem}</h3>
+                                <span className="text-xs text-slate-400">
+                                    {new Date(item.created_at).toLocaleDateString()}
+                                </span>
+                            </div>
+                            <div className="text-sm text-slate-600 dark:text-slate-300 mb-3 truncate">
+                                Behavior: {item.behavior}
+                            </div>
+                            <button 
+                                onClick={() => {
+                                    setResult(item.fix_result);
+                                    setCurrentStep(0);
+                                }}
+                                className="text-pink-500 hover:text-pink-600 font-bold text-sm flex items-center gap-1"
+                            >
+                                View Solution <FiArrowRight />
+                            </button>
+                        </div>
+                    ))}
+                </div>
+            )}
+        </div>
+    );
+
     return (
         <div className="min-h-screen pt-24 pb-12 px-4 bg-slate-50 dark:bg-slate-950 font-sans">
             <div className="max-w-4xl mx-auto">
@@ -283,7 +358,7 @@ function MagicFixPage() {
                     <FiArrowLeft /> Dashboard
                 </button>
                 
-                {!result ? renderForm() : renderCardContent()}
+                {!result ? (showHistory ? renderHistory() : renderForm()) : renderCardContent()}
             </div>
         </div>
     );

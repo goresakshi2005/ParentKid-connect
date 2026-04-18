@@ -99,3 +99,22 @@ class RelationshipAnalysis(models.Model):
     
     def __str__(self):
         return f"Analysis for {self.child.name} on {self.created_at.date()}"
+
+class MagicFixHistory(models.Model):
+    parent = models.ForeignKey(User, on_delete=models.CASCADE, related_name='magic_fixes')
+    child = models.ForeignKey(Child, on_delete=models.CASCADE, related_name='magic_fixes')
+    
+    problem = models.TextField(blank=True)
+    behavior = models.TextField(blank=True)
+    mood = models.CharField(max_length=50, blank=True)
+    context = models.TextField(blank=True)
+    
+    fix_result = models.JSONField()
+    
+    created_at = models.DateTimeField(auto_now_add=True)
+    
+    class Meta:
+        ordering = ['-created_at']
+        
+    def __str__(self):
+        return f"Magic Fix for {self.child.name} on {self.created_at.date()}"

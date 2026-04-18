@@ -88,4 +88,31 @@ class MagicFixView(APIView):
         if "error" in result:
             return Response(result, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
             
-        return Response(result, status=status.HTTP_200_OK)
+        from .models import MagicFixHistory
+        saved_fix = MagicFixHistory.objects.create(
+            parent=request.user,
+            child=child,
+            problem=problem,
+            behavior=behavior,
+            mood=mood,
+            context=context,
+            fix_result=result
+        )
+            
+        return Response({
+            "magic_fix": result,
+            "saved_id": saved_fix.id,
+            "created_at": saved_fix.created_at
+        }, status=status.HTTP_200_OK)
+
+class MagicFixHistoryListView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+    
+    def get(self, request, child_id):
+        child = get_object_or_404(Child, id=child_id, parent=request.user)
+        from .models import MagicFixHistory
+        from .serializers import MagicFixHistorySerializer
+        
+        history = MagicFixHistory.objects.filter(child=child).order_by('-created_at')
+        serializer = MagicFixHistorySerializer(history, many=True)
+        return Response(serializer.data, status=status.HTTP_200_OK)
