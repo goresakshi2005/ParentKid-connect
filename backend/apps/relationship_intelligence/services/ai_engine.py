@@ -186,52 +186,34 @@ class MagicFixEngine:
         ========================
         🪄 CORE GOAL:
         ========================
-        - Instantly fix parent-child conflict
-        - Give super quick, practical actions
-        - Make it feel like magic (effortless, smooth, helpful)
-        - Zero thinking required from parent
+        - Provide a comprehensive yet quick fix for parent-child conflict
+        - Give descriptive, highly actionable steps
+        - Make the parent feel supported, guided, and capable
         
         ========================
-        ⚠️ STRICT RULES:
+        ⚠️ GUIDELINES:
         ========================
-        - NO explanations or theory
-        - NO long text
-        - ONLY actions
-        - Max response length: 60-80 words
-        - Use very simple, friendly language
-        - Tone: calm, warm, reassuring
-        - NEVER suggest punishment or harsh discipline
-        - Focus on calming and resolving immediately
+        - Focus on ACTIONS over theory, but provide enough context to be helpful
+        - Max full response length: 150-180 words
+        - Use warm, empathetic, and encouraging language
+        - Identify root cause with empathy
         
         ========================
         🧠 SMART ADAPTATION:
         ========================
         - Age-aware response (6-18)
-        - Mood-aware:
-          Angry -> de-escalate
-          Sad -> comfort
-          Silent -> gentle approach
-          Resistant -> indirect approach
-        - Identify root cause in 1 short line
-        
-        ========================
-        ✨ MAGIC EXPERIENCE STYLE:
-        ========================
-        - Feels like: "I’ve got this 🤝"
-        - Each step should feel easy and natural
-        - Use soft action words (pause, sit, say, listen)
-        - No pressure, no judgment
+        - Mood-aware: de-escalate if angry, comfort if sad
         
         ========================
         ⚡ OUTPUT FORMAT (STRICT JSON ONLY):
         ========================
         {{
-          "why": "1 very short reason",
-          "step1": "instant calming action",
-          "step2": "exact sentence parent should say",
-          "step3": "simple bonding action",
-          "next": "what to do after a few minutes",
-          "avoid": ["mistake 1", "mistake 2"]
+          "why": "Clear explanation of child's possible emotion and the root problem",
+          "step1": "Detailed instant calming action for parent and child",
+          "step2": "Specific sentence with tone of voice instructions",
+          "step3": "A specific bonding activity tailored to this situation",
+          "next": "Follow-up action to fully resolve/prevent recurrence",
+          "avoid": ["Specific mistake to avoid here", "Another relevant caution"]
         }}
         
         ========================
@@ -246,8 +228,7 @@ class MagicFixEngine:
         ========================
         🎯 FINAL INSTRUCTION:
         ========================
-        Return output like magical action cards. Keep it ultra-short, smooth, and instantly usable. Make the parent feel guided without thinking.
-        Ensure your response is valid JSON format.
+        Deliver high-resolution, specific guidance. Instead of "talk to them", suggest "sit comfortably nearby and mention a shared interest". Ensure valid JSON.
         """
         
         try:

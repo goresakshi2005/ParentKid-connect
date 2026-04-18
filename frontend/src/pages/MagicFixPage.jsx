@@ -25,6 +25,7 @@ function MagicFixPage() {
 
     const [result, setResult] = useState(null);
     const [currentStep, setCurrentStep] = useState(0); // For "swipeable" cards interaction
+    const [viewMode, setViewMode] = useState('cards'); // 'cards' or 'list'
 
     useEffect(() => {
         const fetchData = async () => {
@@ -70,6 +71,7 @@ function MagicFixPage() {
             } else {
                 setResult(res.data.magic_fix || res.data);
                 setCurrentStep(0); // Reset to first card
+                setViewMode('cards'); // Reset to card view
                 
                 if (res.data.saved_id) {
                     setHistory(prev => [{
@@ -243,6 +245,45 @@ function MagicFixPage() {
 
         const card = cards[currentStep];
 
+        if (viewMode === 'list') {
+            return (
+                <div className="max-w-2xl mx-auto w-full animate-fade-in">
+                    <div className="flex justify-between items-center mb-6">
+                         <button onClick={() => setResult(null)} className="text-slate-500 hover:text-pink-500 flex items-center gap-2 font-bold">
+                            <FiArrowLeft /> Back
+                         </button>
+                         <button 
+                            onClick={() => setViewMode('cards')}
+                            className="text-sm bg-pink-500 text-white px-4 py-2 rounded-xl font-bold hover:bg-pink-600 transition"
+                         >
+                            Switch to Cards
+                         </button>
+                    </div>
+                    <div className="space-y-6">
+                        {cards.map((c, i) => (
+                            <div key={i} className={`p-6 rounded-3xl border border-white/50 dark:border-slate-800 shadow-xl ${c.bg}`}>
+                                <div className="flex items-center gap-4 mb-4">
+                                    <div className="p-2 bg-white dark:bg-slate-800 rounded-full shadow-sm">
+                                        {React.cloneElement(c.icon, { className: "text-2xl" })}
+                                    </div>
+                                    <h3 className="font-bold text-slate-800 dark:text-white uppercase tracking-wider text-sm">{c.title}</h3>
+                                </div>
+                                <div className={`text-slate-700 dark:text-slate-200 ${typeof c.content === 'string' && c.content.includes('"') ? 'text-xl font-serif italic' : 'font-medium'}`}>
+                                    {c.content}
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                    <button 
+                        onClick={() => navigate('/dashboard/parent')}
+                        className="w-full mt-10 py-4 bg-green-500 hover:bg-green-600 text-white font-bold rounded-2xl shadow-xl transition-all"
+                    >
+                        I'm Ready to Fix This!
+                    </button>
+                </div>
+            );
+        }
+
         return (
             <div className="max-w-md mx-auto w-full">
                 <div className="flex justify-between items-center mb-6 px-4">
@@ -251,6 +292,12 @@ function MagicFixPage() {
                         className="text-slate-400 hover:text-slate-600 dark:hover:text-white transition-colors"
                     >
                         <FiX className="text-2xl" />
+                    </button>
+                    <button 
+                        onClick={() => setViewMode('list')}
+                        className="text-xs font-bold text-pink-500 hover:text-pink-600 bg-pink-50 dark:bg-pink-900/20 px-3 py-1.5 rounded-lg border border-pink-200 dark:border-pink-800"
+                    >
+                        View Full Summary
                     </button>
                     <div className="flex gap-2">
                         {cards.map((_, idx) => (
@@ -262,13 +309,15 @@ function MagicFixPage() {
                     </div>
                 </div>
 
-                <div className={`relative min-h-[360px] p-8 rounded-[2rem] shadow-2xl border border-white/50 dark:border-slate-700 flex flex-col justify-center items-center text-center transition-all duration-500 transform ${card.bg}`}>
+                <div className={`relative min-h-[400px] w-full p-8 rounded-[2.5rem] shadow-2xl border border-white/50 dark:border-slate-700 flex flex-col items-center text-center transition-all duration-500 transform ${card.bg}`}>
                     <div className="mb-6 p-4 bg-white dark:bg-slate-800 rounded-full shadow-lg inline-block">
                         {card.icon}
                     </div>
-                    <h3 className="text-xl font-bold text-slate-800 dark:text-white mb-6 uppercase tracking-wider">{card.title}</h3>
-                    <div className={`text-lg dark:text-slate-200 ${typeof card.content === 'string' && card.content.includes('"') ? 'text-2xl font-serif text-pink-700 dark:text-pink-300 leading-relaxed' : 'text-slate-700 font-medium'}`}>
-                        {card.content}
+                    <h3 className="text-xl font-bold text-slate-800 dark:text-white mb-4 uppercase tracking-wider">{card.title}</h3>
+                    <div className="overflow-y-auto max-h-[300px] pr-2 custom-scrollbar w-full">
+                        <div className={`text-lg dark:text-slate-200 ${typeof card.content === 'string' && card.content.includes('"') ? 'text-2xl font-serif text-pink-700 dark:text-pink-300 leading-relaxed' : 'text-slate-700 font-medium whitespace-pre-wrap'}`}>
+                            {card.content}
+                        </div>
                     </div>
                 </div>
 
