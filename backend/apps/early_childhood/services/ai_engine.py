@@ -66,6 +66,9 @@ class EarlyChildhoodAIEngine:
         - Output strictly as parsing-friendly JSON without triple backticks if possible.
         - Give only practical, real-life advice.
         - Adapt advice for standard households (low-cost, accessible).
+        - Use simple, warm, and highly encouraging language tailored for parents.
+        - The language of response/output MUST be extremely easy to understand for early childhood tracking.
+        - Avoid technical or medical jargon; write at an easy reading level.
         """
         
         try:
