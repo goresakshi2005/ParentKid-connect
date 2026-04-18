@@ -89,13 +89,13 @@ const EarlyChildhoodIntelligencePage = () => {
     return (
         <div className="max-w-4xl mx-auto p-6 mt-10 bg-white dark:bg-slate-900 shadow-xl rounded-2xl border border-gray-100 dark:border-slate-800">
             <div className="flex justify-between items-center mb-6">
-                <button onClick={() => navigate('/dashboard/parent')} className="flex items-center gap-2 text-blue-600 hover:text-blue-800 transition-all font-medium">
+                <button onClick={() => navigate('/dashboard/parent')} className="flex items-center gap-2 text-pink-600 hover:text-pink-800 transition-all font-medium">
                     <FiArrowLeft /> Back to Dashboard
                 </button>
                 {history.length > 0 && !result && (
                     <button 
                         onClick={() => setShowHistory(!showHistory)} 
-                        className="px-4 py-2 bg-blue-100 text-blue-700 dark:bg-slate-800 dark:text-blue-400 rounded-xl font-bold hover:bg-blue-200 transition-all"
+                        className="px-4 py-2 bg-pink-100 text-pink-700 dark:bg-slate-800 dark:text-pink-400 rounded-xl font-bold hover:bg-pink-200 transition-all"
                     >
                         {showHistory ? 'New Tracking' : 'Past Tracking'}
                     </button>
@@ -125,7 +125,7 @@ const EarlyChildhoodIntelligencePage = () => {
                                 </div>
                                 <button 
                                     onClick={() => handleViewHistoryItem(item)}
-                                    className="px-4 py-2 bg-blue-600 text-white rounded-xl font-semibold hover:bg-blue-700 transition"
+                                    className="px-4 py-2 bg-pink-600 text-white rounded-xl font-semibold hover:bg-pink-700 transition"
                                 >
                                     View Report
                                 </button>
@@ -236,7 +236,7 @@ const EarlyChildhoodIntelligencePage = () => {
                 </div>
             ) : (
                 <div className="space-y-6 animate-fade-in">
-                    <div className="p-6 rounded-2xl shadow border-2 inline-block w-full bg-blue-50 dark:bg-slate-800 border-blue-200 dark:border-blue-800">
+                    <div className="p-6 rounded-2xl shadow border-2 inline-block w-full bg-pink-50 dark:bg-slate-800 border-pink-200 dark:border-pink-800">
                         <h2 className="text-xl font-bold mb-2 dark:text-white">
                             🔍 Identified Deficiency / Concern
                         </h2>
@@ -263,7 +263,7 @@ const EarlyChildhoodIntelligencePage = () => {
                         </div>
 
                         <div className="bg-white dark:bg-slate-800 p-6 rounded-2xl border border-gray-100 dark:border-slate-700 shadow-sm">
-                            <h3 className="font-bold text-lg mb-3 text-blue-600">🛠️ How to Do (Step-by-Step)</h3>
+                            <h3 className="font-bold text-lg mb-3 text-pink-600">🛠️ How to Do (Step-by-Step)</h3>
                             <ul className="list-decimal pl-5 space-y-2 text-gray-700 dark:text-slate-300">
                                 {result.how_to_do?.map((step, i) => <li key={i}>{step}</li>)}
                             </ul>
@@ -286,8 +286,8 @@ const EarlyChildhoodIntelligencePage = () => {
                         </div>
                     </div>
 
-                    <div className="bg-blue-50 dark:bg-blue-900/30 p-6 rounded-2xl border border-blue-100 dark:border-blue-800 shadow-sm">
-                        <h3 className="font-bold text-lg mb-4 text-blue-800 dark:text-blue-300">🎯 Daily Routine Plan</h3>
+                    <div className="bg-pink-50 dark:bg-pink-900/30 p-6 rounded-2xl border border-pink-100 dark:border-pink-800 shadow-sm">
+                        <h3 className="font-bold text-lg mb-4 text-pink-800 dark:text-pink-300">🎯 Daily Routine Plan</h3>
                         <div className="space-y-4">
                             <div className="flex gap-4">
                                 <span className="font-bold w-24">Morning</span>
