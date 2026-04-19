@@ -26,7 +26,7 @@ urlpatterns = [
     path('api/voice-assessments/', include('apps.voice_assessments.urls')),
     path('api/', include('apps.study_planner.urls')),
     path('api/mentorship/', include('apps.mentorship.urls')),
-    path('api/', include('apps.screen_monitor.urls')),
+    path('api/screen-monitor/', include('apps.screen_monitor.urls')),
     path('api/relationship/', include('apps.relationship_intelligence.urls')),
     path('api/early-childhood/', include('apps.early_childhood.urls')),
 ]

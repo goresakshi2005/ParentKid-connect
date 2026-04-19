@@ -8,7 +8,7 @@ function ChildManagement({ onRefresh, children }) {
     const [showModal, setShowModal] = useState(false);
     const [showTeenNotice, setShowTeenNotice] = useState(false);
     const [teenCode, setTeenCode] = useState('');
-    const [formData, setFormData] = useState({ name: '', date_of_birth: '' });
+    const [formData, setFormData] = useState({ name: '', date_of_birth: '', email: '' });
     const [editingId, setEditingId] = useState(null);
 
     const handleSubmit = async (e) => {
@@ -25,7 +25,7 @@ function ChildManagement({ onRefresh, children }) {
             } else {
                 const res = await axios.post(
                     `${process.env.REACT_APP_API_URL}/children/`,
-                    { name: formData.name, date_of_birth: formData.date_of_birth },
+                    { name: formData.name, date_of_birth: formData.date_of_birth, email: formData.email },
                     { headers: { Authorization: `Bearer ${token}` } }
                 );
                 savedChild = res.data;
@@ -37,7 +37,7 @@ function ChildManagement({ onRefresh, children }) {
                 setTeenCode(savedChild.invite_code);
                 setShowTeenNotice(true);
             }
-            setFormData({ name: '', date_of_birth: '' });
+            setFormData({ name: '', date_of_birth: '', email: '' });
             setEditingId(null);
         } catch (error) {
             alert(error.response?.data?.error || 'Error saving child');
@@ -59,7 +59,7 @@ function ChildManagement({ onRefresh, children }) {
     };
 
     const editChild = (child) => {
-        setFormData({ name: child.name, date_of_birth: child.date_of_birth });
+        setFormData({ name: child.name, date_of_birth: child.date_of_birth, email: child.email || '' });
         setEditingId(child.id);
         setShowModal(true);
     };
@@ -113,6 +113,17 @@ function ChildManagement({ onRefresh, children }) {
                                     required
                                     className="w-full px-4 py-2.5 bg-gray-50 dark:bg-slate-800 border-gray-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-blue-500 dark:focus:ring-pink-500 dark:text-white transition-all"
                                 />
+                            </div>
+                            <div>
+                                <label className="block text-sm font-semibold mb-2 dark:text-slate-300">Child's Email (for Firebase sync)</label>
+                                <input
+                                    type="email"
+                                    value={formData.email}
+                                    onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                                    className="w-full px-4 py-2.5 bg-gray-50 dark:bg-slate-800 border-gray-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-blue-500 dark:focus:ring-pink-500 dark:text-white transition-all"
+                                    placeholder="Enter kid's email"
+                                />
+                                <p className="text-[10px] text-gray-400 mt-1 italic">Note: Email must match the account on their device.</p>
                             </div>
 
                             {editingId && (

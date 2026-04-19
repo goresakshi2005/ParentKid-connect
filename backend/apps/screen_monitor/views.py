@@ -269,9 +269,18 @@ def get_screen_time_intelligence(request):
     except Child.DoesNotExist:
         return Response({'error': 'Child not found.'}, status=status.HTTP_404_NOT_FOUND)
 
-    # Priority 1: Fetch from Firebase if firebase_id is available
+    # Priority 1: Fetch from Firebase (Email first, then Firebase ID)
     apps_dict = {}
-    if child.firebase_id:
+    
+    # Try fetching by Email as primary identifier
+    if child.email:
+        print(f"Fetching from Firebase for Email: {child.email}")
+        firebase_data = FirebaseHelper.fetch_screen_time(child.email)
+        if firebase_data:
+            apps_dict = firebase_data
+
+    # Try fetching by firebase_id if email failed or isn't present
+    if not apps_dict and child.firebase_id:
         print(f"Fetching from Firebase for ID: {child.firebase_id}")
         firebase_data = FirebaseHelper.fetch_screen_time(child.firebase_id)
         if firebase_data:
@@ -290,16 +299,13 @@ def get_screen_time_intelligence(request):
                     apps_dict[u.app_name] = 0
                 apps_dict[u.app_name] += u.usage_minutes
 
-    # Priority 3: Fallback/Dummy data for demonstration
+    # Final check: If no data from any source, return empty but descriptive response
     if not apps_dict:
-        apps_dict = {
-            "YouTube": 145,
-            "Instagram": 85,
-            "WhatsApp": 40,
-            "Snapchat": 110,
-            "Duolingo": 25,
-            "Chrome": 30
-        }
+        return Response({
+            'error': 'No activity found',
+            'message': 'We couldn\'t find any screen time data for this child in our local database or Firebase.',
+            'child_id': child_id
+        }, status=status.HTTP_200_OK)
 
     # Call AI Engine
     analysis = ScreenTimeIntelligenceEngine.analyze_usage(
@@ -308,8 +314,9 @@ def get_screen_time_intelligence(request):
         apps_data=apps_dict
     )
 
-    # Add child_id for frontend tracking
-    if isinstance(analysis, dict) and "error" not in analysis:
+    # Add child_id and original_usage for frontend tracking and source-of-truth
+    if isinstance(analysis, dict):
         analysis["child_id"] = child_id
+        analysis["original_usage"] = apps_dict
 
     return Response(analysis)

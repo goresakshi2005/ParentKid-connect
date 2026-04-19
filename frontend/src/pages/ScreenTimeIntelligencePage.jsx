@@ -45,15 +45,22 @@ const ScreenTimeIntelligencePage = () => {
             // 2. Fetch AI Analysis from backend
             await runAnalysis();
 
-            // 3. Setup Firestore Listener if firebase_id exists
-            if (currentChild.firebase_id) {
-                const docRef = doc(db, "screen_time", currentChild.firebase_id);
+            // 3. Setup Firestore Listener (Prefer Email, fallback to firebase_id)
+            const firebaseId = currentChild.email || currentChild.firebase_id;
+            
+            if (firebaseId) {
+                console.log(`Setting up real-time sync for: ${firebaseId}`);
+                const docRef = doc(db, "screen_time", firebaseId);
                 const unsubscribe = onSnapshot(docRef, (docSnap) => {
                     if (docSnap.exists()) {
-                        setRealTimeData(docSnap.data());
+                        const data = docSnap.data();
+                        console.log("Firebase data received:", data);
+                        setRealTimeData(data);
+                    } else {
+                        console.warn("Firebase document does not exist for ID:", firebaseId);
                     }
                 }, (err) => {
-                    console.error("Firestore error:", err);
+                    console.error("Firestore listener failed:", err);
                 });
                 
                 setLoading(false);
@@ -105,11 +112,21 @@ const ScreenTimeIntelligencePage = () => {
         );
     }
 
-    const { child_name, total_screen_time, apps_usage, top_app, overall, alert, parent_action } = aiAnalysis || {};
+    // Helper to calculate total from apps map
+    const calculateTotal = (appsMap) => {
+        if (!appsMap) return 0;
+        return Object.values(appsMap).reduce((sum, val) => sum + (parseInt(val) || 0), 0);
+    };
 
-    // Get live values from Firebase if available, otherwise use AI static values
-    const liveTotalTime = realTimeData?.totalUsageTodayMinutes || total_screen_time || 0;
-    const liveApps = realTimeData?.apps || {};
+    const { child_name, total_screen_time, apps_usage, top_app, overall, alert, parent_action, original_usage } = aiAnalysis || {};
+
+    // SOURCE OF TRUTH: Prefer real-time Firebase, fallback to original backend usage, last resort AI total
+    const liveTotalTime = realTimeData?.apps 
+        ? calculateTotal(realTimeData.apps) 
+        : (original_usage ? calculateTotal(original_usage) : (total_screen_time || 0));
+    
+    // Live Map: Combine Firebase live apps with backend fallback
+    const liveApps = realTimeData?.apps || original_usage || {};
 
     const getStatusColor = (status) => {
         switch (status?.toLowerCase()) {
@@ -119,6 +136,35 @@ const ScreenTimeIntelligencePage = () => {
             default: return 'text-slate-500 bg-slate-50 border-slate-100';
         }
     };
+
+    const AppItem = ({ app, liveTime }) => (
+        <div className="p-6 hover:bg-slate-50/50 dark:hover:bg-slate-800/30 transition-all group">
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                <div className="flex items-start gap-4">
+                    <div className="w-14 h-14 bg-indigo-50 dark:bg-slate-800 rounded-2xl flex items-center justify-center text-2xl font-black text-indigo-400 shadow-inner group-hover:scale-110 transition-transform">
+                        {app.app_name.charAt(0)}
+                    </div>
+                    <div>
+                        <div className="flex items-center gap-2 mb-1">
+                            <h4 className="text-xl font-black text-slate-800 dark:text-white">{app.app_name}</h4>
+                            <span className="text-[10px] bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded font-black text-slate-400 uppercase tracking-tighter">{app.category}</span>
+                        </div>
+                        <p className="text-lg font-black text-indigo-600 dark:text-indigo-400 flex items-center gap-1.5">
+                            {liveTime} mins
+                            <span className={`ml-2 px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-tighter border ${getStatusColor(app.status)}`}>
+                                {app.usage_level}
+                            </span>
+                        </p>
+                    </div>
+                </div>
+                
+                <div className="flex flex-col gap-1 md:text-right max-w-sm">
+                    <p className="text-slate-800 dark:text-white font-bold leading-tight">{app.insight}</p>
+                    <p className="text-slate-400 text-xs font-medium italic mt-1 shrink-0 bg-slate-100/50 dark:bg-slate-800/50 p-2 rounded-lg">💡 {app.suggestion}</p>
+                </div>
+            </div>
+        </div>
+    );
 
     const getRiskBg = (level) => {
         switch (level?.toLowerCase()) {
@@ -191,13 +237,15 @@ const ScreenTimeIntelligencePage = () => {
                                     </div>
                                     <h2 className="text-2xl font-black text-slate-800 dark:text-white">Pattern Recognition</h2>
                                 </div>
-                                <p className="text-xl text-slate-600 dark:text-slate-300 font-medium leading-relaxed mb-6">{overall?.summary}</p>
+                                <p className="text-xl text-slate-600 dark:text-slate-300 font-medium leading-relaxed mb-6">
+                                    {overall?.summary || "Analyzing behavior patterns from recent app activity..."}
+                                </p>
                                 <div className="space-y-4">
                                     <div className="flex items-start gap-4 p-4 bg-slate-50 dark:bg-slate-800/50 rounded-2xl border border-slate-100 dark:border-slate-800">
                                         <div className="mt-1"><FiAlertTriangle className="text-amber-500 text-xl" /></div>
                                         <div>
                                             <p className="text-sm font-bold text-slate-400 uppercase tracking-wider mb-1">Main Concern</p>
-                                            <p className="text-slate-800 dark:text-white font-bold">{overall?.main_issue}</p>
+                                            <p className="text-slate-800 dark:text-white font-bold">{overall?.main_issue || "Calculating risks..."}</p>
                                         </div>
                                     </div>
                                 </div>
@@ -209,11 +257,11 @@ const ScreenTimeIntelligencePage = () => {
                                         <FiSmartphone className="text-2xl text-blue-600 dark:text-blue-400" />
                                     </div>
                                     <h3 className="text-slate-400 font-bold uppercase tracking-widest text-xs mb-1">Priority App</h3>
-                                    <p className="text-3xl font-black text-slate-800 dark:text-white truncate">{top_app}</p>
+                                    <p className="text-3xl font-black text-slate-800 dark:text-white truncate">{top_app || "N/A"}</p>
                                 </div>
                                 <div className="mt-6 pt-6 border-t border-slate-100 dark:border-slate-800">
                                     <p className="text-xs font-black text-slate-400 uppercase mb-3">Suggested Action</p>
-                                    <p className="text-sm font-bold text-slate-700 dark:text-slate-200">{parent_action?.primary_action}</p>
+                                    <p className="text-sm font-bold text-slate-700 dark:text-slate-200">{parent_action?.primary_action || "Waiting for AI assessment..."}</p>
                                 </div>
                             </div>
                         </div>
@@ -232,39 +280,34 @@ const ScreenTimeIntelligencePage = () => {
                     </div>
 
                     <div className="divide-y divide-slate-50 dark:divide-slate-800">
-                        {apps_usage?.map((app, idx) => {
-                            // Find current live time for this app
-                            const liveTime = liveApps[app.app_name] || app.usage_time_minutes;
-                            
-                            return (
-                                <div key={idx} className="p-6 hover:bg-slate-50/50 dark:hover:bg-slate-800/30 transition-all group">
-                                    <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-                                        <div className="flex items-start gap-4">
-                                            <div className="w-14 h-14 bg-indigo-50 dark:bg-slate-800 rounded-2xl flex items-center justify-center text-2xl font-black text-indigo-400 shadow-inner group-hover:scale-105 transition-transform">
-                                                {app.app_name.charAt(0)}
-                                            </div>
-                                            <div>
-                                                <div className="flex items-center gap-2 mb-1">
-                                                    <h4 className="text-xl font-black text-slate-800 dark:text-white">{app.app_name}</h4>
-                                                    <span className="text-[10px] bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded font-black text-slate-400 uppercase tracking-tighter">{app.category}</span>
-                                                </div>
-                                                <p className="text-lg font-black text-indigo-600 dark:text-indigo-400 flex items-center gap-1.5">
-                                                    {liveTime} mins
-                                                    <span className={`ml-2 px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-tighter border ${getStatusColor(app.status)}`}>
-                                                        {app.usage_level}
-                                                    </span>
-                                                </p>
-                                            </div>
-                                        </div>
-                                        
-                                        <div className="flex flex-col gap-1 md:text-right max-w-sm">
-                                            <p className="text-slate-800 dark:text-white font-bold leading-tight">{app.insight}</p>
-                                            <p className="text-slate-400 text-xs font-medium italic mt-1 shrink-0 bg-slate-100/50 dark:bg-slate-800/50 p-2 rounded-lg">💡 {app.suggestion}</p>
-                                        </div>
-                                    </div>
-                                </div>
-                            );
-                        })}
+                        {Object.keys(liveApps).length > 0 ? (
+                            Object.entries(liveApps).map(([name, mins], idx) => {
+                                // Find AI insight for this app if it exists
+                                const aiInfo = apps_usage?.find(a => 
+                                    a.app_name === name || 
+                                    a.app_name === name.replace(/\s+/g, '')
+                                );
+
+                                return (
+                                    <AppItem 
+                                        key={idx} 
+                                        app={{
+                                            app_name: name,
+                                            category: aiInfo?.category || 'Syncing...',
+                                            usage_level: aiInfo?.usage_level || (mins > 60 ? 'high' : 'moderate'),
+                                            insight: aiInfo?.insight || 'Real-time data from child\'s device.',
+                                            suggestion: aiInfo?.suggestion || 'Connecting to Parent Intelligence Hub...',
+                                            status: aiInfo?.status || 'Good'
+                                        }} 
+                                        liveTime={mins} 
+                                    />
+                                );
+                            })
+                        ) : (
+                            <div className="p-10 text-center text-slate-400 font-bold">
+                                {isAnalyzing ? "Analyzing Firebase data..." : "No live data detected yet."}
+                            </div>
+                        )}
                     </div>
                 </div>
 
