@@ -77,9 +77,9 @@ function ChildCard({ child, onTakeAssessment }) {
                             </button>
                             <button
                                 onClick={() => navigate(`/magic-fix/${child.id}`)}
-                                className="px-4 py-3 bg-gradient-to-r from-pink-500 to-rose-500 text-white rounded-xl hover:from-pink-600 hover:to-rose-600 font-bold shadow-lg transition-all flex items-center justify-center gap-2"
+                                className="px-4 py-3 bg-gradient-to-r from-pink-500 to-rose-500 text-white rounded-xl hover:from-pink-600 hover:from-rose-600 font-bold shadow-lg transition-all flex items-center justify-center gap-2"
                             >
-                                🪄 Magic Fix Engine
+                                <FiZap className="text-white" /> Magic Fix Engine
                             </button>
                         </div>
                     )}
