@@ -159,8 +159,8 @@ const ScreenTimeIntelligencePage = () => {
                 </div>
                 
                 <div className="flex flex-col gap-1 md:text-right max-w-sm">
-                    <p className="text-slate-800 dark:text-white font-bold leading-tight">{app.insight}</p>
-                    <p className="text-slate-400 text-xs font-medium italic mt-1 shrink-0 bg-slate-100/50 dark:bg-slate-800/50 p-2 rounded-lg">💡 {app.suggestion}</p>
+                    {app.insight && <p className="text-slate-800 dark:text-white font-bold leading-tight">{app.insight}</p>}
+                    {app.suggestion && <p className="text-slate-400 text-xs font-medium italic mt-1 shrink-0 bg-slate-100/50 dark:bg-slate-800/50 p-2 rounded-lg">💡 {app.suggestion}</p>}
                 </div>
             </div>
         </div>
@@ -228,43 +228,6 @@ const ScreenTimeIntelligencePage = () => {
                                 </div>
                             </div>
                         )}
-
-                        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-                            <div className="md:col-span-2 bg-white dark:bg-slate-900 rounded-3xl p-8 shadow-xl border border-white dark:border-slate-800">
-                                <div className="flex items-center gap-3 mb-4">
-                                    <div className="p-3 bg-indigo-100 dark:bg-indigo-500/20 rounded-2xl">
-                                        <FiTrendingUp className="text-2xl text-indigo-600 dark:text-indigo-400" />
-                                    </div>
-                                    <h2 className="text-2xl font-black text-slate-800 dark:text-white">Pattern Recognition</h2>
-                                </div>
-                                <p className="text-xl text-slate-600 dark:text-slate-300 font-medium leading-relaxed mb-6">
-                                    {overall?.summary || "Analyzing behavior patterns from recent app activity..."}
-                                </p>
-                                <div className="space-y-4">
-                                    <div className="flex items-start gap-4 p-4 bg-slate-50 dark:bg-slate-800/50 rounded-2xl border border-slate-100 dark:border-slate-800">
-                                        <div className="mt-1"><FiAlertTriangle className="text-amber-500 text-xl" /></div>
-                                        <div>
-                                            <p className="text-sm font-bold text-slate-400 uppercase tracking-wider mb-1">Main Concern</p>
-                                            <p className="text-slate-800 dark:text-white font-bold">{overall?.main_issue || "Calculating risks..."}</p>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-
-                            <div className="bg-white dark:bg-slate-900 rounded-3xl p-8 shadow-xl border border-white dark:border-slate-800 flex flex-col justify-between">
-                                <div>
-                                    <div className="p-3 bg-blue-100 dark:bg-blue-500/20 rounded-2xl w-fit mb-4">
-                                        <FiSmartphone className="text-2xl text-blue-600 dark:text-blue-400" />
-                                    </div>
-                                    <h3 className="text-slate-400 font-bold uppercase tracking-widest text-xs mb-1">Priority App</h3>
-                                    <p className="text-3xl font-black text-slate-800 dark:text-white truncate">{top_app || "N/A"}</p>
-                                </div>
-                                <div className="mt-6 pt-6 border-t border-slate-100 dark:border-slate-800">
-                                    <p className="text-xs font-black text-slate-400 uppercase mb-3">Suggested Action</p>
-                                    <p className="text-sm font-bold text-slate-700 dark:text-slate-200">{parent_action?.primary_action || "Waiting for AI assessment..."}</p>
-                                </div>
-                            </div>
-                        </div>
                     </>
                 )}
 
@@ -295,8 +258,8 @@ const ScreenTimeIntelligencePage = () => {
                                             app_name: name,
                                             category: aiInfo?.category || 'Syncing...',
                                             usage_level: aiInfo?.usage_level || (mins > 60 ? 'high' : 'moderate'),
-                                            insight: aiInfo?.insight || 'Real-time data from child\'s device.',
-                                            suggestion: aiInfo?.suggestion || 'Connecting to Parent Intelligence Hub...',
+                                            insight: aiInfo?.insight || '',
+                                            suggestion: aiInfo?.suggestion || '',
                                             status: aiInfo?.status || 'Good'
                                         }} 
                                         liveTime={mins} 
