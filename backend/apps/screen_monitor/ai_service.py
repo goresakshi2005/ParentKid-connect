@@ -1,105 +1,138 @@
-"""
-screen_monitor/ai_service.py
+# backend/apps/screen_monitor/ai_service.py
 
-Calls the Anthropic Claude API to analyse a teen's screen session
-and return a structured BehaviorAnalysis JSON payload.
-"""
+import google.generativeai as genai
+from django.conf import settings
 import json
+import re
 import logging
-from datetime import datetime
 
 logger = logging.getLogger(__name__)
 
+# Configure Gemini
+genai.configure(api_key=settings.GEMINI_API_KEY)
 
-SYSTEM_PROMPT = """You are an AI Teen Behavior Monitoring System embedded in a parental-care app.
-You analyze a teenager's screen usage data and return ONLY a valid JSON object — no markdown, no explanation.
+class ScreenTimeIntelligenceEngine:
+    @staticmethod
+    def analyze_usage(child_name, age, apps_data):
+        """
+        Analyzes app-wise screen time data and returns structured insights.
+        apps_data should be a dict: {"AppName": minutes, ...}
+        """
+        prompt = f"""
+        You are an advanced AI-powered Parenting Intelligence System integrated into a real-time Parent Dashboard.
+        Your task is to analyze a teenager's app-wise screen time data and generate structured, UI-friendly insights.
 
-OUTPUT FORMAT (strict JSON, nothing else):
-{
-  "detected_state": "normal|stressed|fatigued|distracted|overuse",
-  "intensity": "low|medium|high",
-  "confidence": <float 0.0-1.0>,
-  "behavior_pattern": "<short explanation, e.g. excessive social media at night>",
-  "risk_level": "none|low|medium|high",
-  "auto_action": {
-    "action_type": "focus_mode|digital_detox|rest_mode|none",
-    "description": "<what the system should automatically do>",
-    "duration": "<e.g. 30 minutes, or empty string>"
-  },
-  "system_changes": ["<change 1>", "<change 2>"],
-  "user_message": "<short friendly 1-line message for the teen>",
-  "parent_alert": "none|consider|required"
-}
+        ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+        📥 INPUT
+        ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+        Child:
+        * Name: {child_name}
+        * Age: {age}
 
-RULES:
-- Focus on automation, not advice.
-- Night usage + high social media = higher risk.
-- Continuous usage > 90 min = fatigue or distraction.
-- Detect patterns from recent logs, not just single events.
-- Keep user_message friendly and non-alarming.
-- Avoid medical language.
-"""
+        App Usage Data (minutes):
+        {json.dumps(apps_data, indent=2)}
 
+        ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+        🧠 ANALYSIS STEPS
+        ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-def _build_user_prompt(session_data: dict, recent_logs: list[dict]) -> str:
-    recent_text = "\n".join(
-        f"- [{log.get('recorded_at', '')}] state={log.get('detected_state', 'unknown')} "
-        f"social={log.get('social_time', 0)}min study={log.get('study_time', 0)}min "
-        f"continuous={log.get('continuous_usage', 0)}min"
-        for log in recent_logs[-5:]
-    ) or "No recent logs."
+        1. Calculate:
+           * Total screen time
+           * Top app
 
-    return f"""
-Screen Data:
-- Total Screen Time (minutes): {session_data['total_time']}
-- Social Media Usage (minutes): {session_data['social_time']}
-- Study App Usage (minutes): {session_data['study_time']}
-- Time of Usage: {session_data['time_of_day']}
-- Continuous Usage Duration (minutes): {session_data['continuous_usage']}
-- App Categories Used: {', '.join(session_data.get('apps_list', []))}
+        2. Categorize apps:
+           * Education
+           * Social Media
+           * Entertainment
+           * Productivity (if applicable)
 
-Recent Context (last few logs):
-{recent_text}
+        3. For EACH app:
+           * Keep ORIGINAL usage time (VERY IMPORTANT)
+           * Classify usage level:
+             * low (<30)
+             * moderate (30–60)
+             * high (60–120)
+             * excessive (>120)
+           * Assign status:
+             * Good / Warning / Risk
+           * Generate:
+             * short insight (1 line only)
+             * risk reason (if any)
+             * actionable suggestion
 
-Analyze this data and return the JSON object.
-"""
+        4. Overall analysis:
+           * Risk level (low / medium / high)
+           * Behavior pattern
+           * Positive signals
 
+        ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+        📤 OUTPUT (STRICT JSON)
+        ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-def analyze_session(session_data: dict, recent_logs: list[dict]) -> dict:
-    """
-    Calls Claude and returns the parsed analysis dict.
-    Falls back to a safe default if the API call fails.
-    """
-    try:
-        # Lazy import to avoid importing heavy third-party libs at module import time
-        import anthropic
+        {{
+          "child_name": "{child_name}",
+          "total_screen_time": 0,
+          "apps_usage": [
+            {{
+              "app_name": "",
+              "usage_time_minutes": 0,
+              "category": "",
+              "usage_level": "low | moderate | high | excessive",
+              "status": "Good | Warning | Risk",
+              "insight": "",
+              "risk_reason": "",
+              "suggestion": ""
+            }}
+          ],
+          "top_app": "",
+          "overall": {{
+            "risk_level": "low | medium | high",
+            "summary": "",
+            "main_issue": "",
+            "positive_note": ""
+          }},
+          "alert": {{
+            "show": true,
+            "message": ""
+          }},
+          "parent_action": {{
+            "primary_action": "",
+            "extra_action": ""
+          }},
+          "ui_flags": {{
+            "color": "green | yellow | red"
+          }}
+        }}
 
-        client = anthropic.Anthropic()
+        ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+        📏 RULES (VERY IMPORTANT)
+        ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+        * MUST include "usage_time_minutes" for EVERY app
+        * DO NOT remove or modify actual usage numbers
+        * Keep responses SHORT (UI friendly)
+        * Insight must be 1 line only
+        * Summary must be 10–15 words max
+        * Output ONLY JSON (no extra text)
+        """
 
-        message = client.messages.create(
-            model="claude-sonnet-4-20250514",
-            max_tokens=600,
-            system=SYSTEM_PROMPT,
-            messages=[
-                {"role": "user", "content": _build_user_prompt(session_data, recent_logs)}
-            ],
-        )
-        raw_text = message.content[0].text.strip()
-        return json.loads(raw_text)
-    except Exception as exc:
-        logger.error("Screen monitor AI analysis failed: %s", exc)
-        return _fallback_result()
-
-
-def _fallback_result() -> dict:
-    return {
-        "detected_state": "normal",
-        "intensity": "low",
-        "confidence": 0.5,
-        "behavior_pattern": "Unable to analyze at this time.",
-        "risk_level": "none",
-        "auto_action": {"action_type": "none", "description": "", "duration": ""},
-        "system_changes": [],
-        "user_message": "Keep up the good work! 😊",
-        "parent_alert": "none",
-    }
+        try:
+            model = genai.GenerativeModel('gemini-1.5-flash')
+            response = model.generate_content(prompt)
+            
+            if not response or not response.text:
+                return {"error": "AI returned an empty response."}
+                
+            raw_text = response.text.strip()
+            # Remove markdown formatting if present
+            raw_text = re.sub(r'^```json\s*', '', raw_text)
+            raw_text = re.sub(r'\s*```$', '', raw_text)
+            
+            json_match = re.search(r'\{.*\}', raw_text, re.DOTALL)
+            if json_match:
+                return json.loads(json_match.group(0))
+            else:
+                return {"error": "AI response format was invalid.", "raw": raw_text[:500]}
+                
+        except Exception as e:
+            logger.error(f"Screen Intelligence AI Error: {str(e)}")
+            return {"error": f"Analysis failed: {str(e)}"}

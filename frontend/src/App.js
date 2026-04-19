@@ -19,6 +19,7 @@ import MentorChatPageWrapper from './pages/MentorChatPageWrapper';
 import RelationshipIntelligencePage from './pages/RelationshipIntelligencePage';
 import EarlyChildhoodIntelligencePage from './pages/EarlyChildhoodIntelligencePage';
 import MagicFixPage from './pages/MagicFixPage';
+import ScreenTimeIntelligencePage from './pages/ScreenTimeIntelligencePage';
 import { useAuth } from './context/AuthContext';
 
 import ScreenTimePage from './pages/ScreenTimePage';
@@ -91,6 +92,16 @@ function App() {
             element={
               <AuthGuard role="parent">
                 <EarlyChildhoodIntelligencePage />
+              </AuthGuard>
+            }
+          />
+
+          {/* Screen Time Intelligence */}
+          <Route
+            path="/screen-intelligence/:childId"
+            element={
+              <AuthGuard role="parent">
+                <ScreenTimeIntelligencePage />
               </AuthGuard>
             }
           />

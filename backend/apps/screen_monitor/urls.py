@@ -15,4 +15,5 @@ urlpatterns = [
     # Screen time data
     path('upload-screen-time', views.upload_screen_time, name='sm-upload'),
     path('get-usage', views.get_usage, name='sm-get-usage'),
+    path('screen-intelligence', views.get_screen_time_intelligence, name='sm-screen-intelligence'),
 ]

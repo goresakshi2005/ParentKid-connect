@@ -6,7 +6,7 @@ class ChildSerializer(serializers.ModelSerializer):
     
     class Meta:
         model = Child
-        fields = ['id', 'name', 'date_of_birth', 'avatar', 'stage', 'age', 'invite_code', 'created_at']
+        fields = ['id', 'name', 'date_of_birth', 'avatar', 'stage', 'age', 'invite_code', 'firebase_id', 'created_at']
         read_only_fields = ['id', 'created_at', 'stage', 'invite_code']
     
     def get_age(self, obj):

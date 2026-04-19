@@ -9,8 +9,11 @@ from rest_framework.response import Response
 from rest_framework_simplejwt.tokens import RefreshToken
 from django.contrib.auth import get_user_model, authenticate
 from collections import defaultdict
-
+import json
 from .models import Device, AppUsage
+from .ai_service import ScreenTimeIntelligenceEngine
+from apps.children.models import Child
+from apps.utils.firebase_helper import FirebaseHelper
 from .serializers import (
     DeviceSerializer,
     AppUsageSerializer,
@@ -248,3 +251,65 @@ def get_usage(request):
         'total_minutes_overall': round(total_overall / 60, 1),
         'daily_summaries': summaries,
     })
+
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def get_screen_time_intelligence(request):
+    """
+    GET /api/screen-intelligence?child_id=1
+    Analyzes screen time for a specific child using AI.
+    """
+    child_id = request.query_params.get('child_id')
+    if not child_id:
+        return Response({'error': 'child_id is required.'}, status=status.HTTP_400_BAD_REQUEST)
+
+    try:
+        child = Child.objects.get(id=child_id, parent=request.user)
+    except Child.DoesNotExist:
+        return Response({'error': 'Child not found.'}, status=status.HTTP_404_NOT_FOUND)
+
+    # Priority 1: Fetch from Firebase if firebase_id is available
+    apps_dict = {}
+    if child.firebase_id:
+        print(f"Fetching from Firebase for ID: {child.firebase_id}")
+        firebase_data = FirebaseHelper.fetch_screen_time(child.firebase_id)
+        if firebase_data:
+            apps_dict = firebase_data
+
+    # Priority 2: Use local AppUsage if Firebase is empty or unavailable
+    if not apps_dict:
+        devices = Device.objects.filter(user=request.user)
+        from datetime import date, timedelta
+        today = date.today()
+        usage_data = AppUsage.objects.filter(device__in=devices, date__gte=today - timedelta(days=1))
+        
+        if usage_data.exists():
+            for u in usage_data:
+                if u.app_name not in apps_dict:
+                    apps_dict[u.app_name] = 0
+                apps_dict[u.app_name] += u.usage_minutes
+
+    # Priority 3: Fallback/Dummy data for demonstration
+    if not apps_dict:
+        apps_dict = {
+            "YouTube": 145,
+            "Instagram": 85,
+            "WhatsApp": 40,
+            "Snapchat": 110,
+            "Duolingo": 25,
+            "Chrome": 30
+        }
+
+    # Call AI Engine
+    analysis = ScreenTimeIntelligenceEngine.analyze_usage(
+        child_name=child.name,
+        age=child.get_age(),
+        apps_data=apps_dict
+    )
+
+    # Add child_id for frontend tracking
+    if isinstance(analysis, dict) and "error" not in analysis:
+        analysis["child_id"] = child_id
+
+    return Response(analysis)

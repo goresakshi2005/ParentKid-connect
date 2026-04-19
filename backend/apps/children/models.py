@@ -20,6 +20,7 @@ class Child(models.Model):
     avatar = models.ImageField(upload_to='child_avatars/', null=True, blank=True)
     stage = models.CharField(max_length=20, choices=STAGE_CHOICES, default='early_childhood')  # added default
     invite_code = models.CharField(max_length=10, unique=True, blank=True, null=True)
+    firebase_id = models.CharField(max_length=255, unique=True, blank=True, null=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
     

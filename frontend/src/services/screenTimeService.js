@@ -36,3 +36,12 @@ export const uploadScreenTime = (deviceId, usages) =>
         device_id: deviceId,
         usages,
     });
+
+/**
+ * Fetch AI-powered screen time intelligence/analysis for a child.
+ * @param {string} childId - The ID of the child profile.
+ */
+export const getScreenIntelligence = (childId) =>
+    api.get('/api/screen-intelligence', {
+        params: { child_id: childId }
+    });

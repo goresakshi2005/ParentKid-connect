@@ -81,6 +81,12 @@ function ChildCard({ child, onTakeAssessment }) {
                             >
                                 <FiZap className="text-white" /> Magic Fix Engine
                             </button>
+                            <button
+                                onClick={() => navigate(`/screen-intelligence/${child.id}`)}
+                                className="px-4 py-3 bg-gradient-to-r from-emerald-500 to-teal-500 text-white rounded-xl hover:from-emerald-600 hover:to-teal-600 font-bold shadow-lg transition-all flex items-center justify-center gap-2"
+                            >
+                                <FiBarChart2 className="text-white" /> Screen Time Intelligence
+                            </button>
                         </div>
                     )}
                 </div>
