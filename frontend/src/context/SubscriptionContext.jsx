@@ -65,6 +65,35 @@ export function SubscriptionProvider({ children }) {
     return planName === 'free' ? 'free' : 'paid';
   };
 
+  const createOrder = async (planId) => {
+    try {
+      const response = await axios.post(
+        `${process.env.REACT_APP_API_URL}/subscriptions/create_order/`,
+        { plan_id: planId },
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+      return response.data;
+    } catch (error) {
+      console.error('Failed to create order:', error);
+      throw error;
+    }
+  };
+
+  const verifyPayment = async (paymentData) => {
+    try {
+      const response = await axios.post(
+        `${process.env.REACT_APP_API_URL}/subscriptions/verify_payment/`,
+        paymentData,
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+      await fetchSubscription();
+      return response.data;
+    } catch (error) {
+      console.error('Failed to verify payment:', error);
+      throw error;
+    }
+  };
+
   return (
     <SubscriptionContext.Provider
       value={{
@@ -75,7 +104,9 @@ export function SubscriptionProvider({ children }) {
         canCreateChildren,
         canAccessInsights,
         fetchSubscription,
-        getUserTier,   // <-- added
+        getUserTier,
+        createOrder,
+        verifyPayment,
       }}
     >
       {children}

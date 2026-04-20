@@ -31,7 +31,7 @@ class SubscriptionPlan(models.Model):
         ordering = ['price']
     
     def __str__(self):
-        return f"{self.get_plan_name_display()} - ₹{self.price}"
+        return f"{self.get_plan_name_display()} - INR {self.price}"
 
 class Subscription(models.Model):
     STATUS_CHOICES = (

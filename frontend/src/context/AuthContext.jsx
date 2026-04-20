@@ -33,6 +33,7 @@ export function AuthProvider({ children }) {
     } catch (error) {
       console.error('Failed to fetch user:', error);
       setToken(null);
+      setUser(null);
       localStorage.removeItem('access_token');
     } finally {
       setLoading(false);

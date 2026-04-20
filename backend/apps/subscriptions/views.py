@@ -6,6 +6,8 @@ from .models import SubscriptionPlan, Subscription
 from .serializers import SubscriptionPlanSerializer, SubscriptionSerializer
 import razorpay
 from django.conf import settings
+from django.utils import timezone
+from datetime import timedelta
 
 class SubscriptionViewSet(viewsets.ViewSet):
     permission_classes = [IsAuthenticated]
@@ -66,6 +68,8 @@ class SubscriptionViewSet(viewsets.ViewSet):
         razorpay_signature = request.data.get('razorpay_signature')
         plan_id = request.data.get('plan_id')
         
+        print(f"DEBUG: Verifying payment {razorpay_payment_id} for order {razorpay_order_id}")
+        
         client = razorpay.Client(
             auth=(settings.RAZORPAY_KEY_ID, settings.RAZORPAY_KEY_SECRET)
         )
@@ -77,22 +81,38 @@ class SubscriptionViewSet(viewsets.ViewSet):
                 'razorpay_signature': razorpay_signature,
             }
             
+            # This will raise an error if signature is invalid
             client.utility.verify_payment_signature(params)
             
             plan = SubscriptionPlan.objects.get(id=plan_id)
-            subscription, created = Subscription.objects.get_or_create(user=request.user)
+            
+            # Use update_or_create to handle both cases
+            subscription, created = Subscription.objects.get_or_create(
+                user=request.user,
+                defaults={'plan': plan, 'end_date': timezone.now() + timedelta(days=plan.duration_days)}
+            )
             
             subscription.plan = plan
             subscription.razorpay_order_id = razorpay_order_id
             subscription.razorpay_payment_id = razorpay_payment_id
             subscription.status = 'active'
+            
+            # Reset end_date for new purchase/upgrade
+            subscription.end_date = timezone.now() + timedelta(days=plan.duration_days)
             subscription.save()
+            
+            print(f"DEBUG: Payment verified and subscription updated for {request.user.email}")
             
             return Response({
                 'message': 'Payment verified and subscription activated',
                 'subscription': SubscriptionSerializer(subscription).data
             })
         
+        except razorpay.errors.SignatureVerificationError:
+            print(f"DEBUG: Signature verification failed for {razorpay_order_id}")
+            return Response({'error': 'Invalid payment signature'}, 
+                          status=status.HTTP_400_BAD_REQUEST)
         except Exception as e:
+            print(f"DEBUG: Verification error: {str(e)}")
             return Response({'error': f'Payment verification failed: {str(e)}'}, 
                           status=status.HTTP_400_BAD_REQUEST)
