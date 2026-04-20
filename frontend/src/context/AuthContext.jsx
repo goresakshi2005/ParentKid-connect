@@ -18,11 +18,26 @@ export function AuthProvider({ children }) {
 
   const fetchUser = async () => {
     try {
-      const response = await axios.get(
+      // 1. Fetch Basic User Info
+      const userResponse = await axios.get(
         `${process.env.REACT_APP_API_URL}/users/me/`,
         { headers: { Authorization: `Bearer ${token}` } }
       );
-      const userData = response.data;
+      const userData = userResponse.data;
+
+      // 2. Fetch Subscription Features
+      try {
+        const featureResponse = await axios.get(
+          `${process.env.REACT_APP_API_URL}/subscriptions/my-features/`,
+          { headers: { Authorization: `Bearer ${token}` } }
+        );
+        userData.features = featureResponse.data.features;
+        userData.plan = featureResponse.data.plan;
+      } catch (fErr) {
+        console.warn('Failed to fetch features:', fErr);
+        userData.features = [];
+        userData.plan = "FREE";
+      }
 
       // Always merge is_expecting from localStorage
       if (!userData.is_expecting) {
@@ -37,6 +52,23 @@ export function AuthProvider({ children }) {
       localStorage.removeItem('access_token');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const refreshFeatures = async () => {
+    if (!token) return;
+    try {
+      const response = await axios.get(
+        `${process.env.REACT_APP_API_URL}/subscriptions/my-features/`,
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+      setUser(prev => ({
+        ...prev,
+        features: response.data.features,
+        plan: response.data.plan
+      }));
+    } catch (error) {
+      console.error('Failed to refresh features:', error);
     }
   };
 
@@ -93,7 +125,7 @@ export function AuthProvider({ children }) {
   };
 
   return (
-    <AuthContext.Provider value={{ user, loading, login, signup, logout, token }}>
+    <AuthContext.Provider value={{ user, loading, login, signup, logout, token, refreshFeatures }}>
       {children}
     </AuthContext.Provider>
   );

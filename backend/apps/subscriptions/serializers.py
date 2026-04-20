@@ -1,7 +1,18 @@
 from rest_framework import serializers
-from .models import SubscriptionPlan, Subscription
+from .models import Feature, SubscriptionPlan, Subscription
+
+class FeatureSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Feature
+        fields = ['name', 'description']
 
 class SubscriptionPlanSerializer(serializers.ModelSerializer):
+    features = serializers.SlugRelatedField(
+        many=True,
+        read_only=True,
+        slug_field='name'
+    )
+    
     class Meta:
         model = SubscriptionPlan
         fields = '__all__'

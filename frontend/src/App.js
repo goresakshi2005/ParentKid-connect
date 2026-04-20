@@ -25,6 +25,8 @@ import { useAuth } from './context/AuthContext';
 import ScreenTimePage from './pages/ScreenTimePage';
 import DeviceManagerPage from './pages/DeviceManagerPage';
 
+import FeatureGuard from './components/Common/FeatureGuard';
+
 function App() {
   const { user, loading } = useAuth();
 
@@ -71,7 +73,9 @@ function App() {
             path="/relationship-intelligence/:childId"
             element={
               <AuthGuard role="parent">
-                <RelationshipIntelligencePage />
+                <FeatureGuard feature="relationship_ai">
+                  <RelationshipIntelligencePage />
+                </FeatureGuard>
               </AuthGuard>
             }
           />
@@ -81,7 +85,9 @@ function App() {
             path="/magic-fix/:childId"
             element={
               <AuthGuard role="parent">
-                <MagicFixPage />
+                <FeatureGuard feature="magic_fix">
+                  <MagicFixPage />
+                </FeatureGuard>
               </AuthGuard>
             }
           />
@@ -101,7 +107,9 @@ function App() {
             path="/screen-intelligence/:childId"
             element={
               <AuthGuard role="parent">
-                <ScreenTimeIntelligencePage />
+                <FeatureGuard feature="screen_intelligence">
+                  <ScreenTimeIntelligencePage />
+                </FeatureGuard>
               </AuthGuard>
             }
           />

@@ -253,8 +253,10 @@ def get_usage(request):
     })
 
 
+from apps.users.permissions import HasFeaturePermission
+
 @api_view(['GET'])
-@permission_classes([IsAuthenticated])
+@permission_classes([IsAuthenticated, HasFeaturePermission("screen_intelligence")])
 def get_screen_time_intelligence(request):
     """
     GET /api/screen-intelligence?child_id=1

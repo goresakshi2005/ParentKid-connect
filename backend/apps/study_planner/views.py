@@ -150,9 +150,11 @@ def _sync_with_google_calendar(task):
 # VIEWSET
 # ---------------------------------------------------------------------------
 
+from apps.users.permissions import HasFeaturePermission
+
 class StudyTaskViewSet(ModelViewSet):
     serializer_class = StudyTaskSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, HasFeaturePermission("study_planner")]
 
     def get_queryset(self):
         qs = StudyTask.objects.filter(user=self.request.user)

@@ -65,7 +65,12 @@ function Navbar() {
                   >
                     💬 Mentor Chat
                   </Link>
-                  <Link to="/pricing" className="hover:text-blue-600 dark:text-gray-200 dark:hover:text-blue-400">Upgrade</Link>
+                  <div className="flex flex-col items-center">
+                    <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${user.plan === 'FREE' ? 'bg-gray-200 text-gray-700' : 'bg-gradient-to-r from-pink-500 to-violet-600 text-white shadow-sm'}`}>
+                      {user.plan || 'FREE'}
+                    </span>
+                    <Link to="/pricing" className="text-xs hover:text-blue-600 dark:text-gray-200 dark:hover:text-blue-400">Upgrade</Link>
+                  </div>
                 </>
               )}
               <div className="flex gap-4 items-center">

@@ -8,8 +8,10 @@ from .services.ai_engine import RelationshipIntelligenceEngine
 from .models import RelationshipAnalysis, Child
 from .serializers import RelationshipAnalysisSerializer
 
+from apps.users.permissions import HasFeaturePermission
+
 class RelationshipAnalysisView(APIView):
-    permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [permissions.IsAuthenticated, HasFeaturePermission("relationship_ai")]
 
     def post(self, request):
         parent_data = request.data.get('parent', {})
@@ -55,7 +57,7 @@ class RelationshipAnalysisView(APIView):
 
 
 class RelationshipHistoryView(APIView):
-    permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [permissions.IsAuthenticated, HasFeaturePermission("relationship_ai")]
     
     def get(self, request, child_id):
         child = get_object_or_404(Child, id=child_id, parent=request.user)
@@ -65,7 +67,7 @@ class RelationshipHistoryView(APIView):
 
 
 class MagicFixView(APIView):
-    permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [permissions.IsAuthenticated, HasFeaturePermission("magic_fix")]
 
     def post(self, request):
         child_id = request.data.get('child_id')
@@ -106,7 +108,7 @@ class MagicFixView(APIView):
         }, status=status.HTTP_200_OK)
 
 class MagicFixHistoryListView(APIView):
-    permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [permissions.IsAuthenticated, HasFeaturePermission("magic_fix")]
     
     def get(self, request, child_id):
         child = get_object_or_404(Child, id=child_id, parent=request.user)

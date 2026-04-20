@@ -12,6 +12,7 @@ import { useAuth } from '../context/AuthContext';
 import { useSubscription } from '../context/SubscriptionContext';
 import AssessmentPrompt from '../components/Teen/AssessmentPrompt';
 import CareerDiscovery from '../components/Teen/CareerDiscovery';
+import FeatureGuard from '../components/Common/FeatureGuard';
 import { getCareerDiscoveryResults, deleteCareerDiscoveryResult } from '../services/assessmentService';
 import api from '../services/api';
 import {
@@ -615,30 +616,34 @@ export default function TeenDashboard() {
             )}
 
             {/* Study Planner */}
-            <StudyPlanner />
+            <FeatureGuard feature="study_planner">
+                <StudyPlanner />
+            </FeatureGuard>
 
             {/* Career Discovery Journey */}
-            <div
-                onClick={() => setShowCareerDiscovery(true)}
-                className="block cursor-pointer bg-gradient-to-r from-violet-50 to-fuchsia-50 dark:from-slate-800 dark:to-slate-900 p-6 rounded-2xl border border-violet-200 dark:border-slate-700 hover:shadow-lg transition-all group"
-            >
-                <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-4">
-                        <div className="w-14 h-14 bg-gradient-to-br from-violet-600 to-pink-600 rounded-xl flex items-center justify-center text-2xl group-hover:scale-110 transition-transform shadow-lg">
-                            🚀
+            <FeatureGuard feature="career_discovery">
+                <div
+                    onClick={() => setShowCareerDiscovery(true)}
+                    className="block cursor-pointer bg-gradient-to-r from-violet-50 to-fuchsia-50 dark:from-slate-800 dark:to-slate-900 p-6 rounded-2xl border border-violet-200 dark:border-slate-700 hover:shadow-lg transition-all group"
+                >
+                    <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-4">
+                            <div className="w-14 h-14 bg-gradient-to-br from-violet-600 to-pink-600 rounded-xl flex items-center justify-center text-2xl group-hover:scale-110 transition-transform shadow-lg">
+                                🚀
+                            </div>
+                            <div>
+                                <h3 className="text-lg font-bold text-gray-800 dark:text-white">Career Discovery Journey</h3>
+                                <p className="text-sm text-gray-500 dark:text-slate-400">
+                                    Discover your ideal career through an exciting, game-like adventure!
+                                </p>
+                            </div>
                         </div>
-                        <div>
-                            <h3 className="text-lg font-bold text-gray-800 dark:text-white">Career Discovery Journey</h3>
-                            <p className="text-sm text-gray-500 dark:text-slate-400">
-                                Discover your ideal career through an exciting, game-like adventure!
-                            </p>
-                        </div>
+                        <span className="text-violet-600 dark:text-pink-400 font-medium text-sm group-hover:translate-x-1 transition-transform">
+                            Start Journey →
+                        </span>
                     </div>
-                    <span className="text-violet-600 dark:text-pink-400 font-medium text-sm group-hover:translate-x-1 transition-transform">
-                        Start Journey →
-                    </span>
                 </div>
-            </div>
+            </FeatureGuard>
 
             {/* Mentor Chat Section */}
             <a

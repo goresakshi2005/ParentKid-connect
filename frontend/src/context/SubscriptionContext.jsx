@@ -5,7 +5,7 @@ import { useAuth } from './AuthContext';
 const SubscriptionContext = createContext();
 
 export function SubscriptionProvider({ children }) {
-  const { token } = useAuth();
+  const { user, token, refreshFeatures } = useAuth();
   const [subscription, setSubscription] = useState(null);
   const [plans, setPlans] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -49,13 +49,18 @@ export function SubscriptionProvider({ children }) {
     return subscription && subscription.plan.plan_name !== 'free' && subscription.status === 'active';
   };
 
+  const hasFeature = (featureName) => {
+    return user?.features?.includes(featureName) || false;
+  };
+
   const canCreateChildren = () => {
-    if (!subscription) return false;
-    return subscription.plan.max_child_profiles > 0;
+    // Family plan allows more than 1
+    if (user?.plan === 'FAMILY') return true;
+    return false;
   };
 
   const canAccessInsights = () => {
-    return subscription?.plan.detailed_insights || false;
+    return hasFeature('mental_health_guide');
   };
 
   // New: get user tier as 'free' or 'paid'
@@ -87,6 +92,7 @@ export function SubscriptionProvider({ children }) {
         { headers: { Authorization: `Bearer ${token}` } }
       );
       await fetchSubscription();
+      if (refreshFeatures) await refreshFeatures();
       return response.data;
     } catch (error) {
       console.error('Failed to verify payment:', error);
@@ -101,6 +107,7 @@ export function SubscriptionProvider({ children }) {
         plans,
         loading,
         isPremium,
+        hasFeature,
         canCreateChildren,
         canAccessInsights,
         fetchSubscription,

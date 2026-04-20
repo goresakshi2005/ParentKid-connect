@@ -58,35 +58,46 @@ function PricingCard({ plan }) {
     }
   };
 
-  const planDetails = {
-    free: { name: 'Free', price: 0, features: ['Basic assessment', 'Basic tracking', '1 child profile', 'Limited insights'] },
-    starter: { name: 'Starter', price: 500, features: ['Limited assessments', 'Basic tracking', '1 child profile'] },
-    growth: { name: 'Growth', price: 1000, features: ['Unlimited assessments', 'Detailed insights', 'Personalized recommendations', 'Up to 3 child profiles', 'Progress comparison'] },
-    family: { name: 'Family+', price: 2000, features: ['Unlimited child profiles', 'Advanced analytics', 'Downloadable reports', 'Priority features'] },
-  };
-
-  const details = planDetails[plan.plan_name] || planDetails.free;
-
   return (
-    <div className="border border-gray-200 dark:border-slate-700 rounded-lg p-6 shadow-sm hover:shadow-md dark:bg-slate-800 transition-all duration-300">
-      <h3 className="text-2xl font-bold mb-2 dark:text-white">{details.name}</h3>
-      <p className="text-4xl font-black mb-6 dark:text-white">₹{details.price}<span className="text-sm font-normal text-gray-500 dark:text-slate-400">/month</span></p>
-      <ul className="space-y-3 mb-8">
-        {details.features.map((feat, idx) => (
-          <li key={idx} className="text-gray-600 dark:text-slate-300 flex items-center gap-2">
-            <span className="text-green-500 dark:text-pink-500 font-bold">✓</span>
-            {feat}
+    <div className={`relative border rounded-3xl p-8 shadow-xl transition-all duration-500 hover:scale-[1.02] ${
+      plan.plan_name === 'growth' || plan.plan_name === 'family' 
+        ? 'bg-gradient-to-b from-white to-indigo-50/30 dark:from-slate-800 dark:to-slate-900 border-indigo-200 dark:border-indigo-900' 
+        : 'bg-white dark:bg-slate-900 border-gray-100 dark:border-slate-800'
+    }`}>
+      {plan.plan_name === 'family' && (
+        <span className="absolute -top-4 left-1/2 -translate-x-1/2 bg-gradient-to-r from-pink-500 to-indigo-600 text-white text-xs font-black px-4 py-1.5 rounded-full shadow-lg uppercase tracking-widest">
+          Most Popular
+        </span>
+      )}
+      
+      <h3 className="text-3xl font-black mb-1 dark:text-white capitalize">{plan.plan_name}</h3>
+      <div className="flex items-baseline gap-1 mb-6">
+        <span className="text-5xl font-black dark:text-white">₹{Math.round(plan.price)}</span>
+        <span className="text-gray-500 dark:text-slate-400 font-medium">/month</span>
+      </div>
+
+      <ul className="space-y-4 mb-10 min-h-[200px]">
+        {plan.features && plan.features.map((feat, idx) => (
+          <li key={idx} className="text-gray-600 dark:text-slate-300 flex items-start gap-3">
+            <div className="mt-1 flex-shrink-0 w-5 h-5 rounded-full bg-green-100 dark:bg-green-900/30 flex items-center justify-center text-green-600 dark:text-green-400">
+              <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
+                <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+              </svg>
+            </div>
+            <span className="text-sm font-medium capitalize">{feat.replace(/_/g, ' ')}</span>
           </li>
         ))}
       </ul>
+
       <button
         onClick={handleSelectPlan}
-        className={`w-full px-4 py-3.5 rounded-xl font-bold shadow-lg transition-all duration-300 transform active:scale-[0.98] ${plan.plan_name === 'free'
-            ? 'bg-gray-100 text-gray-500 dark:bg-slate-700/50 dark:text-pink-400 border-2 border-pink-500 dark:border-pink-500'
-            : 'bg-blue-600 text-white hover:bg-blue-700 dark:bg-pink-600 dark:hover:bg-pink-700 dark:shadow-pink-500/25'
-          }`}
+        className={`w-full py-4 rounded-2xl font-black text-lg transition-all duration-300 transform active:scale-[0.98] shadow-lg ${
+          plan.plan_name === 'free'
+            ? 'bg-gray-100 text-gray-500 cursor-default'
+            : 'bg-indigo-600 text-white hover:bg-indigo-700 shadow-indigo-500/25 hover:shadow-indigo-500/40'
+        }`}
       >
-        {plan.plan_name === 'free' ? 'Default Plan' : 'Go Premium'}
+        {plan.plan_name === 'free' ? 'Current Plan' : 'Choose Plan'}
       </button>
     </div>
   );

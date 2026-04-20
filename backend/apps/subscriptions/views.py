@@ -9,8 +9,28 @@ from django.conf import settings
 from django.utils import timezone
 from datetime import timedelta
 
+from apps.subscriptions.services.access_control import get_user_features
+
 class SubscriptionViewSet(viewsets.ViewSet):
     permission_classes = [IsAuthenticated]
+
+    @action(detail=False, methods=['get'], url_path='my-features')
+    def my_features(self, request):
+        try:
+            # Get current plan name
+            try:
+                subscription = Subscription.objects.get(user=request.user)
+                plan_name = subscription.plan.get_plan_name_display()
+            except Subscription.DoesNotExist:
+                plan_name = "Free"
+            
+            features = get_user_features(request.user)
+            return Response({
+                "plan": plan_name.upper(),
+                "features": features
+            })
+        except Exception as e:
+            return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
     
     @action(detail=False, methods=['get'])
     def plans(self, request):
