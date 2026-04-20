@@ -2,11 +2,21 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { motion, AnimatePresence } from 'framer-motion';
+import { 
+    FiArrowLeft, 
+    FiSmartphone, 
+    FiClock, 
+    FiRefreshCw, 
+    FiActivity, 
+    FiCalendar,
+    FiAlertCircle,
+    FiZap,
+    FiBarChart2,
+    FiChevronRight
+} from 'react-icons/fi';
 import { getUsage, getDevices } from '../../services/screenTimeService';
 
-// ─────────────────────────────────────────────────────
-// Helpers
-// ─────────────────────────────────────────────────────
 const fmtTime = (mins) => {
     if (!mins || mins <= 0) return '0m';
     if (mins < 60) return `${Math.round(mins)}m`;
@@ -16,77 +26,64 @@ const fmtTime = (mins) => {
 };
 
 const APP_COLORS = [
-    '#6366f1', '#f59e0b', '#10b981', '#ef4444', '#3b82f6',
-    '#ec4899', '#8b5cf6', '#14b8a6', '#f97316', '#06b6d4',
+    'from-indigo-500 to-indigo-600',
+    'from-amber-500 to-amber-600',
+    'from-emerald-500 to-emerald-600',
+    'from-rose-500 to-rose-600',
+    'from-blue-500 to-blue-600',
+    'from-fuchsia-500 to-fuchsia-600',
+    'from-violet-500 to-violet-600',
 ];
 
 const getRiskLevel = (mins) => {
-    if (mins < 60) return { label: 'Healthy', color: '#10b981', bg: '#d1fae5' };
-    if (mins < 180) return { label: 'Moderate', color: '#f59e0b', bg: '#fef3c7' };
-    return { label: 'High', color: '#ef4444', bg: '#fee2e2' };
+    if (mins < 60) return { label: 'Healthy', color: 'text-emerald-500', bg: 'bg-emerald-50 dark:bg-emerald-500/10', border: 'border-emerald-100 dark:border-emerald-500/20' };
+    if (mins < 180) return { label: 'Moderate', color: 'text-amber-500', bg: 'bg-amber-50 dark:bg-amber-500/10', border: 'border-amber-100 dark:border-amber-500/20' };
+    return { label: 'High', color: 'text-rose-500', bg: 'bg-rose-50 dark:bg-rose-500/10', border: 'border-rose-100 dark:border-rose-500/20' };
 };
 
-// ─────────────────────────────────────────────────────
-// Sub-components
-// ─────────────────────────────────────────────────────
-
-function StatCard({ label, value, icon, sub, accent }) {
+function StatCard({ label, value, icon, sub, accentClass }) {
     return (
-        <div style={{
-            background: 'white',
-            borderRadius: 18,
-            padding: '22px 24px',
-            boxShadow: '0 2px 16px rgba(0,0,0,0.06)',
-            flex: 1,
-            minWidth: 140,
-            borderTop: `4px solid ${accent || '#6366f1'}`,
-        }}>
-            <div style={{ fontSize: 30, marginBottom: 6 }}>{icon}</div>
-            <div style={{ fontSize: 28, fontWeight: 800, color: '#0f172a', lineHeight: 1 }}>{value}</div>
-            <div style={{ fontSize: 13, color: '#64748b', marginTop: 6, fontWeight: 500 }}>{label}</div>
-            {sub && <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 4 }}>{sub}</div>}
-        </div>
+        <motion.div 
+            whileHover={{ y: -5 }}
+            className={`flex-1 min-w-[200px] bg-white dark:bg-slate-900 p-6 rounded-[2rem] shadow-xl border-t-4 ${accentClass} border dark:border-white/5 transition-all`}
+        >
+            <div className="text-3xl mb-4">{icon}</div>
+            <div className="text-3xl font-black text-slate-900 dark:text-white leading-none mb-2">{value}</div>
+            <div className="text-xs font-black uppercase tracking-widest text-slate-500 dark:text-slate-400">{label}</div>
+            {sub && <div className="text-[10px] font-bold text-slate-400 mt-1 uppercase tracking-wider">{sub}</div>}
+        </motion.div>
     );
 }
 
 function AppBar({ app, index, maxTime }) {
     const pct = maxTime > 0 ? (app.usage_time / maxTime) * 100 : 0;
-    const color = APP_COLORS[index % APP_COLORS.length];
+    const colorClass = APP_COLORS[index % APP_COLORS.length];
     const mins = app.usage_minutes ?? Math.round(app.usage_time / 60);
 
     return (
-        <div style={{
-            display: 'flex', alignItems: 'center', gap: 14,
-            padding: '10px 0', borderBottom: '1px solid #f1f5f9',
-        }}>
-            {/* App icon placeholder */}
-            <div style={{
-                width: 40, height: 40, borderRadius: 10,
-                background: color + '22',
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                fontSize: 18, flexShrink: 0,
-                color: color, fontWeight: 800,
-            }}>
+        <div className="group py-4 border-b border-slate-50 dark:border-white/5 flex items-center gap-5 hover:bg-slate-50/50 dark:hover:bg-white/5 px-4 -mx-4 transition-all rounded-2xl">
+            <div className={`w-12 h-12 rounded-2xl bg-gradient-to-br ${colorClass} flex items-center justify-center text-white text-xl font-black shadow-lg shadow-indigo-500/10 group-hover:scale-110 transition-transform`}>
                 {app.app_name?.[0]?.toUpperCase() || '?'}
             </div>
 
-            <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 5 }}>
-                    <span style={{ fontWeight: 600, fontSize: 14, color: '#1e293b', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '65%' }}>
+            <div className="flex-1 min-w-0">
+                <div className="flex justify-between items-center mb-2">
+                    <span className="font-black text-slate-800 dark:text-white truncate max-w-[70%] text-sm uppercase tracking-tight">
                         {app.app_name}
                     </span>
-                    <span style={{ fontSize: 13, color: '#475569', fontWeight: 600 }}>
+                    <span className="font-black text-indigo-600 dark:text-indigo-400 text-sm">
                         {fmtTime(mins)}
                     </span>
                 </div>
-                <div style={{ background: '#f1f5f9', borderRadius: 99, height: 7, overflow: 'hidden' }}>
-                    <div style={{
-                        width: `${pct}%`, height: '100%',
-                        background: color, borderRadius: 99,
-                        transition: 'width 0.7s cubic-bezier(0.4,0,0.2,1)',
-                    }} />
+                <div className="w-full bg-slate-100 dark:bg-slate-800 rounded-full h-2 overflow-hidden shadow-inner">
+                    <motion.div 
+                        initial={{ width: 0 }}
+                        animate={{ width: `${pct}%` }}
+                        transition={{ duration: 1, ease: "easeOut" }}
+                        className={`h-full bg-gradient-to-r ${colorClass} rounded-full`}
+                    />
                 </div>
-                <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 3 }}>
+                <div className="text-[10px] font-bold text-slate-400 mt-2 truncate opacity-60">
                     {app.package_name}
                 </div>
             </div>
@@ -99,26 +96,17 @@ function DayTab({ day, isSelected, onClick }) {
     return (
         <button
             onClick={onClick}
-            style={{
-                padding: '10px 16px',
-                borderRadius: 12,
-                border: `2px solid ${isSelected ? '#6366f1' : '#e2e8f0'}`,
-                cursor: 'pointer',
-                fontSize: 12,
-                fontWeight: 600,
-                background: isSelected ? '#6366f1' : 'white',
-                color: isSelected ? 'white' : '#475569',
-                transition: 'all 0.2s',
-                textAlign: 'center',
-                minWidth: 88,
-            }}
+            className={`
+                flex-1 min-w-[90px] p-4 rounded-2xl border-2 transition-all text-center
+                ${isSelected 
+                    ? 'bg-indigo-600 border-indigo-600 text-white shadow-xl shadow-indigo-500/30' 
+                    : 'bg-white dark:bg-slate-900 border-slate-100 dark:border-white/5 text-slate-600 dark:text-slate-400 hover:border-indigo-200'}
+            `}
         >
-            <div>{day.date?.slice(5)}</div>
-            <div style={{
-                marginTop: 4, fontSize: 13,
-                color: isSelected ? 'rgba(255,255,255,0.9)' : risk.color,
-                fontWeight: 700,
-            }}>
+            <div className="text-[10px] font-black uppercase tracking-widest mb-1 opacity-70">
+                {day.date?.slice(5)}
+            </div>
+            <div className={`text-sm font-black ${isSelected ? 'text-white' : risk.color}`}>
                 {fmtTime(day.total_minutes)}
             </div>
         </button>
@@ -127,39 +115,29 @@ function DayTab({ day, isSelected, onClick }) {
 
 function DeviceCard({ device, isSelected, onClick }) {
     const lastSync = device.last_sync
-        ? new Date(device.last_sync).toLocaleString()
+        ? new Date(device.last_sync).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
         : 'Never synced';
     return (
         <button
             onClick={onClick}
-            style={{
-                background: isSelected ? '#ede9fe' : 'white',
-                border: `2px solid ${isSelected ? '#6366f1' : '#e2e8f0'}`,
-                borderRadius: 14,
-                padding: '12px 16px',
-                cursor: 'pointer',
-                textAlign: 'left',
-                transition: 'all 0.2s',
-                minWidth: 160,
-            }}
+            className={`
+                flex-1 min-w-[200px] p-6 rounded-[2rem] border-2 transition-all text-left group
+                ${isSelected 
+                    ? 'bg-indigo-50 dark:bg-indigo-500/10 border-indigo-600 shadow-lg' 
+                    : 'bg-white dark:bg-slate-900 border-slate-100 dark:border-white/5 hover:border-indigo-300'}
+            `}
         >
-            <div style={{ fontSize: 20, marginBottom: 4 }}>📱</div>
-            <div style={{
-                fontWeight: 700, fontSize: 14,
-                color: isSelected ? '#4f46e5' : '#1e293b',
-            }}>
+            <div className="text-3xl mb-4 group-hover:scale-110 transition-transform">📱</div>
+            <div className={`font-black text-lg truncate uppercase tracking-tighter ${isSelected ? 'text-indigo-600 dark:text-indigo-400' : 'text-slate-800 dark:text-white'}`}>
                 {device.device_name}
             </div>
-            <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 3 }}>
-                Synced: {lastSync}
+            <div className="text-[10px] font-black text-slate-400 mt-1 uppercase tracking-widest opacity-60">
+                Sync: {lastSync}
             </div>
         </button>
     );
 }
 
-// ─────────────────────────────────────────────────────
-// TestDataUploader — lets you add dummy data from the browser
-// ─────────────────────────────────────────────────────
 function TestDataUploader({ onUploaded }) {
     const [loading, setLoading] = useState(false);
     const [msg, setMsg] = useState('');
@@ -173,7 +151,6 @@ function TestDataUploader({ onUploaded }) {
         const dummyPayload = {
             device_id: 'web-test-device-001',
             usages: [
-                // Today
                 { app_name: 'YouTube', package_name: 'com.google.android.youtube', usage_time: 5400, date: today },
                 { app_name: 'Instagram', package_name: 'com.instagram.android', usage_time: 3600, date: today },
                 { app_name: 'WhatsApp', package_name: 'com.whatsapp', usage_time: 2700, date: today },
@@ -181,7 +158,6 @@ function TestDataUploader({ onUploaded }) {
                 { app_name: 'Minecraft', package_name: 'com.mojang.minecraftpe', usage_time: 4500, date: today },
                 { app_name: 'Spotify', package_name: 'com.spotify.music', usage_time: 2100, date: today },
                 { app_name: 'TikTok', package_name: 'com.zhiliaoapp.musically', usage_time: 3200, date: today },
-                // Yesterday
                 { app_name: 'YouTube', package_name: 'com.google.android.youtube', usage_time: 7200, date: yesterday },
                 { app_name: 'WhatsApp', package_name: 'com.whatsapp', usage_time: 1200, date: yesterday },
                 { app_name: 'Minecraft', package_name: 'com.mojang.minecraftpe', usage_time: 5400, date: yesterday },
@@ -190,7 +166,6 @@ function TestDataUploader({ onUploaded }) {
         };
 
         try {
-            // Register device first
             const devRes = await fetch('/api/register-device', {
                 method: 'POST',
                 headers: {
@@ -201,7 +176,6 @@ function TestDataUploader({ onUploaded }) {
             });
             if (!devRes.ok) throw new Error('Device registration failed');
 
-            // Upload usage
             const res = await fetch('/api/upload-screen-time', {
                 method: 'POST',
                 headers: {
@@ -215,54 +189,41 @@ function TestDataUploader({ onUploaded }) {
             setMsg(`✓ Uploaded! ${data.created} new + ${data.updated} updated records.`);
             onUploaded();
         } catch (e) {
-            setMsg(`❌ ${e.message} — make sure you are logged in.`);
+            setMsg(`❌ ${e.message}`);
         } finally {
             setLoading(false);
         }
     };
 
     return (
-        <div style={{
-            background: '#fafaf9',
-            border: '1.5px dashed #d1d5db',
-            borderRadius: 14,
-            padding: '16px 20px',
-            marginBottom: 24,
-            display: 'flex',
-            alignItems: 'center',
-            gap: 14,
-            flexWrap: 'wrap',
-        }}>
-            <span style={{ fontSize: 20 }}>🧪</span>
-            <div style={{ flex: 1, minWidth: 200 }}>
-                <div style={{ fontWeight: 600, fontSize: 14, color: '#374151' }}>
-                    No Android device yet?
+        <motion.div 
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="bg-indigo-50 dark:bg-indigo-500/5 border-2 border-dashed border-indigo-200 dark:border-indigo-500/20 rounded-[2rem] p-6 mb-12 flex flex-wrap items-center gap-6"
+        >
+            <div className="w-14 h-14 bg-indigo-600 rounded-2xl flex items-center justify-center text-white text-2xl shadow-lg">
+                <FiZap />
+            </div>
+            <div className="flex-1 min-w-[200px]">
+                <div className="font-black text-slate-800 dark:text-white uppercase tracking-tight text-lg leading-none mb-1">
+                    Demo Mode
                 </div>
-                <div style={{ fontSize: 13, color: '#6b7280' }}>
-                    Load dummy data to preview the dashboard.
+                <div className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest">
+                    Load test data to preview the dashboard features
                 </div>
             </div>
             <button
                 onClick={uploadDummy}
                 disabled={loading}
-                style={{
-                    padding: '9px 18px', borderRadius: 10,
-                    border: 'none', background: '#f59e0b',
-                    color: 'white', fontWeight: 700, fontSize: 13,
-                    cursor: loading ? 'not-allowed' : 'pointer',
-                    opacity: loading ? 0.7 : 1,
-                }}
+                className="bg-indigo-600 text-white px-8 py-4 rounded-2xl font-black uppercase tracking-widest text-xs hover:bg-indigo-700 transition-all shadow-xl shadow-indigo-500/20 disabled:opacity-50"
             >
-                {loading ? 'Loading...' : '⚡ Load Test Data'}
+                {loading ? 'Processing...' : 'Load Simulation Data'}
             </button>
-            {msg && <div style={{ width: '100%', fontSize: 13, color: msg.startsWith('✓') ? '#10b981' : '#ef4444', fontWeight: 500 }}>{msg}</div>}
-        </div>
+            {msg && <div className="w-full text-center text-xs font-black uppercase tracking-widest mt-2">{msg}</div>}
+        </motion.div>
     );
 }
 
-// ─────────────────────────────────────────────────────
-// Main Dashboard
-// ─────────────────────────────────────────────────────
 export default function ScreenTimeDashboard() {
     const navigate = useNavigate();
     const [data, setData] = useState(null);
@@ -277,9 +238,7 @@ export default function ScreenTimeDashboard() {
         try {
             const res = await getDevices();
             setDevices(res.data);
-        } catch (e) {
-            // silently ignore — no devices yet
-        }
+        } catch (e) {}
     }, []);
 
     const fetchData = useCallback(async () => {
@@ -290,11 +249,7 @@ export default function ScreenTimeDashboard() {
             setData(res.data);
             setSelectedDay(0);
         } catch (e) {
-            setError(
-                e?.response?.status === 401
-                    ? 'Not authenticated. Please log in first.'
-                    : 'Failed to load data. Is Django running on port 8000?'
-            );
+            setError(e?.response?.status === 401 ? 'Authentication required' : 'System connectivity issue');
         } finally {
             setLoading(false);
         }
@@ -308,153 +263,100 @@ export default function ScreenTimeDashboard() {
     const risk = summary ? getRiskLevel(summary.total_minutes) : null;
 
     return (
-        <div style={{
-            maxWidth: 860,
-            margin: '0 auto',
-            padding: '36px 20px 60px',
-            fontFamily: "'Inter', 'Segoe UI', system-ui, sans-serif",
-        }}>
-            {/* Back to Dashboard */}
-            <button
-                onClick={() => navigate('/dashboard/parent')}
-                style={{
-                    background: 'none', border: 'none', cursor: 'pointer',
-                    color: '#6366f1', fontSize: 14, fontWeight: 600,
-                    display: 'flex', alignItems: 'center', gap: 6,
-                    marginBottom: 16, padding: 0, fontFamily: 'inherit',
-                }}
-                onMouseOver={e => e.currentTarget.style.textDecoration = 'underline'}
-                onMouseOut={e => e.currentTarget.style.textDecoration = 'none'}
-            >
-                ← Back to Dashboard
-            </button>
-
-            {/* Header */}
-            <div style={{ marginBottom: 32 }}>
-                <h1 style={{
-                    fontSize: 30, fontWeight: 800, color: '#0f172a',
-                    margin: 0, letterSpacing: '-0.5px',
-                }}>
-                    📱 Screen Time Monitor
-                </h1>
-                <p style={{ color: '#64748b', marginTop: 6, fontSize: 15 }}>
-                    Track your child's daily app usage in real time.
-                </p>
-            </div>
-
-            {/* Test Data Helper */}
-            <TestDataUploader onUploaded={() => { fetchDevices(); fetchData(); }} />
-
-            {/* Controls Row */}
-            <div style={{ display: 'flex', gap: 12, marginBottom: 28, flexWrap: 'wrap', alignItems: 'center' }}>
-                <select
-                    value={selectedDevice}
-                    onChange={e => setSelectedDevice(e.target.value)}
-                    style={selectStyle}
-                >
-                    <option value="">All Devices</option>
-                    {devices.map(d => (
-                        <option key={d.device_id} value={d.device_id}>
-                            {d.device_name}
-                        </option>
-                    ))}
-                </select>
-
-                <select
-                    value={days}
-                    onChange={e => setDays(Number(e.target.value))}
-                    style={selectStyle}
-                >
-                    <option value={1}>Today only</option>
-                    <option value={7}>Last 7 days</option>
-                    <option value={14}>Last 14 days</option>
-                    <option value={30}>Last 30 days</option>
-                </select>
-
-                <button onClick={fetchData} style={btnStyle}>
-                    🔄 Refresh
-                </button>
-            </div>
-
-            {/* Devices Row */}
-            {devices.length > 0 && (
-                <div style={{ display: 'flex', gap: 12, marginBottom: 28, flexWrap: 'wrap' }}>
-                    <DeviceCard
-                        device={{ device_id: '', device_name: 'All Devices' }}
-                        isSelected={selectedDevice === ''}
-                        onClick={() => setSelectedDevice('')}
-                    />
-                    {devices.map(d => (
-                        <DeviceCard
-                            key={d.device_id}
-                            device={d}
-                            isSelected={selectedDevice === d.device_id}
-                            onClick={() => setSelectedDevice(d.device_id)}
-                        />
-                    ))}
-                </div>
-            )}
-
-            {/* Error */}
-            {error && (
-                <div style={{
-                    background: '#fef2f2', border: '1px solid #fecaca',
-                    borderRadius: 14, padding: '14px 18px',
-                    color: '#dc2626', marginBottom: 24, fontSize: 14,
-                }}>
-                    ⚠️ {error}
-                </div>
-            )}
-
-            {/* Loading */}
-            {loading && (
-                <div style={{
-                    textAlign: 'center', padding: 72,
-                    color: '#94a3b8', fontSize: 16,
-                }}>
-                    <div style={{ fontSize: 36, marginBottom: 12 }}>⏳</div>
-                    Loading screen time data...
-                </div>
-            )}
-
-            {/* Dashboard content */}
-            {!loading && data && (
-                <>
-                    {/* Stat Cards */}
-                    <div style={{ display: 'flex', gap: 16, marginBottom: 32, flexWrap: 'wrap' }}>
-                        <StatCard
-                            icon="⏱️"
-                            label="Total Screen Time"
-                            value={fmtTime(data.total_minutes_overall)}
-                            sub={`Last ${data.days_requested} day(s)`}
-                            accent="#6366f1"
-                        />
-                        <StatCard
-                            icon="📱"
-                            label="Devices Tracked"
-                            value={data.device_count}
-                            sub="Registered Android devices"
-                            accent="#10b981"
-                        />
-                        <StatCard
-                            icon="📅"
-                            label="Days with Data"
-                            value={data.daily_summaries?.length ?? 0}
-                            sub="Days recorded"
-                            accent="#f59e0b"
-                        />
+        <div className="min-h-screen bg-slate-50 dark:bg-[#020617] p-8 md:p-12">
+            <div className="max-w-6xl mx-auto">
+                {/* Header Section */}
+                <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-8 mb-12">
+                    <div>
+                        <button
+                            onClick={() => navigate('/dashboard/parent')}
+                            className="flex items-center gap-2 text-indigo-600 dark:text-indigo-400 font-black uppercase tracking-widest text-[10px] mb-4 hover:translate-x-[-4px] transition-transform"
+                        >
+                            <FiArrowLeft /> Back to Command Center
+                        </button>
+                        <h1 className="text-4xl md:text-6xl font-black text-slate-900 dark:text-white leading-none tracking-tighter">
+                            Screen Time <br />
+                            <span className="text-indigo-600">Analytics</span>
+                        </h1>
                     </div>
 
-                    {/* Day Tabs */}
-                    {data.daily_summaries?.length > 0 ? (
-                        <>
-                            <h2 style={{ fontSize: 16, fontWeight: 700, color: '#374151', marginBottom: 14 }}>
-                                Select a Day
-                            </h2>
-                            <div style={{
-                                display: 'flex', gap: 10, marginBottom: 28,
-                                flexWrap: 'wrap',
-                            }}>
+                    <div className="flex flex-wrap gap-3">
+                        <select
+                            value={selectedDevice}
+                            onChange={e => setSelectedDevice(e.target.value)}
+                            className="bg-white dark:bg-slate-900 border-2 border-slate-100 dark:border-white/5 px-6 py-4 rounded-2xl font-black text-sm outline-none focus:border-indigo-500 transition-all appearance-none cursor-pointer"
+                        >
+                            <option value="">All Active Devices</option>
+                            {devices.map(d => <option key={d.device_id} value={d.device_id}>{d.device_name}</option>)}
+                        </select>
+
+                        <select
+                            value={days}
+                            onChange={e => setDays(Number(e.target.value))}
+                            className="bg-indigo-600 text-white px-6 py-4 rounded-2xl font-black text-sm outline-none appearance-none cursor-pointer"
+                        >
+                            <option value={1}>Today</option>
+                            <option value={7}>Last 7 Days</option>
+                            <option value={30}>Monthly View</option>
+                        </select>
+
+                        <button onClick={fetchData} className="w-14 h-14 bg-white dark:bg-slate-900 border-2 border-slate-100 dark:border-white/5 rounded-2xl flex items-center justify-center text-slate-600 dark:text-white hover:bg-slate-50 transition-all shadow-sm">
+                            <FiRefreshCw className={loading ? 'animate-spin' : ''} />
+                        </button>
+                    </div>
+                </div>
+
+                <TestDataUploader onUploaded={() => { fetchDevices(); fetchData(); }} />
+
+                {error && (
+                    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="bg-rose-50 dark:bg-rose-500/10 p-6 rounded-[2rem] border-2 border-rose-100 dark:border-rose-500/20 text-rose-600 dark:text-rose-400 font-black uppercase tracking-widest text-xs flex items-center gap-3 mb-10">
+                        <FiAlertCircle size={20} /> {error}
+                    </motion.div>
+                )}
+
+                {loading ? (
+                    <div className="py-32 text-center">
+                        <div className="w-20 h-20 bg-indigo-500/10 rounded-3xl flex items-center justify-center mx-auto mb-6 animate-bounce">
+                            <FiActivity className="text-3xl text-indigo-500" />
+                        </div>
+                        <p className="font-black uppercase tracking-[0.3em] text-slate-400 text-sm">Synchronizing Data Streams...</p>
+                    </div>
+                ) : data && (
+                    <div className="grid grid-cols-1 lg:grid-cols-12 gap-10">
+                        {/* Summary Column */}
+                        <div className="lg:col-span-12">
+                             <div className="flex flex-wrap gap-6 mb-10">
+                                <StatCard
+                                    icon="⏱️"
+                                    label="Total Impact"
+                                    value={fmtTime(data.total_minutes_overall)}
+                                    sub={`Window: ${data.days_requested} Days`}
+                                    accentClass="border-indigo-500"
+                                />
+                                <StatCard
+                                    icon="📱"
+                                    label="Active Fleet"
+                                    value={data.device_count}
+                                    sub="Registered Hardware"
+                                    accentClass="border-emerald-500"
+                                />
+                                <StatCard
+                                    icon="📅"
+                                    label="Data Points"
+                                    value={data.daily_summaries?.length ?? 0}
+                                    sub="Snapshot range"
+                                    accentClass="border-amber-500"
+                                />
+                            </div>
+                        </div>
+
+                        {/* Date Selection */}
+                        <div className="lg:col-span-12">
+                            <div className="flex items-center gap-3 mb-6">
+                                <FiCalendar className="text-indigo-500" />
+                                <h2 className="text-xl font-black uppercase tracking-tight text-slate-800 dark:text-white">Timeline Navigator</h2>
+                            </div>
+                            <div className="flex gap-4 overflow-x-auto pb-6 -mx-4 px-4 scrollbar-hide">
                                 {data.daily_summaries.map((day, i) => (
                                     <DayTab
                                         key={day.date}
@@ -464,152 +366,78 @@ export default function ScreenTimeDashboard() {
                                     />
                                 ))}
                             </div>
+                        </div>
 
-                            {/* Day Detail Card */}
+                        {/* Detail View */}
+                        <AnimatePresence mode="wait">
                             {summary && (
-                                <div style={{
-                                    background: 'white',
-                                    borderRadius: 22,
-                                    padding: 28,
-                                    boxShadow: '0 4px 28px rgba(0,0,0,0.08)',
-                                }}>
-                                    {/* Day header */}
-                                    <div style={{
-                                        display: 'flex',
-                                        justifyContent: 'space-between',
-                                        alignItems: 'flex-start',
-                                        marginBottom: 24,
-                                        flexWrap: 'wrap',
-                                        gap: 12,
-                                    }}>
+                                <motion.div 
+                                    key={summary.date}
+                                    initial={{ opacity: 0, scale: 0.98 }}
+                                    animate={{ opacity: 1, scale: 1 }}
+                                    exit={{ opacity: 0, scale: 0.98 }}
+                                    className="lg:col-span-12 bg-white dark:bg-slate-900 rounded-[3rem] p-8 md:p-12 shadow-2xl border border-white dark:border-white/5"
+                                >
+                                    <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-8 mb-12">
                                         <div>
-                                            <h2 style={{
-                                                margin: 0, fontSize: 22,
-                                                fontWeight: 800, color: '#0f172a',
-                                            }}>
+                                            <h2 className="text-3xl md:text-5xl font-black text-slate-900 dark:text-white leading-none tracking-tighter mb-4">
                                                 {new Date(summary.date + 'T00:00:00').toLocaleDateString('en-US', {
                                                     weekday: 'long', month: 'long', day: 'numeric',
                                                 })}
                                             </h2>
-                                            <p style={{ margin: '6px 0 0', color: '#64748b', fontSize: 14 }}>
-                                                {summary.app_count} apps used
+                                            <p className="text-xs font-black uppercase tracking-[0.2em] text-slate-400">
+                                                Observation of {summary.app_count} distinct applications
                                             </p>
                                         </div>
 
-                                        {/* Risk badge + total */}
-                                        <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
-                                            <span style={{
-                                                background: risk.bg,
-                                                color: risk.color,
-                                                borderRadius: 99,
-                                                padding: '5px 14px',
-                                                fontSize: 13,
-                                                fontWeight: 700,
-                                            }}>
-                                                {risk.label}
-                                            </span>
-                                            <div style={{
-                                                background: '#f8fafc',
-                                                borderRadius: 14,
-                                                padding: '10px 20px',
-                                                textAlign: 'center',
-                                            }}>
-                                                <div style={{
-                                                    fontSize: 26, fontWeight: 800,
-                                                    color: '#0f172a', lineHeight: 1,
-                                                }}>
+                                        <div className="flex items-center gap-6">
+                                            <div className={`${risk.bg} ${risk.color} px-6 py-3 rounded-2xl font-black uppercase tracking-widest text-[10px] border ${risk.border}`}>
+                                                {risk.label} Trend
+                                            </div>
+                                            <div className="bg-slate-50 dark:bg-white/5 p-6 rounded-3xl text-center border border-slate-100 dark:border-white/5">
+                                                <div className="text-4xl font-black text-slate-900 dark:text-white leading-none mb-1">
                                                     {fmtTime(summary.total_minutes)}
                                                 </div>
-                                                <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 4 }}>
-                                                    total screen time
-                                                </div>
+                                                <div className="text-[10px] font-black uppercase tracking-widest text-slate-400">Time Usage</div>
                                             </div>
                                         </div>
                                     </div>
 
-                                    {/* Usage bar (total vs 6h limit) */}
-                                    <div style={{ marginBottom: 28 }}>
-                                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, color: '#94a3b8', marginBottom: 6 }}>
-                                            <span>Daily usage</span>
-                                            <span>6h recommended limit</span>
+                                    <div className="mb-12">
+                                        <div className="flex justify-between text-[10px] font-black uppercase tracking-widest text-slate-400 mb-3">
+                                            <span>Cumulative Burden</span>
+                                            <span>6h Guideline</span>
                                         </div>
-                                        <div style={{ background: '#f1f5f9', borderRadius: 99, height: 10, overflow: 'hidden' }}>
-                                            <div style={{
-                                                width: `${Math.min((summary.total_minutes / 360) * 100, 100)}%`,
-                                                height: '100%',
-                                                background: risk.color,
-                                                borderRadius: 99,
-                                                transition: 'width 0.8s ease',
-                                            }} />
+                                        <div className="bg-slate-100 dark:bg-white/5 rounded-full h-4 overflow-hidden border border-white/10 shadow-inner">
+                                            <motion.div 
+                                                initial={{ width: 0 }}
+                                                animate={{ width: `${Math.min((summary.total_minutes / 360) * 100, 100)}%` }}
+                                                className={`h-full bg-gradient-to-r from-indigo-500 via-purple-500 to-indigo-600 rounded-full`}
+                                            />
                                         </div>
                                     </div>
 
-                                    {/* App list */}
-                                    <h3 style={{
-                                        fontSize: 15, fontWeight: 700,
-                                        color: '#374151', marginBottom: 8,
-                                    }}>
-                                        App Breakdown
-                                    </h3>
-
-                                    {summary.apps.length === 0 ? (
-                                        <div style={{ textAlign: 'center', padding: 32, color: '#94a3b8' }}>
-                                            No app data for this day.
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-x-12 gap-y-2">
+                                        <div className="col-span-full mb-6 flex items-center gap-3">
+                                            <FiBarChart2 className="text-indigo-500" />
+                                            <h3 className="text-lg font-black uppercase tracking-tight text-slate-700 dark:text-white">App Velocity Breakdown</h3>
                                         </div>
-                                    ) : (
-                                        summary.apps.map((app, i) => (
-                                            <AppBar
-                                                key={app.package_name || i}
-                                                app={app}
-                                                index={i}
-                                                maxTime={maxApp}
-                                            />
-                                        ))
-                                    )}
-                                </div>
+                                        {summary.apps.length === 0 ? (
+                                            <div className="col-span-full py-12 text-center text-slate-400 font-black uppercase tracking-[0.2em] text-xs">
+                                                No digital footprint found
+                                            </div>
+                                        ) : (
+                                            summary.apps.map((app, i) => (
+                                                <AppBar key={app.package_name || i} app={app} index={i} maxTime={maxApp} />
+                                            ))
+                                        )}
+                                    </div>
+                                </motion.div>
                             )}
-                        </>
-                    ) : (
-                        <div style={{
-                            textAlign: 'center', padding: 72,
-                            background: 'white', borderRadius: 22,
-                            color: '#94a3b8',
-                        }}>
-                            <div style={{ fontSize: 48, marginBottom: 16 }}>📭</div>
-                            <div style={{ fontSize: 18, fontWeight: 600, color: '#64748b' }}>
-                                No screen time data yet
-                            </div>
-                            <div style={{ fontSize: 14, marginTop: 8 }}>
-                                Use the "Load Test Data" button above, or sync the Android app.
-                            </div>
-                        </div>
-                    )}
-                </>
-            )}
+                        </AnimatePresence>
+                    </div>
+                )}
+            </div>
         </div>
     );
-}
-
-const selectStyle = {
-    padding: '9px 14px',
-    borderRadius: 10,
-    border: '1.5px solid #e2e8f0',
-    fontSize: 14,
-    color: '#374151',
-    background: 'white',
-    cursor: 'pointer',
-    outline: 'none',
-    fontFamily: 'inherit',
-};
-
-const btnStyle = {
-    padding: '9px 18px',
-    borderRadius: 10,
-    border: 'none',
-    background: '#6366f1',
-    color: 'white',
-    fontWeight: 700,
-    fontSize: 14,
-    cursor: 'pointer',
-    fontFamily: 'inherit',
-};
+}
