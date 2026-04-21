@@ -66,3 +66,32 @@ def get_user_features(user):
         return []
         
     return list(plan.features.values_list('name', flat=True))
+
+FEATURE_PLAN_MAPPING = {
+    "study_planner": "growth",
+    "career_discovery": "starter",
+}
+
+PLAN_HIERARCHY = ["free", "starter", "growth", "family"]
+
+def has_feature_access_by_plan(user, feature):
+    """
+    Check if user's plan is >= the required plan for the given feature.
+    This is an alternative to the feature‑based check (user_has_feature).
+    """
+    required_plan = FEATURE_PLAN_MAPPING.get(feature)
+    if not required_plan:
+        return True  # feature not mapped → allow
+
+    try:
+        subscription = Subscription.objects.get(user=user, status='active', end_date__gt=timezone.now())
+        user_plan = subscription.plan.plan_name
+    except Subscription.DoesNotExist:
+        user_plan = 'free'
+
+    if user_plan not in PLAN_HIERARCHY:
+        user_plan = 'free'
+    if required_plan not in PLAN_HIERARCHY:
+        return False
+
+    return PLAN_HIERARCHY.index(user_plan) >= PLAN_HIERARCHY.index(required_plan)

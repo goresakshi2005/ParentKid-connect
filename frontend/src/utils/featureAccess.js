@@ -13,7 +13,7 @@ export const FEATURE_PLAN_MAPPING = {
   growth_tracking: "FREE",
   mentor_chat: "FREE",
   assessment: "FREE",
-  career_discovery: "FREE",
+  career_discovery: "STARTER",
   magic_fix: "STARTER",
   mental_health_guide: "GROWTH",
   study_planner: "GROWTH",

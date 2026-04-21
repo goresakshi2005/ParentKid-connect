@@ -8,7 +8,7 @@ import { motion } from 'framer-motion';
  * FeatureGuard wraps components that require specific subscription features.
  * If the user doesn't have the feature, it shows a blurred overlay or an upgrade UI.
  */
-const FeatureGuard = ({ feature, children, showOverlay = true, className = "", compact = false }) => {
+const FeatureGuard = ({ feature, children, showOverlay = true, className = "", compact = false, maybeLaterPath = '/dashboard/parent' }) => {
   const { user } = useAuth();
   const [showUpgrade, setShowUpgrade] = useState(false);
   
@@ -63,6 +63,7 @@ const FeatureGuard = ({ feature, children, showOverlay = true, className = "", c
           onClose={() => setShowUpgrade(false)} 
           featureName={feature}
           requiredPlan={requiredPlan}
+          maybeLaterPath={maybeLaterPath}
         />
       )}
     </div>

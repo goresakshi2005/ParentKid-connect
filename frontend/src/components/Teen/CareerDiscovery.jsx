@@ -6,6 +6,7 @@ import {
   addScores, getTopTags, getTraitLabels, getBestCareer,
 } from './careerData';
 import { saveCareerDiscoveryResult } from '../../services/assessmentService';
+import FeatureGuard from '../../components/Common/FeatureGuard';
 
 // ── Stage names for progress ────────────────────────────────────────────
 const STAGES = [
@@ -223,25 +224,26 @@ export default function CareerDiscovery({ onBack }) {
       {showConfetti && <Confetti />}
 
       <div className="cd-content">
-        {/* Back button */}
+        {/* Back button — Outside guard for accessibility */}
         {stage !== 'hook' && (
-          <button className="cd-back-btn" onClick={onBack}>
+          <button className="cd-back-btn" onClick={onBack} style={{ zIndex: 100 }}>
             ← Back to Dashboard
           </button>
         )}
 
-        {/* Progress Bar */}
-        {stage !== 'hook' && stage !== 'result' && (
-          <div className="cd-progress-bar">
-            <div className="cd-progress-track">
-              <div className="cd-progress-fill" style={{ width: `${progress}%` }} />
+        <FeatureGuard feature="career_discovery" maybeLaterPath="/dashboard/teen">
+          {/* Progress Bar */}
+          {stage !== 'hook' && stage !== 'result' && (
+            <div className="cd-progress-bar">
+              <div className="cd-progress-track">
+                <div className="cd-progress-fill" style={{ width: `${progress}%` }} />
+              </div>
+              <div className="cd-progress-label">
+                <span className="cd-progress-stage">{STAGE_LABELS[stageIdx]}</span>
+                <span>Level {stageIdx}/{STAGES.length - 1}</span>
+              </div>
             </div>
-            <div className="cd-progress-label">
-              <span className="cd-progress-stage">{STAGE_LABELS[stageIdx]}</span>
-              <span>Level {stageIdx}/{STAGES.length - 1}</span>
-            </div>
-          </div>
-        )}
+          )}
 
         {/* ═══════════ STAGE: HOOK ═══════════ */}
         {stage === 'hook' && (
@@ -503,65 +505,67 @@ export default function CareerDiscovery({ onBack }) {
           </div>
         )}
 
-        {/* ═══════════ STAGE 8: FINAL RESULT ═══════════ */}
-        {stage === 'result' && apiResult?.best && (
-          <div className="cd-stage-enter cd-result" key={`result-${animKey}`}>
-            <div className="cd-result-trophy">🏆</div>
-            <div className="cd-result-title-label">🎯 Your Best Career Match</div>
-            <h2 className="cd-result-career">
-              {apiResult.best.emoji} {apiResult.best.title}
-            </h2>
+          {/* ═══════════ STAGE 8: FINAL RESULT ═══════════ */}
+          {stage === 'result' && apiResult?.best && (
+            <div className="cd-stage-enter cd-result" key={`result-${animKey}`}>
+              {/* ... result content ... */}
+              <div className="cd-result-trophy">🏆</div>
+              <div className="cd-result-title-label">🎯 Your Best Career Match</div>
+              <h2 className="cd-result-career">
+                {apiResult.best.emoji} {apiResult.best.title}
+              </h2>
 
-            <div className="cd-result-why">
-              <div className="cd-result-why-label">💡 Why This Fits You</div>
-              <p className="cd-result-why-text">{apiResult.best.why}</p>
-            </div>
-
-            {apiResult.alternatives?.length > 0 && (
-              <div className="cd-result-alternatives">
-                <div className="cd-result-alt-label">🔁 Alternative Paths</div>
-                <div className="cd-result-alt-list">
-                  {apiResult.alternatives.map((alt, i) => (
-                    <span className="cd-result-alt-tag" key={i}>
-                      {alt}
-                    </span>
-                  ))}
-                  {apiResult.best.alts?.map((a, i) => (
-                    <span className="cd-result-alt-tag" key={`sub-${i}`}>✦ {a}</span>
-                  ))}
-                </div>
+              <div className="cd-result-why">
+                <div className="cd-result-why-label">💡 Why This Fits You</div>
+                <p className="cd-result-why-text">{apiResult.best.why}</p>
               </div>
-            )}
 
-            <div className="cd-result-bonus">
-              <div className="cd-result-bonus-label">🎁 Try-It-Now Challenge</div>
-              <p className="cd-result-bonus-text">{apiResult.best.task}</p>
-            </div>
+              {apiResult.alternatives?.length > 0 && (
+                <div className="cd-result-alternatives">
+                  <div className="cd-result-alt-label">🔁 Alternative Paths</div>
+                  <div className="cd-result-alt-list">
+                    {apiResult.alternatives.map((alt, i) => (
+                      <span className="cd-result-alt-tag" key={i}>
+                        {alt}
+                      </span>
+                    ))}
+                    {apiResult.best.alts?.map((a, i) => (
+                      <span className="cd-result-alt-tag" key={`sub-${i}`}>✦ {a}</span>
+                    ))}
+                  </div>
+                </div>
+              )}
 
-            <div className="cd-result-actions">
-              <button className="cd-btn-glow" onClick={onBack}>
-                🏠 Back to Dashboard
-              </button>
-              <button
-                className="cd-btn-secondary"
-                onClick={() => {
-                  setStage('hook');
-                  setApiResult(null);
-                  setScores({});
-                  setSelectedWorlds([]);
-                  setRfIndex(0);
-                  setMissionIndex(0);
-                  setMissionSelections({});
-                  setNarrowAnswers({});
-                  setCrossSelected([]);
-                  setRealityAnswers({});
-                }}
-              >
-                🔄 Retake Journey
-              </button>
+              <div className="cd-result-bonus">
+                <div className="cd-result-bonus-label">🎁 Try-It-Now Challenge</div>
+                <p className="cd-result-bonus-text">{apiResult.best.task}</p>
+              </div>
+
+              <div className="cd-result-actions">
+                <button className="cd-btn-glow" onClick={onBack}>
+                  🏠 Back to Dashboard
+                </button>
+                <button
+                  className="cd-btn-secondary"
+                  onClick={() => {
+                    setStage('hook');
+                    setApiResult(null);
+                    setScores({});
+                    setSelectedWorlds([]);
+                    setRfIndex(0);
+                    setMissionIndex(0);
+                    setMissionSelections({});
+                    setNarrowAnswers({});
+                    setCrossSelected([]);
+                    setRealityAnswers({});
+                  }}
+                >
+                  🔄 Retake Journey
+                </button>
+              </div>
             </div>
-          </div>
-        )}
+          )}
+        </FeatureGuard>
       </div>
     </div>
   );

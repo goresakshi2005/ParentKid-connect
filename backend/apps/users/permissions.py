@@ -40,6 +40,10 @@ class HasFeaturePermission(permissions.BasePermission):
         return self
 
     def has_permission(self, request, view):
+        # Allow read-only access to show the interface even if locked
+        if request.method in permissions.SAFE_METHODS:
+            return True
+
         if not user_has_feature(request.user, self.feature_name):
             # Try to find which plan first offers this feature
             plan = SubscriptionPlan.objects.filter(features__name=self.feature_name).order_by('price').first()
@@ -51,4 +55,4 @@ class HasFeaturePermission(permissions.BasePermission):
                     required_plan = plan.plan_name.upper()
             
             raise LockedFeatureException(self.feature_name, required_plan)
-        return True
+        return True

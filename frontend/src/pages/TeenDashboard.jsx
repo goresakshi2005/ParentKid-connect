@@ -12,7 +12,9 @@ import { useAuth } from '../context/AuthContext';
 import { useSubscription } from '../context/SubscriptionContext';
 import AssessmentPrompt from '../components/Teen/AssessmentPrompt';
 import CareerDiscovery from '../components/Teen/CareerDiscovery';
+import UpgradeModal from '../components/Pricing/UpgradeModal';
 import FeatureGuard from '../components/Common/FeatureGuard';
+import { hasFeature, getRequiredPlan } from '../utils/featureAccess';
 import { getCareerDiscoveryResults, deleteCareerDiscoveryResult } from '../services/assessmentService';
 import api from '../services/api';
 import {
@@ -166,7 +168,9 @@ function MultiTaskPreview({ tasks, onConfirm, onDiscard, saving }) {
 
 // ─── Study Planner ──────────────────────────────────────────────────────────
 
-function StudyPlanner() {
+function StudyPlanner({ onFeatureLock, onBack }) {
+    const { user } = useAuth();
+    const { hasFeature } = useSubscription();
     const [activeTab, setActiveTab]       = useState('upcoming');
     const [tasks, setTasks]               = useState([]);
     const [loading, setLoading]           = useState(false);
@@ -221,6 +225,10 @@ function StudyPlanner() {
     };
 
     const handleParse = async () => {
+        if (!hasFeature('study_planner')) {
+            onFeatureLock();
+            return;
+        }
         if (!voiceText.trim()) return;
         setParsing(true);
         setPreviews(null);
@@ -242,6 +250,10 @@ function StudyPlanner() {
     };
 
     const handleConfirmSave = async () => {
+        if (!hasFeature('study_planner')) {
+            onFeatureLock();
+            return;
+        }
         if (!voiceText.trim()) return;
         setSaving(true);
         try {
@@ -280,6 +292,10 @@ function StudyPlanner() {
     };
 
     const toggleStatus = async (task) => {
+        if (!hasFeature('study_planner')) {
+            onFeatureLock();
+            return;
+        }
         const next = task.status === 'Pending' ? 'Completed' : 'Pending';
         try {
             await updateTaskStatus(task.id, next);
@@ -290,6 +306,10 @@ function StudyPlanner() {
     };
 
     const handleDelete = async (id) => {
+        if (!hasFeature('study_planner')) {
+            onFeatureLock();
+            return;
+        }
         if (!window.confirm('Delete this task?')) return;
         try {
             await deleteTask(id);
@@ -313,12 +333,21 @@ function StudyPlanner() {
 
     return (
         <div className="card dark:bg-slate-900 border dark:border-slate-800 p-6 md:p-8 shadow-sm">
-            <div className="flex items-center justify-between mb-6">
-                <h2 className="text-2xl font-bold dark:text-white flex items-center gap-2">
-                    <span className="p-2 bg-violet-500/10 rounded-lg text-violet-500">🎓</span>
-                    Study Planner
-                </h2>
-                <span className="text-xs text-gray-400 dark:text-slate-500">AI-powered scheduler</span>
+            <div className="flex justify-between items-center mb-6">
+                <div className="flex items-center gap-4">
+                    <button 
+                        onClick={onBack}
+                        className="p-2 hover:bg-gray-100 dark:hover:bg-slate-800 rounded-full transition-colors text-gray-500"
+                    >
+                        <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+                        </svg>
+                    </button>
+                    <h2 className="text-xl font-bold dark:text-white flex items-center gap-2">
+                        📚 Study Planner
+                    </h2>
+                </div>
+                <div className="text-gray-400 text-xs font-medium">Ai-powered scheduler</div>
             </div>
 
             <div className="mb-6 p-5 bg-violet-50 dark:bg-violet-900/10 border border-violet-200 dark:border-violet-800/40 rounded-2xl">
@@ -331,13 +360,27 @@ function StudyPlanner() {
                 <div className="flex gap-2">
                     <textarea
                         value={voiceText}
-                        onChange={(e) => setVoiceText(e.target.value)}
+                        onFocus={() => {
+                            if (!hasFeature('study_planner')) {
+                                onFeatureLock();
+                            }
+                        }}
+                        onChange={(e) => {
+                            if (!hasFeature('study_planner')) return;
+                            setVoiceText(e.target.value);
+                        }}
                         placeholder='Describe all your tasks in one go…'
                         rows={3}
                         className="flex-1 p-3 rounded-xl border border-violet-300 dark:border-violet-700 bg-white dark:bg-slate-800 text-gray-800 dark:text-white text-sm resize-none focus:outline-none focus:ring-2 focus:ring-violet-400"
                     />
                     <button
-                        onClick={isListening ? stopListening : startListening}
+                        onClick={() => {
+                            if (!hasFeature('study_planner')) {
+                                onFeatureLock();
+                            } else {
+                                isListening ? stopListening() : startListening();
+                            }
+                        }}
                         title={isListening ? 'Stop' : 'Speak'}
                         className={`px-4 rounded-xl font-bold text-xl transition-all ${
                             isListening
@@ -478,7 +521,7 @@ function StudyPlanner() {
 
 export default function TeenDashboard() {
     const { user, token } = useAuth();
-    const { canAccessInsights } = useSubscription();
+    const { canAccessInsights, hasFeature } = useSubscription();
     const navigate = useNavigate();
 
     const [results, setResults]                         = useState([]);
@@ -487,7 +530,9 @@ export default function TeenDashboard() {
     const [takingAssessment, setTakingAssessment]       = useState(false);
     const [showAssessmentPrompt, setShowAssessmentPrompt] = useState(false);
     const [showCareerDiscovery, setShowCareerDiscovery] = useState(false);
+    const [showStudyPlanner, setShowStudyPlanner] = useState(false);
     const [showCareerHistory, setShowCareerHistory] = useState(false);
+    const [upgradeModal, setUpgradeModal] = useState({ isOpen: false, feature: '', plan: '' });
 
     const [googleConnected, setGoogleConnected]   = useState(null);
     const [connectingGoogle, setConnectingGoogle] = useState(false);
@@ -526,15 +571,17 @@ export default function TeenDashboard() {
     };
 
     const handleConnectGoogle = async () => {
-        setConnectingGoogle(true);
-        try {
-            const res = await api.get('/users/google_oauth_url/');
-            sessionStorage.setItem('redirectAfterGoogle', '/dashboard/teen');
-            window.location.href = res.data.url;
-        } catch {
-            alert("Could not start Google connection. Please try again.");
-            setConnectingGoogle(false);
-        }
+        handleFeatureClick('study_planner', 'Google Calendar Sync', async () => {
+            setConnectingGoogle(true);
+            try {
+                const res = await api.get('/users/google_oauth_url/');
+                sessionStorage.setItem('redirectAfterGoogle', '/dashboard/teen');
+                window.location.href = res.data.url;
+            } catch {
+                alert("Could not start Google connection. Please try again.");
+                setConnectingGoogle(false);
+            }
+        });
     };
 
     const handleAssessmentComplete = () => {
@@ -543,20 +590,66 @@ export default function TeenDashboard() {
         window.location.reload();
     };
 
-    const handleDeleteCareerResult = async (id) => {
-        if (!window.confirm('Delete this career discovery result?')) return;
-        try {
-            await deleteCareerDiscoveryResult(id);
-            setCareerResults((prev) => prev.filter(r => r.id !== id));
-        } catch (error) {
-            alert('Failed to delete career result.');
+    const handleFeatureClick = (featureKey, featureName, action) => {
+        // Direct jump to modal for general features
+        // But for Study Planner and Career Discovery, we now use the "Enter-to-Lock" flow
+        if (!hasFeature(featureKey)) {
+            setUpgradeModal({ 
+                isOpen: true, 
+                feature: featureName, 
+                plan: getRequiredPlan(featureKey) 
+            });
+            return;
         }
+        action();
+    };
+
+    const handleDeleteCareerResult = async (id) => {
+        handleFeatureClick('career_discovery', 'Career Discovery', async () => {
+            if (!window.confirm('Delete this career discovery result?')) return;
+            try {
+                await deleteCareerDiscoveryResult(id);
+                setCareerResults((prev) => prev.filter(r => r.id !== id));
+            } catch (error) {
+                alert('Failed to delete career result.');
+            }
+        });
     };
 
     if (loading) {
         return (
             <div className="flex items-center justify-center min-h-screen">
                 <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-pink-500" />
+            </div>
+        );
+    }
+
+    if (showStudyPlanner) {
+        return (
+            <div className="min-h-screen bg-transparent dark:bg-slate-900 p-4 md:p-8">
+                <div className="max-w-4xl mx-auto flex flex-col gap-4">
+                    {/* Back button — Outside guard for accessibility */}
+                    <button 
+                        onClick={() => setShowStudyPlanner(false)}
+                        className="self-start flex items-center gap-2 text-sm font-bold text-gray-500 hover:text-indigo-600 transition-colors uppercase tracking-widest"
+                    >
+                        <span className="text-lg">←</span> Back to Dashboard
+                    </button>
+
+                    {/* Enter-to-Lock Content */}
+                    <FeatureGuard feature="study_planner" maybeLaterPath="/dashboard/teen">
+                        <StudyPlanner 
+                            onBack={() => setShowStudyPlanner(false)}
+                            onFeatureLock={() => {
+                                setUpgradeModal({ 
+                                    isOpen: true, 
+                                    feature: 'Study Planner', 
+                                    plan: getRequiredPlan('study_planner') 
+                                });
+                            }} 
+                        />
+                    </FeatureGuard>
+                </div>
             </div>
         );
     }
@@ -595,16 +688,6 @@ export default function TeenDashboard() {
                 Your Growth <span className="dark:text-pink-500 text-blue-600">Dashboard</span>
             </h1>
 
-
-            {/* Google Calendar banner */}
-            {googleConnected !== null && (
-                <GoogleCalendarBanner
-                    connected={googleConnected}
-                    onConnect={handleConnectGoogle}
-                    connecting={connectingGoogle}
-                />
-            )}
-
             {showAssessmentPrompt && (
                 <AssessmentPrompt
                     onComplete={handleAssessmentComplete}
@@ -612,58 +695,55 @@ export default function TeenDashboard() {
                 />
             )}
 
-            {/* Study Planner */}
-            <FeatureGuard feature="study_planner">
-                <StudyPlanner />
-            </FeatureGuard>
 
-            {/* Career Discovery Journey */}
-            <FeatureGuard feature="career_discovery">
-                <div
-                    onClick={() => setShowCareerDiscovery(true)}
-                    className="block cursor-pointer bg-gradient-to-r from-violet-50 to-fuchsia-50 dark:from-slate-800 dark:to-slate-900 p-6 rounded-2xl border border-violet-200 dark:border-slate-700 hover:shadow-lg transition-all group"
+            {/* Quick Actions Grid — Mirrored from Pregnancy Dashboard */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 mb-8">
+                {/* Study Planner Card */}
+                <button 
+                    onClick={() => setShowStudyPlanner(true)} 
+                    className="group bg-gradient-to-br from-violet-50 to-indigo-50 dark:from-violet-900/20 dark:to-indigo-900/20 border border-violet-200 dark:border-violet-800 rounded-2xl p-5 text-left hover:shadow-lg hover:border-violet-400 dark:hover:border-violet-600 transition-all relative overflow-hidden h-full min-h-[160px]"
                 >
-                    <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-4">
-                            <div className="w-14 h-14 bg-gradient-to-br from-violet-600 to-pink-600 rounded-xl flex items-center justify-center text-2xl group-hover:scale-110 transition-transform shadow-lg">
-                                🚀
-                            </div>
-                            <div>
-                                <h3 className="text-lg font-bold text-gray-800 dark:text-white">Career Discovery Journey</h3>
-                                <p className="text-sm text-gray-500 dark:text-slate-400">
-                                    Discover your ideal career through an exciting, game-like adventure!
-                                </p>
-                            </div>
-                        </div>
-                        <span className="text-violet-600 dark:text-pink-400 font-medium text-sm group-hover:translate-x-1 transition-transform">
-                            Start Journey →
-                        </span>
+                    <div className="text-3xl mb-3 flex items-center justify-between">
+                        <span>🎓</span>
+                        {!hasFeature('study_planner') && <span className="text-[10px] px-2 py-0.5 bg-violet-200 dark:bg-violet-900/40 text-violet-700 dark:text-violet-300 rounded-full font-bold">🔒 PREMIUM</span>}
                     </div>
-                </div>
-            </FeatureGuard>
+                    <h3 className="text-base font-bold text-violet-700 dark:text-violet-300 mb-1 flex items-center gap-2">
+                        AI Study Planner
+                    </h3>
+                    <p className="text-xs text-gray-500 dark:text-slate-400 line-clamp-2">AI-powered task scheduling, Google Calendar sync, and exam prep tracking.</p>
+                    <span className="mt-4 inline-block text-xs font-semibold text-violet-600 dark:text-violet-400 group-hover:underline">Open Planner →</span>
+                </button>
 
-            {/* Mentor Chat Section */}
-            <a
-                href="/mentor-chat/teen?stage=teen_age"
-                className="block bg-gradient-to-r from-purple-50 to-pink-50 dark:from-slate-800 dark:to-slate-900 p-6 rounded-2xl border border-purple-200 dark:border-slate-700 hover:shadow-lg transition-all group"
-            >
-                <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-4">
-                        <div className="w-14 h-14 bg-purple-600 dark:bg-pink-600 rounded-xl flex items-center justify-center text-2xl group-hover:scale-110 transition-transform">
-                            💬
-                        </div>
-                        <div>
-                            <h3 className="text-lg font-bold text-gray-800 dark:text-white">Chat with Your Mentor</h3>
-                            <p className="text-sm text-gray-500 dark:text-slate-400">
-                                Get guidance on studies, goals, and personal growth
-                            </p>
-                        </div>
+                {/* Career Discovery Card */}
+                <button 
+                    onClick={() => setShowCareerDiscovery(true)} 
+                    className="group bg-gradient-to-br from-pink-50 to-rose-50 dark:from-pink-900/20 dark:to-rose-900/20 border border-pink-200 dark:border-pink-800 rounded-2xl p-5 text-left hover:shadow-lg hover:border-pink-400 dark:hover:border-pink-600 transition-all relative overflow-hidden h-full min-h-[160px]"
+                >
+                    <div className="text-3xl mb-3 flex items-center justify-between">
+                        <span>🚀</span>
+                        {!hasFeature('career_discovery') && <span className="text-[10px] px-2 py-0.5 bg-pink-200 dark:bg-pink-900/40 text-pink-700 dark:text-pink-300 rounded-full font-bold">🔒 PREMIUM</span>}
                     </div>
-                    <span className="text-purple-600 dark:text-pink-400 font-medium text-sm group-hover:translate-x-1 transition-transform">
-                        Open Chat →
-                    </span>
-                </div>
-            </a>
+                    <h3 className="text-base font-bold text-pink-700 dark:text-pink-300 mb-1 flex items-center gap-2">
+                        Career Discovery
+                    </h3>
+                    <p className="text-xs text-gray-500 dark:text-slate-400 line-clamp-2">Take an AI journey to find your perfect career path through interest analysis.</p>
+                    <span className="mt-4 inline-block text-xs font-semibold text-pink-600 dark:text-pink-400 group-hover:underline">Start Journey →</span>
+                </button>
+
+                {/* Mentor Chat Card */}
+                <a 
+                    href="/mentor-chat/teen?stage=teen_age" 
+                    className="group bg-gradient-to-br from-purple-50 to-fuchsia-50 dark:from-purple-900/20 dark:to-fuchsia-900/20 border border-purple-200 dark:border-purple-800 rounded-2xl p-5 text-left hover:shadow-lg hover:border-purple-400 dark:hover:border-purple-600 transition-all relative h-full min-h-[160px]"
+                >
+                    <div className="text-3xl mb-3">💬</div>
+                    <h3 className="text-base font-bold text-purple-700 dark:text-purple-300 mb-1">Mentor Chat</h3>
+                    <p className="text-xs text-gray-500 dark:text-slate-400 line-clamp-2">One-on-one guidance for studies, life goals, and personal development.</p>
+                    <span className="mt-4 inline-block text-xs font-semibold text-purple-600 dark:text-purple-400 group-hover:underline">Connect Now →</span>
+                </a>
+
+            </div>
+
+
 
             {/* Career Discovery Results History */}
             {careerResults && careerResults.length > 0 && (
@@ -780,25 +860,48 @@ export default function TeenDashboard() {
                         </div>
 
                         <div className="mt-8">
-                            <h3 className="font-bold mb-6 dark:text-white uppercase text-xs tracking-widest">Growth Recommendations</h3>
-                            {canAccessInsights() ? (
-                                <div className="bg-blue-50 dark:bg-pink-500/5 p-6 rounded-2xl border border-blue-100 dark:border-pink-500/20 shadow-inner space-y-4">
-                                    {latestResult.recommendations.map((rec, i) => (
-                                        <div key={i} className="flex gap-4 items-start">
-                                            <span className="flex-shrink-0 w-6 h-6 bg-blue-600 dark:bg-pink-600 text-white rounded-full flex items-center justify-center text-xs font-bold">{i + 1}</span>
-                                            <p className="text-gray-700 dark:text-slate-300 italic">{rec}</p>
+                            <h3 className="font-bold mb-6 dark:text-white uppercase text-xs tracking-widest flex items-center gap-2">
+                                Growth Recommendations
+                                {!canAccessInsights() && <span className="text-[10px] bg-amber-500 text-white px-2 py-0.5 rounded-full font-black">PREMIUM</span>}
+                            </h3>
+                            
+                            <div className={`relative rounded-2xl overflow-hidden ${!canAccessInsights() ? 'min-h-[200px]' : ''}`}>
+                                {canAccessInsights() ? (
+                                    <div className="bg-blue-50 dark:bg-pink-500/5 p-6 rounded-2xl border border-blue-100 dark:border-pink-500/20 shadow-inner space-y-4">
+                                        {latestResult.recommendations.map((rec, i) => (
+                                            <div key={i} className="flex gap-4 items-start">
+                                                <span className="flex-shrink-0 w-6 h-6 bg-blue-600 dark:bg-pink-600 text-white rounded-full flex items-center justify-center text-xs font-bold">{i + 1}</span>
+                                                <p className="text-gray-700 dark:text-slate-300 italic">{rec}</p>
+                                            </div>
+                                        ))}
+                                    </div>
+                                ) : (
+                                    <div className="bg-gray-50/50 dark:bg-slate-800/50 p-6 rounded-2xl border border-dashed border-gray-200 dark:border-slate-700 space-y-4">
+                                        {[1, 2, 3].map((n) => (
+                                            <div key={n} className="flex gap-4 items-start filter blur-[3px] opacity-40 select-none">
+                                                <span className="flex-shrink-0 w-6 h-6 bg-gray-300 dark:bg-slate-700 text-white rounded-full flex items-center justify-center text-xs font-bold">{n}</span>
+                                                <div className="h-4 bg-gray-200 dark:bg-slate-700 rounded w-full"></div>
+                                            </div>
+                                        ))}
+                                        
+                                        <div className="absolute inset-0 flex flex-col items-center justify-center bg-white/10 dark:bg-slate-900/10 backdrop-blur-[1px]">
+                                            <p className="text-gray-700 dark:text-slate-300 mb-4 font-bold text-center px-6">
+                                                Upgrade to Growth plan to unlock personalised AI recommendations based on your scores.
+                                            </p>
+                                            <button 
+                                                onClick={() => setUpgradeModal({ 
+                                                    isOpen: true, 
+                                                    feature: 'AI Insights', 
+                                                    plan: getRequiredPlan('mental_health_guide') 
+                                                })}
+                                                className="px-8 py-3 bg-blue-600 text-white rounded-xl font-bold hover:bg-blue-700 dark:bg-pink-600 dark:hover:bg-pink-700 shadow-xl transition-all transform hover:scale-105 active:scale-95"
+                                            >
+                                                Unlock Personalized Advice
+                                            </button>
                                         </div>
-                                    ))}
-                                </div>
-                            ) : (
-                                <div className="bg-gray-100 dark:bg-slate-800 p-10 rounded-2xl text-center border dark:border-slate-700">
-                                    <div className="text-3xl mb-4">🔒</div>
-                                    <p className="text-gray-700 dark:text-slate-400 mb-6 font-medium">Upgrade to Growth plan to unlock personalised AI recommendations.</p>
-                                    <button className="px-8 py-3 bg-blue-600 text-white rounded-xl font-bold hover:bg-blue-700 dark:bg-pink-600 dark:hover:bg-pink-700 shadow-lg transition-all">
-                                        Upgrade to Growth
-                                    </button>
-                                </div>
-                            )}
+                                    </div>
+                                )}
+                            </div>
                         </div>
                     </div>
 
@@ -834,6 +937,16 @@ export default function TeenDashboard() {
                         Start Your First Assessment
                     </button>
                 </div>
+            )}
+
+            {upgradeModal.isOpen && (
+                <UpgradeModal
+                    isOpen={upgradeModal.isOpen}
+                    onClose={() => setUpgradeModal({ ...upgradeModal, isOpen: false })}
+                    featureName={upgradeModal.feature}
+                    requiredPlan={upgradeModal.plan}
+                    maybeLaterPath="/dashboard/teen"
+                />
             )}
         </div>
     );

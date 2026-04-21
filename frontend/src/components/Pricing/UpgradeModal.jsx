@@ -5,11 +5,10 @@ import { useNavigate } from 'react-router-dom';
 const UpgradeModal = ({ isOpen, onClose, featureName, requiredPlan, maybeLaterPath = '/dashboard/parent' }) => {
   const navigate = useNavigate();
 
-  if (!isOpen) return null;
-
   return (
     <AnimatePresence>
-      <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+      {isOpen && (
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4">
         {/* Backdrop */}
         <motion.div
           initial={{ opacity: 0 }}
@@ -90,8 +89,9 @@ const UpgradeModal = ({ isOpen, onClose, featureName, requiredPlan, maybeLaterPa
           </div>
         </motion.div>
       </div>
-    </AnimatePresence>
-  );
+    )}
+  </AnimatePresence>
+);
 };
 
 export default UpgradeModal;

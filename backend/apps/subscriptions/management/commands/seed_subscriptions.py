@@ -27,12 +27,13 @@ class Command(BaseCommand):
             if created:
                 self.stdout.write(self.style.SUCCESS(f"Feature '{name}' created."))
 
-        # 2. Create Plans
+        # 2. Create Plans with updated feature sets
+        # career_discovery removed from free plan, added to starter/growth/family
         plans_data = [
             {
                 "name": "free",
                 "price": 0,
-                "features": ["growth_tracking", "mentor_chat", "assessment", "career_discovery"]
+                "features": ["growth_tracking", "mentor_chat", "assessment"]
             },
             {
                 "name": "starter",
@@ -64,7 +65,7 @@ class Command(BaseCommand):
             # Set features
             plan_features = [features_obj[f_name] for f_name in p_data["features"]]
             plan.features.set(plan_features)
-            
+
             status = "created" if created else "updated"
             self.stdout.write(self.style.SUCCESS(f"Plan '{p_data['name']}' {status} with {len(p_data['features'])} features."))
 
