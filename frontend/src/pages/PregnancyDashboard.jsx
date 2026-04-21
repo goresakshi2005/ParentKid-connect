@@ -680,13 +680,13 @@ function PregnancyDashboard() {
                     <button onClick={() => setTakingAssessment(true)} className="px-8 py-3 bg-green-600 hover:bg-green-700 text-white rounded-xl font-bold shadow-lg transition-all">Start Assessment</button>
                 </div>
             )}
-            {/* Upgrade Modal */}
             {upgradeModal.isOpen && (
                 <UpgradeModal 
                     isOpen={upgradeModal.isOpen} 
                     onClose={() => setUpgradeModal({ ...upgradeModal, isOpen: false })} 
                     featureName={upgradeModal.feature}
                     requiredPlan={upgradeModal.plan}
+                    maybeLaterPath="/dashboard/pregnancy"
                 />
             )}
         </div>

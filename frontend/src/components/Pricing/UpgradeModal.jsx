@@ -2,7 +2,7 @@ import React from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
 
-const UpgradeModal = ({ isOpen, onClose, featureName, requiredPlan }) => {
+const UpgradeModal = ({ isOpen, onClose, featureName, requiredPlan, maybeLaterPath = '/dashboard/parent' }) => {
   const navigate = useNavigate();
 
   if (!isOpen) return null;
@@ -79,7 +79,7 @@ const UpgradeModal = ({ isOpen, onClose, featureName, requiredPlan }) => {
               </button>
               <button
                 onClick={() => {
-                  navigate('/dashboard/parent');
+                  navigate(maybeLaterPath);
                   onClose();
                 }}
                 className="w-full py-4 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 font-medium transition-colors"
