@@ -155,10 +155,12 @@ class AssessmentViewSet(viewsets.ModelViewSet):
         serializer = AssessmentSerializer(assessment)
         return Response(serializer.data)
 
+from apps.users.permissions import HasFeaturePermission
+
 class CareerDiscoveryViewSet(viewsets.ModelViewSet):
     queryset = CareerDiscoveryResult.objects.all()
     serializer_class = CareerDiscoveryResultSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, HasFeaturePermission("career_discovery")]
     
     def get_queryset(self):
         user = self.request.user

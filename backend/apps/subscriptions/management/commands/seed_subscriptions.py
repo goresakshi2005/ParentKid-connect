@@ -32,12 +32,12 @@ class Command(BaseCommand):
             {
                 "name": "free",
                 "price": 0,
-                "features": ["growth_tracking", "mentor_chat", "assessment"]
+                "features": ["growth_tracking", "mentor_chat", "assessment", "career_discovery"]
             },
             {
                 "name": "starter",
                 "price": 500,
-                "features": ["growth_tracking", "mentor_chat", "assessment", "magic_fix", "career_discovery"]
+                "features": ["growth_tracking", "mentor_chat", "assessment", "career_discovery", "magic_fix"]
             },
             {
                 "name": "growth",

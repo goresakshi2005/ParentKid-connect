@@ -78,7 +78,10 @@ const UpgradeModal = ({ isOpen, onClose, featureName, requiredPlan }) => {
                 Go to Plans
               </button>
               <button
-                onClick={onClose}
+                onClick={() => {
+                  navigate('/dashboard/parent');
+                  onClose();
+                }}
                 className="w-full py-4 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 font-medium transition-colors"
               >
                 Maybe Later

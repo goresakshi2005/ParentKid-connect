@@ -4,14 +4,22 @@ from django.utils import timezone
 def user_has_feature(user, feature_name):
     """
     Check if a user has access to a specific feature based on their active subscription.
+    Teens inherit feature access from their parents.
     """
     if not user.is_authenticated:
         return False
         
+    effective_user = user
+    if hasattr(user, 'role') and user.role == 'teen':
+        from apps.users.models import ParentTeenLink
+        link = ParentTeenLink.objects.filter(teen=user).select_related('parent').first()
+        if link:
+            effective_user = link.parent
+            
     try:
-        # Get active subscription
+        # Get active subscription for the effective user (parent for teens)
         active_subscription = Subscription.objects.filter(
-            user=user,
+            user=effective_user,
             status='active',
             end_date__gt=timezone.now()
         ).select_related('plan').first()
@@ -36,8 +44,15 @@ def get_user_features(user):
     if not user.is_authenticated:
         return []
         
+    effective_user = user
+    if hasattr(user, 'role') and user.role == 'teen':
+        from apps.users.models import ParentTeenLink
+        link = ParentTeenLink.objects.filter(teen=user).select_related('parent').first()
+        if link:
+            effective_user = link.parent
+
     active_subscription = Subscription.objects.filter(
-        user=user,
+        user=effective_user,
         status='active',
         end_date__gt=timezone.now()
     ).select_related('plan').first()

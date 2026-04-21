@@ -19,20 +19,36 @@ class LockedFeatureException(APIException):
     default_code = 'FEATURE_LOCKED'
 
     def __init__(self, feature_name, required_plan=None):
-        self.detail = {
+        self.feature_name = feature_name
+        self.required_plan = required_plan or "UPGRADE"
+        detail = {
             "error": "FEATURE_LOCKED",
             "message": self.default_detail,
-            "required_plan": required_plan or "UPGRADE"
+            "required_plan": self.required_plan
         }
+        super().__init__(detail=detail)
 
 class HasFeaturePermission(permissions.BasePermission):
     def __init__(self, feature_name):
         self.feature_name = feature_name
 
+    def __call__(self):
+        """
+        Allows using an instance of this class directly in permission_classes:
+        permission_classes = [HasFeaturePermission("feature_name")]
+        """
+        return self
+
     def has_permission(self, request, view):
         if not user_has_feature(request.user, self.feature_name):
             # Try to find which plan first offers this feature
             plan = SubscriptionPlan.objects.filter(features__name=self.feature_name).order_by('price').first()
-            required_plan = plan.get_plan_name_display().upper() if plan else "UPGRADE"
+            required_plan = "UPGRADE"
+            if plan:
+                try:
+                    required_plan = plan.get_plan_name_display().upper()
+                except Exception:
+                    required_plan = plan.plan_name.upper()
+            
             raise LockedFeatureException(self.feature_name, required_plan)
         return True

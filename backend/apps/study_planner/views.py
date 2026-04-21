@@ -27,13 +27,8 @@ from .serializers import StudyTaskSerializer, VoiceInputSerializer
 logger = logging.getLogger(__name__)
 genai.configure(api_key=settings.GEMINI_API_KEY)
 
-TODAY = date.today()
-
-
 # ---------------------------------------------------------------------------
 # AI PARSING — returns a LIST of task dicts (even for a single task)
-# ---------------------------------------------------------------------------
-
 def _parse_with_gemini(voice_text: str) -> list:
     """
     Call Gemini to convert natural-language input (which may describe MULTIPLE
@@ -43,7 +38,8 @@ def _parse_with_gemini(voice_text: str) -> list:
         title, type, date, time, deadline, reminder, priority,
         calendar_event, missing_date
     """
-    today_str = TODAY.isoformat()
+    today_obj = date.today()
+    today_str = today_obj.isoformat()
 
     prompt = f"""
 Today's date is {today_str}.
@@ -159,8 +155,9 @@ class StudyTaskViewSet(ModelViewSet):
     def get_queryset(self):
         qs = StudyTask.objects.filter(user=self.request.user)
         task_filter = self.request.query_params.get('filter')
+        today = date.today()
         if task_filter == 'upcoming':
-            qs = qs.filter(status='Pending', date__gte=TODAY)
+            qs = qs.filter(status='Pending', date__gte=today)
         elif task_filter == 'deadlines':
             qs = qs.filter(deadline=True, status='Pending')
         elif task_filter == 'completed':
@@ -252,10 +249,11 @@ class StudyTaskViewSet(ModelViewSet):
 
         created_tasks = []
         skipped = []
+        today = date.today()
 
         for parsed in parsed_tasks:
             title = parsed.get('title', 'Untitled Task')
-            task_date = parsed.get('date', TODAY.isoformat())
+            task_date = parsed.get('date', today.isoformat())
 
             # Duplicate check per task
             existing = StudyTask.objects.filter(
@@ -298,6 +296,7 @@ class StudyTaskViewSet(ModelViewSet):
             },
             status=status.HTTP_201_CREATED,
         )
+
 
     # ------------------------------------------------------------------
     @action(detail=True, methods=['patch'], url_path='update_status')
