@@ -22,7 +22,6 @@ import {
     updateTaskStatus,
     deleteTask,
 } from '../services/studyPlannerService';
-import TeenMoodCheckin from '../components/Relationship/TeenMoodCheckin';  // <-- NEW
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
@@ -596,8 +595,6 @@ export default function TeenDashboard() {
                 Your Growth <span className="dark:text-pink-500 text-blue-600">Dashboard</span>
             </h1>
 
-            {/* ─── NEW: Mood Check‑In for Teens ───────────────────────────────── */}
-            <TeenMoodCheckin childId={user.id} />
 
             {/* Google Calendar banner */}
             {googleConnected !== null && (
