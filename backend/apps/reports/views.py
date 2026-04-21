@@ -13,12 +13,13 @@ from .models import MedicalReport, Appointment, MaternalHealthGuide
 from .services.orchestrator import process_report_and_schedule, confirm_and_schedule
 from .services.maternal_health_service import generate_maternal_health_guide
 from .serializers import AppointmentSerializer, MaternalHealthGuideSerializer
+from apps.users.permissions import HasFeaturePermission
 
 logger = logging.getLogger(__name__)
 
 
 class UploadReportView(APIView):
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, HasFeaturePermission("appointment")]
     parser_classes = [MultiPartParser, FormParser]
 
     def post(self, request):
@@ -58,7 +59,7 @@ class UploadReportView(APIView):
 
 
 class ConfirmAppointmentView(APIView):
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, HasFeaturePermission("appointment")]
 
     def post(self, request):
         try:
@@ -94,7 +95,7 @@ class ConfirmAppointmentView(APIView):
 
 
 class AppointmentListView(APIView):
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, HasFeaturePermission("appointment")]
 
     def get(self, request):
         appointments = Appointment.objects.filter(
@@ -105,7 +106,7 @@ class AppointmentListView(APIView):
 
 
 class NextAppointmentView(APIView):
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, HasFeaturePermission("appointment")]
 
     def get(self, request):
         from django.utils import timezone
@@ -122,7 +123,7 @@ class NextAppointmentView(APIView):
 
 
 class AppointmentDeleteView(APIView):
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, HasFeaturePermission("appointment")]
 
     def delete(self, request, pk):
         try:
@@ -163,7 +164,7 @@ class MaternalHealthGuideView(APIView):
     4. Save the guide in MaternalHealthGuide.
     5. Return the full guide payload to the frontend.
     """
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, HasFeaturePermission("mental_health_guide")]
     parser_classes = [MultiPartParser, FormParser]
 
     def post(self, request):
@@ -229,7 +230,7 @@ class MaternalHealthGuideListView(APIView):
     GET /reports/health-guide/history/
     Returns all health guides for the authenticated user, newest first.
     """
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, HasFeaturePermission("mental_health_guide")]
 
     def get(self, request):
         guides = MaternalHealthGuide.objects.filter(
@@ -244,7 +245,7 @@ class MaternalHealthGuideDetailView(APIView):
     GET /reports/health-guide/<int:pk>/
     Returns a single guide by ID (must belong to the authenticated user).
     """
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, HasFeaturePermission("mental_health_guide")]
 
     def get(self, request, pk):
         try:
