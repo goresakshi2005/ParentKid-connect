@@ -172,15 +172,22 @@ Directory structure:
     │   │   ├── subscriptions/
     │   │   │   ├── __init__.py
     │   │   │   ├── admin.py
+    │   │   │   ├── constants.py
     │   │   │   ├── models.py
     │   │   │   ├── serializers.py
     │   │   │   ├── urls.py
     │   │   │   ├── views.py
-    │   │   │   └── migrations/
-    │   │   │       ├── 0001_initial.py
-    │   │   │       ├── 0002_initial.py
-    │   │   │       ├── 0003_seed_plans.py
-    │   │   │       └── __init__.py
+    │   │   │   ├── management/
+    │   │   │   │   └── commands/
+    │   │   │   │       └── seed_subscriptions.py
+    │   │   │   ├── migrations/
+    │   │   │   │   ├── 0001_initial.py
+    │   │   │   │   ├── 0002_initial.py
+    │   │   │   │   ├── 0003_seed_plans.py
+    │   │   │   │   ├── 0004_feature_subscriptionplan_razorpay_plan_id_and_more.py
+    │   │   │   │   └── __init__.py
+    │   │   │   └── services/
+    │   │   │       └── access_control.py
     │   │   ├── users/
     │   │   │   ├── __init__.py
     │   │   │   ├── admin.py
@@ -246,6 +253,7 @@ Directory structure:
             │   ├── Child/
             │   │   └── ChildSelfAssessment.jsx
             │   ├── Common/
+            │   │   ├── FeatureGuard.jsx
             │   │   ├── Loading.jsx
             │   │   └── ProgressBar.jsx
             │   ├── Mentorship/
@@ -319,7 +327,8 @@ Directory structure:
             │   ├── index.css
             │   └── tailwind.css
             └── utils/
-                └── constants.js
+                ├── constants.js
+                └── featureAccess.js
 
 ================================================
 FILE: android-app/app/src/main/AndroidManifest.xml
@@ -1757,10 +1766,12 @@ class AssessmentViewSet(viewsets.ModelViewSet):
         serializer = AssessmentSerializer(assessment)
         return Response(serializer.data)
 
+from apps.users.permissions import HasFeaturePermission
+
 class CareerDiscoveryViewSet(viewsets.ModelViewSet):
     queryset = CareerDiscoveryResult.objects.all()
     serializer_class = CareerDiscoveryResultSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, HasFeaturePermission("career_discovery")]
     
     def get_queryset(self):
         user = self.request.user
@@ -4233,8 +4244,10 @@ from .services.ai_engine import RelationshipIntelligenceEngine
 from .models import RelationshipAnalysis, Child
 from .serializers import RelationshipAnalysisSerializer
 
+from apps.users.permissions import HasFeaturePermission
+
 class RelationshipAnalysisView(APIView):
-    permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [permissions.IsAuthenticated, HasFeaturePermission("relationship_ai")]
 
     def post(self, request):
         parent_data = request.data.get('parent', {})
@@ -4280,7 +4293,7 @@ class RelationshipAnalysisView(APIView):
 
 
 class RelationshipHistoryView(APIView):
-    permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [permissions.IsAuthenticated, HasFeaturePermission("relationship_ai")]
     
     def get(self, request, child_id):
         child = get_object_or_404(Child, id=child_id, parent=request.user)
@@ -4290,7 +4303,7 @@ class RelationshipHistoryView(APIView):
 
 
 class MagicFixView(APIView):
-    permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [permissions.IsAuthenticated, HasFeaturePermission("magic_fix")]
 
     def post(self, request):
         child_id = request.data.get('child_id')
@@ -4331,7 +4344,7 @@ class MagicFixView(APIView):
         }, status=status.HTTP_200_OK)
 
 class MagicFixHistoryListView(APIView):
-    permission_classes = [permissions.IsAuthenticated]
+    permission_classes = [permissions.IsAuthenticated, HasFeaturePermission("magic_fix")]
     
     def get(self, request, child_id):
         child = get_object_or_404(Child, id=child_id, parent=request.user)
@@ -5248,12 +5261,13 @@ from .models import MedicalReport, Appointment, MaternalHealthGuide
 from .services.orchestrator import process_report_and_schedule, confirm_and_schedule
 from .services.maternal_health_service import generate_maternal_health_guide
 from .serializers import AppointmentSerializer, MaternalHealthGuideSerializer
+from apps.users.permissions import HasFeaturePermission
 
 logger = logging.getLogger(__name__)
 
 
 class UploadReportView(APIView):
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, HasFeaturePermission("appointment")]
     parser_classes = [MultiPartParser, FormParser]
 
     def post(self, request):
@@ -5293,7 +5307,7 @@ class UploadReportView(APIView):
 
 
 class ConfirmAppointmentView(APIView):
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, HasFeaturePermission("appointment")]
 
     def post(self, request):
         try:
@@ -5329,7 +5343,7 @@ class ConfirmAppointmentView(APIView):
 
 
 class AppointmentListView(APIView):
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, HasFeaturePermission("appointment")]
 
     def get(self, request):
         appointments = Appointment.objects.filter(
@@ -5340,7 +5354,7 @@ class AppointmentListView(APIView):
 
 
 class NextAppointmentView(APIView):
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, HasFeaturePermission("appointment")]
 
     def get(self, request):
         from django.utils import timezone
@@ -5357,7 +5371,7 @@ class NextAppointmentView(APIView):
 
 
 class AppointmentDeleteView(APIView):
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, HasFeaturePermission("appointment")]
 
     def delete(self, request, pk):
         try:
@@ -5398,7 +5412,7 @@ class MaternalHealthGuideView(APIView):
     4. Save the guide in MaternalHealthGuide.
     5. Return the full guide payload to the frontend.
     """
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, HasFeaturePermission("mental_health_guide")]
     parser_classes = [MultiPartParser, FormParser]
 
     def post(self, request):
@@ -5464,7 +5478,7 @@ class MaternalHealthGuideListView(APIView):
     GET /reports/health-guide/history/
     Returns all health guides for the authenticated user, newest first.
     """
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, HasFeaturePermission("mental_health_guide")]
 
     def get(self, request):
         guides = MaternalHealthGuide.objects.filter(
@@ -5479,7 +5493,7 @@ class MaternalHealthGuideDetailView(APIView):
     GET /reports/health-guide/<int:pk>/
     Returns a single guide by ID (must belong to the authenticated user).
     """
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, HasFeaturePermission("mental_health_guide")]
 
     def get(self, request, pk):
         try:
@@ -6754,8 +6768,10 @@ def get_usage(request):
     })
 
 
+from apps.users.permissions import HasFeaturePermission
+
 @api_view(['GET'])
-@permission_classes([IsAuthenticated])
+@permission_classes([IsAuthenticated, HasFeaturePermission("screen_intelligence")])
 def get_screen_time_intelligence(request):
     """
     GET /api/screen-intelligence?child_id=1
@@ -7061,13 +7077,8 @@ from .serializers import StudyTaskSerializer, VoiceInputSerializer
 logger = logging.getLogger(__name__)
 genai.configure(api_key=settings.GEMINI_API_KEY)
 
-TODAY = date.today()
-
-
 # ---------------------------------------------------------------------------
 # AI PARSING â€” returns a LIST of task dicts (even for a single task)
-# ---------------------------------------------------------------------------
-
 def _parse_with_gemini(voice_text: str) -> list:
     """
     Call Gemini to convert natural-language input (which may describe MULTIPLE
@@ -7077,7 +7088,8 @@ def _parse_with_gemini(voice_text: str) -> list:
         title, type, date, time, deadline, reminder, priority,
         calendar_event, missing_date
     """
-    today_str = TODAY.isoformat()
+    today_obj = date.today()
+    today_str = today_obj.isoformat()
 
     prompt = f"""
 Today's date is {today_str}.
@@ -7184,15 +7196,18 @@ def _sync_with_google_calendar(task):
 # VIEWSET
 # ---------------------------------------------------------------------------
 
+from apps.users.permissions import HasFeaturePermission
+
 class StudyTaskViewSet(ModelViewSet):
     serializer_class = StudyTaskSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, HasFeaturePermission("study_planner")]
 
     def get_queryset(self):
         qs = StudyTask.objects.filter(user=self.request.user)
         task_filter = self.request.query_params.get('filter')
+        today = date.today()
         if task_filter == 'upcoming':
-            qs = qs.filter(status='Pending', date__gte=TODAY)
+            qs = qs.filter(status='Pending', date__gte=today)
         elif task_filter == 'deadlines':
             qs = qs.filter(deadline=True, status='Pending')
         elif task_filter == 'completed':
@@ -7284,10 +7299,11 @@ class StudyTaskViewSet(ModelViewSet):
 
         created_tasks = []
         skipped = []
+        today = date.today()
 
         for parsed in parsed_tasks:
             title = parsed.get('title', 'Untitled Task')
-            task_date = parsed.get('date', TODAY.isoformat())
+            task_date = parsed.get('date', today.isoformat())
 
             # Duplicate check per task
             existing = StudyTask.objects.filter(
@@ -7330,6 +7346,7 @@ class StudyTaskViewSet(ModelViewSet):
             },
             status=status.HTTP_201_CREATED,
         )
+
 
     # ------------------------------------------------------------------
     @action(detail=True, methods=['patch'], url_path='update_status')
@@ -7462,6 +7479,25 @@ class SubscriptionAdmin(admin.ModelAdmin):
 
 
 ================================================
+FILE: backend/apps/subscriptions/constants.py
+================================================
+FEATURES = {
+    "GROWTH_TRACKING": "growth_tracking",
+    "MENTOR_CHAT": "mentor_chat",
+    "ASSESSMENT": "assessment",
+    "MAGIC_FIX": "magic_fix",
+    "CAREER_DISCOVERY": "career_discovery",
+    "MENTAL_HEALTH_GUIDE": "mental_health_guide",
+    "STUDY_PLANNER": "study_planner",
+    "SCREEN_INTELLIGENCE": "screen_intelligence",
+    "RELATIONSHIP_AI": "relationship_ai",
+    "APPOINTMENT": "appointment",
+    "VOICE_WELLNESS": "voice_wellness",
+}
+
+
+
+================================================
 FILE: backend/apps/subscriptions/models.py
 ================================================
 from django.db import models
@@ -7470,6 +7506,14 @@ from datetime import timedelta
 from django.utils import timezone
 
 User = get_user_model()
+
+class Feature(models.Model):
+    name = models.CharField(max_length=100, unique=True)
+    description = models.TextField(blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return self.name
 
 class SubscriptionPlan(models.Model):
     PLAN_CHOICES = (
@@ -7483,7 +7527,11 @@ class SubscriptionPlan(models.Model):
     price = models.DecimalField(max_digits=10, decimal_places=2)
     currency = models.CharField(max_length=3, default='INR')
     duration_days = models.IntegerField(default=30)
+    razorpay_plan_id = models.CharField(max_length=100, blank=True, null=True)
     
+    features = models.ManyToManyField(Feature, related_name='plans', blank=True)
+    
+    # Keeping old fields for backward compatibility if needed, but the user wants generic Feature model
     max_child_profiles = models.IntegerField(default=1)
     unlimited_assessments = models.BooleanField(default=False)
     detailed_insights = models.BooleanField(default=False)
@@ -7536,13 +7584,25 @@ class Subscription(models.Model):
         super().save(*args, **kwargs)
 
 
+
 ================================================
 FILE: backend/apps/subscriptions/serializers.py
 ================================================
 from rest_framework import serializers
-from .models import SubscriptionPlan, Subscription
+from .models import Feature, SubscriptionPlan, Subscription
+
+class FeatureSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Feature
+        fields = ['name', 'description']
 
 class SubscriptionPlanSerializer(serializers.ModelSerializer):
+    features = serializers.SlugRelatedField(
+        many=True,
+        read_only=True,
+        slug_field='name'
+    )
+    
     class Meta:
         model = SubscriptionPlan
         fields = '__all__'
@@ -7579,8 +7639,28 @@ from django.conf import settings
 from django.utils import timezone
 from datetime import timedelta
 
+from apps.subscriptions.services.access_control import get_user_features
+
 class SubscriptionViewSet(viewsets.ViewSet):
     permission_classes = [IsAuthenticated]
+
+    @action(detail=False, methods=['get'], url_path='my-features')
+    def my_features(self, request):
+        try:
+            # Get current plan name
+            try:
+                subscription = Subscription.objects.get(user=request.user)
+                plan_name = subscription.plan.get_plan_name_display()
+            except Subscription.DoesNotExist:
+                plan_name = "Free"
+            
+            features = get_user_features(request.user)
+            return Response({
+                "plan": plan_name.upper(),
+                "features": features
+            })
+        except Exception as e:
+            return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
     
     @action(detail=False, methods=['get'])
     def plans(self, request):
@@ -7686,6 +7766,83 @@ class SubscriptionViewSet(viewsets.ViewSet):
             print(f"DEBUG: Verification error: {str(e)}")
             return Response({'error': f'Payment verification failed: {str(e)}'}, 
                           status=status.HTTP_400_BAD_REQUEST)
+
+
+================================================
+FILE: backend/apps/subscriptions/management/commands/seed_subscriptions.py
+================================================
+from django.core.management.base import BaseCommand
+from apps.subscriptions.models import Feature, SubscriptionPlan
+
+class Command(BaseCommand):
+    help = 'Seed features and subscription plans'
+
+    def handle(self, *args, **kwargs):
+        # 1. Create Features
+        features_data = [
+            ("growth_tracking", "Growth Tracking"),
+            ("mentor_chat", "Mentor Chat"),
+            ("assessment", "Assessment"),
+            ("magic_fix", "Magic Fix"),
+            ("career_discovery", "Career Discovery"),
+            ("mental_health_guide", "Mental Health Guide"),
+            ("study_planner", "Study Planner"),
+            ("screen_intelligence", "Screen Intelligence"),
+            ("relationship_ai", "Relationship AI"),
+            ("appointment", "Appointment"),
+            ("voice_wellness", "Voice Wellness"),
+        ]
+
+        features_obj = {}
+        for name, desc in features_data:
+            feature, created = Feature.objects.get_or_create(name=name, defaults={"description": desc})
+            features_obj[name] = feature
+            if created:
+                self.stdout.write(self.style.SUCCESS(f"Feature '{name}' created."))
+
+        # 2. Create Plans with updated feature sets
+        # career_discovery removed from free plan, added to starter/growth/family
+        plans_data = [
+            {
+                "name": "free",
+                "price": 0,
+                "features": ["growth_tracking", "mentor_chat", "assessment"]
+            },
+            {
+                "name": "starter",
+                "price": 500,
+                "features": ["growth_tracking", "mentor_chat", "assessment", "career_discovery", "magic_fix"]
+            },
+            {
+                "name": "growth",
+                "price": 1000,
+                "features": ["growth_tracking", "mentor_chat", "assessment", "magic_fix", "career_discovery", "mental_health_guide", "study_planner"]
+            },
+            {
+                "name": "family",
+                "price": 2000,
+                "features": ["growth_tracking", "mentor_chat", "assessment", "magic_fix", "career_discovery", "mental_health_guide", "study_planner", "screen_intelligence", "relationship_ai", "appointment", "voice_wellness"]
+            },
+        ]
+
+        for p_data in plans_data:
+            plan, created = SubscriptionPlan.objects.get_or_create(
+                plan_name=p_data["name"],
+                defaults={"price": p_data["price"]}
+            )
+            # Update price if it changed
+            if not created:
+                plan.price = p_data["price"]
+                plan.save()
+
+            # Set features
+            plan_features = [features_obj[f_name] for f_name in p_data["features"]]
+            plan.features.set(plan_features)
+
+            status = "created" if created else "updated"
+            self.stdout.write(self.style.SUCCESS(f"Plan '{p_data['name']}' {status} with {len(p_data['features'])} features."))
+
+        self.stdout.write(self.style.SUCCESS("Database seeded successfully!"))
 
 
 ================================================
@@ -7805,8 +7962,149 @@ class Migration(migrations.Migration):
 
 
 ================================================
+FILE: backend/apps/subscriptions/migrations/0004_feature_subscriptionplan_razorpay_plan_id_and_more.py
+================================================
+# Generated by Django 4.2 on 2026-04-20 06:16
+
+from django.db import migrations, models
+
+
+class Migration(migrations.Migration):
+
+    dependencies = [
+        ('subscriptions', '0003_seed_plans'),
+    ]
+
+    operations = [
+        migrations.CreateModel(
+            name='Feature',
+            fields=[
+                ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
+                ('name', models.CharField(max_length=100, unique=True)),
+                ('description', models.TextField(blank=True)),
+                ('created_at', models.DateTimeField(auto_now_add=True)),
+            ],
+        ),
+        migrations.AddField(
+            model_name='subscriptionplan',
+            name='razorpay_plan_id',
+            field=models.CharField(blank=True, max_length=100, null=True),
+        ),
+        migrations.AddField(
+            model_name='subscriptionplan',
+            name='features',
+            field=models.ManyToManyField(blank=True, related_name='plans', to='subscriptions.feature'),
+        ),
+    ]
+
+
+
+================================================
 FILE: backend/apps/subscriptions/migrations/__init__.py
 ================================================
+
+
+
+================================================
+FILE: backend/apps/subscriptions/services/access_control.py
+================================================
+from apps.subscriptions.models import Subscription, SubscriptionPlan, Feature
+from django.utils import timezone
+
+def user_has_feature(user, feature_name):
+    """
+    Check if a user has access to a specific feature based on their active subscription.
+    Teens inherit feature access from their parents.
+    """
+    if not user.is_authenticated:
+        return False
+        
+    effective_user = user
+    if hasattr(user, 'role') and user.role == 'teen':
+        from apps.users.models import ParentTeenLink
+        link = ParentTeenLink.objects.filter(teen=user).select_related('parent').first()
+        if link:
+            effective_user = link.parent
+            
+    try:
+        # Get active subscription for the effective user (parent for teens)
+        active_subscription = Subscription.objects.filter(
+            user=effective_user,
+            status='active',
+            end_date__gt=timezone.now()
+        ).select_related('plan').first()
+        
+        if not active_subscription:
+            # Default to FREE plan features
+            free_plan = SubscriptionPlan.objects.filter(plan_name='free').first()
+            if not free_plan:
+                return False
+            return free_plan.features.filter(name=feature_name).exists()
+            
+        # Check if feature exists in the user's plan
+        return active_subscription.plan.features.filter(name=feature_name).exists()
+        
+    except Exception:
+        return False
+
+def get_user_features(user):
+    """
+    Return a list of all features accessible to the user.
+    """
+    if not user.is_authenticated:
+        return []
+        
+    effective_user = user
+    if hasattr(user, 'role') and user.role == 'teen':
+        from apps.users.models import ParentTeenLink
+        link = ParentTeenLink.objects.filter(teen=user).select_related('parent').first()
+        if link:
+            effective_user = link.parent
+
+    active_subscription = Subscription.objects.filter(
+        user=effective_user,
+        status='active',
+        end_date__gt=timezone.now()
+    ).select_related('plan').first()
+    
+    if not active_subscription:
+        plan = SubscriptionPlan.objects.filter(plan_name='free').first()
+    else:
+        plan = active_subscription.plan
+        
+    if not plan:
+        return []
+        
+    return list(plan.features.values_list('name', flat=True))
+
+FEATURE_PLAN_MAPPING = {
+    "study_planner": "growth",
+    "career_discovery": "starter",
+}
+
+PLAN_HIERARCHY = ["free", "starter", "growth", "family"]
+
+def has_feature_access_by_plan(user, feature):
+    """
+    Check if user's plan is >= the required plan for the given feature.
+    This is an alternative to the featureâ€‘based check (user_has_feature).
+    """
+    required_plan = FEATURE_PLAN_MAPPING.get(feature)
+    if not required_plan:
+        return True  # feature not mapped â†’ allow
+
+    try:
+        subscription = Subscription.objects.get(user=user, status='active', end_date__gt=timezone.now())
+        user_plan = subscription.plan.plan_name
+    except Subscription.DoesNotExist:
+        user_plan = 'free'
+
+    if user_plan not in PLAN_HIERARCHY:
+        user_plan = 'free'
+    if required_plan not in PLAN_HIERARCHY:
+        return False
+
+    return PLAN_HIERARCHY.index(user_plan) >= PLAN_HIERARCHY.index(required_plan)
 
 
 
@@ -7894,6 +8192,55 @@ class IsParent(permissions.BasePermission):
 class IsTeen(permissions.BasePermission):
     def has_permission(self, request, view):
         return request.user.is_authenticated and request.user.role == 'teen'
+
+from rest_framework.exceptions import APIException
+from rest_framework import status
+from apps.subscriptions.services.access_control import user_has_feature
+from apps.subscriptions.models import SubscriptionPlan
+
+class LockedFeatureException(APIException):
+    status_code = status.HTTP_403_FORBIDDEN
+    default_detail = 'Upgrade your plan to access this feature'
+    default_code = 'FEATURE_LOCKED'
+
+    def __init__(self, feature_name, required_plan=None):
+        self.feature_name = feature_name
+        self.required_plan = required_plan or "UPGRADE"
+        detail = {
+            "error": "FEATURE_LOCKED",
+            "message": self.default_detail,
+            "required_plan": self.required_plan
+        }
+        super().__init__(detail=detail)
+
+class HasFeaturePermission(permissions.BasePermission):
+    def __init__(self, feature_name):
+        self.feature_name = feature_name
+
+    def __call__(self):
+        """
+        Allows using an instance of this class directly in permission_classes:
+        permission_classes = [HasFeaturePermission("feature_name")]
+        """
+        return self
+
+    def has_permission(self, request, view):
+        # Allow read-only access to show the interface even if locked
+        if request.method in permissions.SAFE_METHODS:
+            return True
+
+        if not user_has_feature(request.user, self.feature_name):
+            # Try to find which plan first offers this feature
+            plan = SubscriptionPlan.objects.filter(features__name=self.feature_name).order_by('price').first()
+            required_plan = "UPGRADE"
+            if plan:
+                try:
+                    required_plan = plan.get_plan_name_display().upper()
+                except Exception:
+                    required_plan = plan.plan_name.upper()
+            
+            raise LockedFeatureException(self.feature_name, required_plan)
+        return True
 
 
 ================================================
@@ -9254,6 +9601,8 @@ import { useAuth } from './context/AuthContext';
 import ScreenTimePage from './pages/ScreenTimePage';
 import DeviceManagerPage from './pages/DeviceManagerPage';
 
+import FeatureGuard from './components/Common/FeatureGuard';
+
 function App() {
   const { user, loading } = useAuth();
 
@@ -9300,7 +9649,9 @@ function App() {
             path="/relationship-intelligence/:childId"
             element={
               <AuthGuard role="parent">
-                <RelationshipIntelligencePage />
+                <FeatureGuard feature="relationship_ai">
+                  <RelationshipIntelligencePage />
+                </FeatureGuard>
               </AuthGuard>
             }
           />
@@ -9310,7 +9661,9 @@ function App() {
             path="/magic-fix/:childId"
             element={
               <AuthGuard role="parent">
-                <MagicFixPage />
+                <FeatureGuard feature="magic_fix">
+                  <MagicFixPage />
+                </FeatureGuard>
               </AuthGuard>
             }
           />
@@ -9330,7 +9683,9 @@ function App() {
             path="/screen-intelligence/:childId"
             element={
               <AuthGuard role="parent">
-                <ScreenTimeIntelligencePage />
+                <FeatureGuard feature="screen_intelligence">
+                  <ScreenTimeIntelligencePage />
+                </FeatureGuard>
               </AuthGuard>
             }
           />
@@ -10717,6 +11072,85 @@ export default ChildSelfAssessment;
 
 
 ================================================
+FILE: frontend/src/components/Common/FeatureGuard.jsx
+================================================
+import React, { useState } from 'react';
+import { useAuth } from '../../context/AuthContext';
+import { hasFeature, getRequiredPlan } from '../../utils/featureAccess';
+import UpgradeModal from '../Pricing/UpgradeModal';
+import { motion } from 'framer-motion';
+
+/**
+ * FeatureGuard wraps components that require specific subscription features.
+ * If the user doesn't have the feature, it shows a blurred overlay or an upgrade UI.
+ */
+const FeatureGuard = ({ feature, children, showOverlay = true, className = "", compact = false, maybeLaterPath = '/dashboard/parent' }) => {
+  const { user } = useAuth();
+  const [showUpgrade, setShowUpgrade] = useState(false);
+  
+  const isLocked = !hasFeature(user, feature);
+  const requiredPlan = getRequiredPlan(feature);
+
+  if (!isLocked) {
+    return <>{children}</>;
+  }
+
+  if (!showOverlay) {
+    // Just hide the children if showOverlay is false
+    return null;
+  }
+
+  return (
+    <div className={`relative overflow-hidden w-full h-full ${className}`}>
+      {/* Blurred background content */}
+      <div className="filter blur-sm pointer-events-none select-none h-full w-full">
+        {children}
+      </div>
+
+      {/* Overlay UI */}
+      <motion.div 
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        className="absolute inset-0 z-10 flex flex-col items-center justify-center bg-black/40 backdrop-blur-[2px] rounded-xl p-3 text-center"
+      >
+        <div className={`bg-white/90 dark:bg-gray-800/90 ${compact ? 'p-4' : 'p-8'} rounded-2xl shadow-2xl ${compact ? 'max-w-[200px]' : 'max-w-md'} border border-white/20`}>
+          <div className={`${compact ? 'text-2xl mb-1' : 'text-5xl mb-4'}`}>ðŸ”’</div>
+          <h3 className={`${compact ? 'text-sm' : 'text-2xl'} font-bold text-gray-900 dark:text-white mb-1`}>
+            Locked
+          </h3>
+          {!compact && (
+            <p className="text-gray-600 dark:text-gray-300 mb-6 text-sm">
+              This feature is available in the <span className="font-bold text-indigo-600 dark:text-indigo-400">{requiredPlan}</span> plan. 
+              Upgrade now to unlock full access.
+            </p>
+          )}
+          <button
+            onClick={() => setShowUpgrade(true)}
+            className={`w-full ${compact ? 'py-1.5 text-xs' : 'py-3'} bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-xl font-bold hover:shadow-lg transition-all transform hover:scale-[1.02]`}
+          >
+            {compact ? 'Unlock' : 'Upgrade Now'}
+          </button>
+        </div>
+      </motion.div>
+
+      {showUpgrade && (
+        <UpgradeModal 
+          isOpen={showUpgrade} 
+          onClose={() => setShowUpgrade(false)} 
+          featureName={feature}
+          requiredPlan={requiredPlan}
+          maybeLaterPath={maybeLaterPath}
+        />
+      )}
+    </div>
+  );
+};
+
+export default FeatureGuard;
+
+
+
+================================================
 FILE: frontend/src/components/Common/Loading.jsx
 ================================================
 import React from 'react';
@@ -11587,7 +12021,12 @@ function Navbar() {
                   >
                     💬 Mentor Chat
                   </Link>
-                  <Link to="/pricing" className="hover:text-blue-600 dark:text-gray-200 dark:hover:text-blue-400">Upgrade</Link>
+                  <div className="flex flex-col items-center">
+                    <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${user.plan === 'FREE' ? 'bg-gray-200 text-gray-700' : 'bg-gradient-to-r from-pink-500 to-violet-600 text-white shadow-sm'}`}>
+                      {user.plan || 'FREE'}
+                    </span>
+                    <Link to="/pricing" className="text-xs hover:text-blue-600 dark:text-gray-200 dark:hover:text-blue-400">Upgrade</Link>
+                  </div>
                 </>
               )}
               <div className="flex gap-4 items-center">
@@ -12291,35 +12730,46 @@ function PricingCard({ plan }) {
     }
   };
 
-  const planDetails = {
-    free: { name: 'Free', price: 0, features: ['Basic assessment', 'Basic tracking', '1 child profile', 'Limited insights'] },
-    starter: { name: 'Starter', price: 500, features: ['Limited assessments', 'Basic tracking', '1 child profile'] },
-    growth: { name: 'Growth', price: 1000, features: ['Unlimited assessments', 'Detailed insights', 'Personalized recommendations', 'Up to 3 child profiles', 'Progress comparison'] },
-    family: { name: 'Family+', price: 2000, features: ['Unlimited child profiles', 'Advanced analytics', 'Downloadable reports', 'Priority features'] },
-  };
-
-  const details = planDetails[plan.plan_name] || planDetails.free;
-
   return (
-    <div className="border border-gray-200 dark:border-slate-700 rounded-lg p-6 shadow-sm hover:shadow-md dark:bg-slate-800 transition-all duration-300">
-      <h3 className="text-2xl font-bold mb-2 dark:text-white">{details.name}</h3>
-      <p className="text-4xl font-black mb-6 dark:text-white">â‚¹{details.price}<span className="text-sm font-normal text-gray-500 dark:text-slate-400">/month</span></p>
-      <ul className="space-y-3 mb-8">
-        {details.features.map((feat, idx) => (
-          <li key={idx} className="text-gray-600 dark:text-slate-300 flex items-center gap-2">
-            <span className="text-green-500 dark:text-pink-500 font-bold">âœ“</span>
-            {feat}
+    <div className={`relative border rounded-3xl p-8 shadow-xl transition-all duration-500 hover:scale-[1.02] ${
+      plan.plan_name === 'growth' || plan.plan_name === 'family' 
+        ? 'bg-gradient-to-b from-white to-indigo-50/30 dark:from-slate-800 dark:to-slate-900 border-indigo-200 dark:border-indigo-900' 
+        : 'bg-white dark:bg-slate-900 border-gray-100 dark:border-slate-800'
+    }`}>
+      {plan.plan_name === 'family' && (
+        <span className="absolute -top-4 left-1/2 -translate-x-1/2 bg-gradient-to-r from-pink-500 to-indigo-600 text-white text-xs font-black px-4 py-1.5 rounded-full shadow-lg uppercase tracking-widest">
+          Most Popular
+        </span>
+      )}
+      
+      <h3 className="text-3xl font-black mb-1 dark:text-white capitalize">{plan.plan_name}</h3>
+      <div className="flex items-baseline gap-1 mb-6">
+        <span className="text-5xl font-black dark:text-white">â‚¹{Math.round(plan.price)}</span>
+        <span className="text-gray-500 dark:text-slate-400 font-medium">/month</span>
+      </div>
+
+      <ul className="space-y-4 mb-10 min-h-[200px]">
+        {plan.features && plan.features.map((feat, idx) => (
+          <li key={idx} className="text-gray-600 dark:text-slate-300 flex items-start gap-3">
+            <div className="mt-1 flex-shrink-0 w-5 h-5 rounded-full bg-green-100 dark:bg-green-900/30 flex items-center justify-center text-green-600 dark:text-green-400">
+              <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
+                <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+              </svg>
+            </div>
+            <span className="text-sm font-medium capitalize">{feat.replace(/_/g, ' ')}</span>
           </li>
         ))}
       </ul>
+
       <button
         onClick={handleSelectPlan}
-        className={`w-full px-4 py-3.5 rounded-xl font-bold shadow-lg transition-all duration-300 transform active:scale-[0.98] ${plan.plan_name === 'free'
-            ? 'bg-gray-100 text-gray-500 dark:bg-slate-700/50 dark:text-pink-400 border-2 border-pink-500 dark:border-pink-500'
-            : 'bg-blue-600 text-white hover:bg-blue-700 dark:bg-pink-600 dark:hover:bg-pink-700 dark:shadow-pink-500/25'
-          }`}
+        className={`w-full py-4 rounded-2xl font-black text-lg transition-all duration-300 transform active:scale-[0.98] shadow-lg ${
+          plan.plan_name === 'free'
+            ? 'bg-gray-100 text-gray-500 cursor-default'
+            : 'bg-indigo-600 text-white hover:bg-indigo-700 shadow-indigo-500/25 hover:shadow-indigo-500/40'
+        }`}
       >
-        {plan.plan_name === 'free' ? 'Default Plan' : 'Go Premium'}
+        {plan.plan_name === 'free' ? 'Current Plan' : 'Choose Plan'}
       </button>
     </div>
   );
@@ -12337,6 +12787,103 @@ FILE: frontend/src/components/Pricing/PricingPage.jsx
 ================================================
 FILE: frontend/src/components/Pricing/UpgradeModal.jsx
 ================================================
+import React from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
+import { useNavigate } from 'react-router-dom';
+
+const UpgradeModal = ({ isOpen, onClose, featureName, requiredPlan, maybeLaterPath = '/dashboard/parent' }) => {
+  const navigate = useNavigate();
+
+  return (
+    <AnimatePresence>
+      {isOpen && (
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4">
+        {/* Backdrop */}
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          onClick={onClose}
+          className="absolute inset-0 bg-black/60 backdrop-blur-md"
+        />
+
+        {/* Modal */}
+        <motion.div
+          initial={{ scale: 0.9, opacity: 0, y: 20 }}
+          animate={{ scale: 1, opacity: 1, y: 0 }}
+          exit={{ scale: 0.9, opacity: 0, y: 20 }}
+          className="relative bg-white dark:bg-gray-900 rounded-3xl shadow-2xl overflow-hidden max-w-lg w-full border border-white/10"
+        >
+          {/* Header Image/Gradient */}
+          <div className="h-32 bg-gradient-to-br from-indigo-600 via-purple-600 to-pink-500 flex items-center justify-center relative">
+            <div className="absolute top-4 right-4">
+               <button 
+                onClick={onClose}
+                className="p-2 hover:bg-white/20 rounded-full transition-colors text-white"
+               >
+                 <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
+                 </svg>
+               </button>
+            </div>
+            <div className="text-6xl">ðŸš€</div>
+          </div>
+
+          <div className="p-8">
+            <h2 className="text-3xl font-extrabold text-gray-900 dark:text-white mb-2 text-center">
+              Elevate Your Experience
+            </h2>
+            <p className="text-gray-600 dark:text-gray-400 text-center mb-8">
+              Unlock <span className="text-indigo-600 font-semibold">{featureName?.replace('_', ' ').toUpperCase()}</span> and many more premium features with our <span className="font-bold">{requiredPlan}</span> plan.
+            </p>
+
+            <div className="space-y-4 mb-8">
+              {[
+                "Advanced AI Insights",
+                "Unlimited Profiles",
+                "Detailed Performance Reports",
+                "Priority Support"
+              ].map((benefit, i) => (
+                <div key={i} className="flex items-center space-x-3 text-gray-700 dark:text-gray-300">
+                  <div className="flex-shrink-0 w-6 h-6 rounded-full bg-green-100 dark:bg-green-900/30 flex items-center justify-center text-green-600 dark:text-green-400">
+                    <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                      <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                    </svg>
+                  </div>
+                  <span className="font-medium">{benefit}</span>
+                </div>
+              ))}
+            </div>
+
+            <div className="flex flex-col space-y-3">
+              <button
+                onClick={() => {
+                  navigate('/pricing');
+                  onClose();
+                }}
+                className="w-full py-4 bg-indigo-600 hover:bg-indigo-700 text-white rounded-2xl font-bold text-lg shadow-lg shadow-indigo-500/30 transition-all transform hover:scale-[1.01] active:scale-[0.98]"
+              >
+                Go to Plans
+              </button>
+              <button
+                onClick={() => {
+                  navigate(maybeLaterPath);
+                  onClose();
+                }}
+                className="w-full py-4 text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 font-medium transition-colors"
+              >
+                Maybe Later
+              </button>
+            </div>
+          </div>
+        </motion.div>
+      </div>
+    )}
+  </AnimatePresence>
+);
+};
+
+export default UpgradeModal;
 
 
 
@@ -15695,6 +16242,7 @@ import {
   addScores, getTopTags, getTraitLabels, getBestCareer,
 } from './careerData';
 import { saveCareerDiscoveryResult } from '../../services/assessmentService';
+import FeatureGuard from '../../components/Common/FeatureGuard';
 
 // ── Stage names for progress ────────────────────────────────────────────
 const STAGES = [
@@ -15912,25 +16460,26 @@ export default function CareerDiscovery({ onBack }) {
       {showConfetti && <Confetti />}
 
       <div className="cd-content">
-        {/* Back button */}
+        {/* Back button — Outside guard for accessibility */}
         {stage !== 'hook' && (
-          <button className="cd-back-btn" onClick={onBack}>
+          <button className="cd-back-btn" onClick={onBack} style={{ zIndex: 100 }}>
             ← Back to Dashboard
           </button>
         )}
 
-        {/* Progress Bar */}
-        {stage !== 'hook' && stage !== 'result' && (
-          <div className="cd-progress-bar">
-            <div className="cd-progress-track">
-              <div className="cd-progress-fill" style={{ width: `${progress}%` }} />
+        <FeatureGuard feature="career_discovery" maybeLaterPath="/dashboard/teen">
+          {/* Progress Bar */}
+          {stage !== 'hook' && stage !== 'result' && (
+            <div className="cd-progress-bar">
+              <div className="cd-progress-track">
+                <div className="cd-progress-fill" style={{ width: `${progress}%` }} />
+              </div>
+              <div className="cd-progress-label">
+                <span className="cd-progress-stage">{STAGE_LABELS[stageIdx]}</span>
+                <span>Level {stageIdx}/{STAGES.length - 1}</span>
+              </div>
             </div>
-            <div className="cd-progress-label">
-              <span className="cd-progress-stage">{STAGE_LABELS[stageIdx]}</span>
-              <span>Level {stageIdx}/{STAGES.length - 1}</span>
-            </div>
-          </div>
-        )}
+          )}
 
         {/* ═══════════ STAGE: HOOK ═══════════ */}
         {stage === 'hook' && (
@@ -16192,65 +16741,67 @@ export default function CareerDiscovery({ onBack }) {
           </div>
         )}
 
-        {/* ═══════════ STAGE 8: FINAL RESULT ═══════════ */}
-        {stage === 'result' && apiResult?.best && (
-          <div className="cd-stage-enter cd-result" key={`result-${animKey}`}>
-            <div className="cd-result-trophy">🏆</div>
-            <div className="cd-result-title-label">🎯 Your Best Career Match</div>
-            <h2 className="cd-result-career">
-              {apiResult.best.emoji} {apiResult.best.title}
-            </h2>
+          {/* ═══════════ STAGE 8: FINAL RESULT ═══════════ */}
+          {stage === 'result' && apiResult?.best && (
+            <div className="cd-stage-enter cd-result" key={`result-${animKey}`}>
+              {/* ... result content ... */}
+              <div className="cd-result-trophy">🏆</div>
+              <div className="cd-result-title-label">🎯 Your Best Career Match</div>
+              <h2 className="cd-result-career">
+                {apiResult.best.emoji} {apiResult.best.title}
+              </h2>
 
-            <div className="cd-result-why">
-              <div className="cd-result-why-label">💡 Why This Fits You</div>
-              <p className="cd-result-why-text">{apiResult.best.why}</p>
-            </div>
-
-            {apiResult.alternatives?.length > 0 && (
-              <div className="cd-result-alternatives">
-                <div className="cd-result-alt-label">🔁 Alternative Paths</div>
-                <div className="cd-result-alt-list">
-                  {apiResult.alternatives.map((alt, i) => (
-                    <span className="cd-result-alt-tag" key={i}>
-                      {alt}
-                    </span>
-                  ))}
-                  {apiResult.best.alts?.map((a, i) => (
-                    <span className="cd-result-alt-tag" key={`sub-${i}`}>✦ {a}</span>
-                  ))}
-                </div>
+              <div className="cd-result-why">
+                <div className="cd-result-why-label">💡 Why This Fits You</div>
+                <p className="cd-result-why-text">{apiResult.best.why}</p>
               </div>
-            )}
 
-            <div className="cd-result-bonus">
-              <div className="cd-result-bonus-label">🎁 Try-It-Now Challenge</div>
-              <p className="cd-result-bonus-text">{apiResult.best.task}</p>
-            </div>
+              {apiResult.alternatives?.length > 0 && (
+                <div className="cd-result-alternatives">
+                  <div className="cd-result-alt-label">🔁 Alternative Paths</div>
+                  <div className="cd-result-alt-list">
+                    {apiResult.alternatives.map((alt, i) => (
+                      <span className="cd-result-alt-tag" key={i}>
+                        {alt}
+                      </span>
+                    ))}
+                    {apiResult.best.alts?.map((a, i) => (
+                      <span className="cd-result-alt-tag" key={`sub-${i}`}>✦ {a}</span>
+                    ))}
+                  </div>
+                </div>
+              )}
 
-            <div className="cd-result-actions">
-              <button className="cd-btn-glow" onClick={onBack}>
-                🏠 Back to Dashboard
-              </button>
-              <button
-                className="cd-btn-secondary"
-                onClick={() => {
-                  setStage('hook');
-                  setApiResult(null);
-                  setScores({});
-                  setSelectedWorlds([]);
-                  setRfIndex(0);
-                  setMissionIndex(0);
-                  setMissionSelections({});
-                  setNarrowAnswers({});
-                  setCrossSelected([]);
-                  setRealityAnswers({});
-                }}
-              >
-                🔄 Retake Journey
-              </button>
+              <div className="cd-result-bonus">
+                <div className="cd-result-bonus-label">🎁 Try-It-Now Challenge</div>
+                <p className="cd-result-bonus-text">{apiResult.best.task}</p>
+              </div>
+
+              <div className="cd-result-actions">
+                <button className="cd-btn-glow" onClick={onBack}>
+                  🏠 Back to Dashboard
+                </button>
+                <button
+                  className="cd-btn-secondary"
+                  onClick={() => {
+                    setStage('hook');
+                    setApiResult(null);
+                    setScores({});
+                    setSelectedWorlds([]);
+                    setRfIndex(0);
+                    setMissionIndex(0);
+                    setMissionSelections({});
+                    setNarrowAnswers({});
+                    setCrossSelected([]);
+                    setRealityAnswers({});
+                  }}
+                >
+                  🔄 Retake Journey
+                </button>
+              </div>
             </div>
-          </div>
-        )}
+          )}
+        </FeatureGuard>
       </div>
     </div>
   );
@@ -16523,11 +17074,26 @@ export function AuthProvider({ children }) {
 
   const fetchUser = async () => {
     try {
-      const response = await axios.get(
+      // 1. Fetch Basic User Info
+      const userResponse = await axios.get(
         `${process.env.REACT_APP_API_URL}/users/me/`,
         { headers: { Authorization: `Bearer ${token}` } }
       );
-      const userData = response.data;
+      const userData = userResponse.data;
+
+      // 2. Fetch Subscription Features
+      try {
+        const featureResponse = await axios.get(
+          `${process.env.REACT_APP_API_URL}/subscriptions/my-features/`,
+          { headers: { Authorization: `Bearer ${token}` } }
+        );
+        userData.features = featureResponse.data.features;
+        userData.plan = featureResponse.data.plan;
+      } catch (fErr) {
+        console.warn('Failed to fetch features:', fErr);
+        userData.features = [];
+        userData.plan = "FREE";
+      }
 
       // Always merge is_expecting from localStorage
       if (!userData.is_expecting) {
@@ -16542,6 +17108,23 @@ export function AuthProvider({ children }) {
       localStorage.removeItem('access_token');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const refreshFeatures = async () => {
+    if (!token) return;
+    try {
+      const response = await axios.get(
+        `${process.env.REACT_APP_API_URL}/subscriptions/my-features/`,
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+      setUser(prev => ({
+        ...prev,
+        features: response.data.features,
+        plan: response.data.plan
+      }));
+    } catch (error) {
+      console.error('Failed to refresh features:', error);
     }
   };
 
@@ -16598,7 +17181,7 @@ export function AuthProvider({ children }) {
   };
 
   return (
-    <AuthContext.Provider value={{ user, loading, login, signup, logout, token }}>
+    <AuthContext.Provider value={{ user, loading, login, signup, logout, token, refreshFeatures }}>
       {children}
     </AuthContext.Provider>
   );
@@ -16621,7 +17204,7 @@ import { useAuth } from './AuthContext';
 const SubscriptionContext = createContext();
 
 export function SubscriptionProvider({ children }) {
-  const { token } = useAuth();
+  const { user, token, refreshFeatures } = useAuth();
   const [subscription, setSubscription] = useState(null);
   const [plans, setPlans] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -16665,13 +17248,18 @@ export function SubscriptionProvider({ children }) {
     return subscription && subscription.plan.plan_name !== 'free' && subscription.status === 'active';
   };
 
+  const hasFeature = (featureName) => {
+    return user?.features?.includes(featureName) || false;
+  };
+
   const canCreateChildren = () => {
-    if (!subscription) return false;
-    return subscription.plan.max_child_profiles > 0;
+    // Family plan allows more than 1
+    if (user?.plan === 'FAMILY') return true;
+    return false;
   };
 
   const canAccessInsights = () => {
-    return subscription?.plan.detailed_insights || false;
+    return hasFeature('mental_health_guide');
   };
 
   // New: get user tier as 'free' or 'paid'
@@ -16703,6 +17291,7 @@ export function SubscriptionProvider({ children }) {
         { headers: { Authorization: `Bearer ${token}` } }
       );
       await fetchSubscription();
+      if (refreshFeatures) await refreshFeatures();
       return response.data;
     } catch (error) {
       console.error('Failed to verify payment:', error);
@@ -16717,6 +17306,7 @@ export function SubscriptionProvider({ children }) {
         plans,
         loading,
         isPremium,
+        hasFeature,
         canCreateChildren,
         canAccessInsights,
         fetchSubscription,
@@ -18183,6 +18773,8 @@ import ReportUploader from '../components/Reports/ReportUploader';
 import MaternalHealthGuide from '../components/Reports/MaternalHealthGuide';
 import VoiceAssessmentFlow from '../components/VoiceAssessment/VoiceAssessmentFlow';
 import { getLatestVoiceResult } from '../services/voiceAssessmentService';
+import { hasFeature, getRequiredPlan } from '../utils/featureAccess';
+import UpgradeModal from '../components/Pricing/UpgradeModal';
 
 // ── helpers ────────────────────────────────────────────────────────────────────
 function formatRelative(isoString) {
@@ -18356,6 +18948,9 @@ function PregnancyDashboard() {
     const [allApptLoading,  setAllApptLoading]  = useState(false);
     const [deletingId,      setDeletingId]      = useState(null);
     const [confirmDeleteId, setConfirmDeleteId] = useState(null);
+    
+    // Upgrade Modal State
+    const [upgradeModal, setUpgradeModal] = useState({ isOpen: false, feature: '', plan: '' });
 
     const authHeaders = { Authorization: `Bearer ${token}` };
 
@@ -18466,7 +19061,22 @@ function PregnancyDashboard() {
     }, []);
     const handleVoiceClose   = () => setShowVoiceFlow(false);
     const handleVoiceDismiss = () => setVoiceDismissed(true);
-    const handleVoiceRetake  = () => { setVoiceDismissed(false); setShowVoiceFlow(true); };
+    const handleVoiceRetake  = () => {
+        if (!hasFeature(user, 'voice_wellness')) {
+            setUpgradeModal({ isOpen: true, feature: 'Voice Wellness Check', plan: getRequiredPlan('voice_wellness') });
+            return;
+        }
+        setVoiceDismissed(false); 
+        setShowVoiceFlow(true); 
+    };
+
+    const handleFeatureClick = (featureKey, featureName, action) => {
+        if (!hasFeature(user, featureKey)) {
+            setUpgradeModal({ isOpen: true, feature: featureName, plan: getRequiredPlan(featureKey) });
+            return;
+        }
+        action();
+    };
 
     const formatApptDate = (iso) => new Date(iso).toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
     const formatApptTime = (iso) => new Date(iso).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' });
@@ -18537,10 +19147,28 @@ function PregnancyDashboard() {
                     Pregnancy <span className="dark:text-green-500">Journey</span>
                 </h1>
                 <div className="flex items-center gap-2 flex-wrap">
-                    <button onClick={() => setShowHealthGuide(true)}    className="px-5 py-3 bg-rose-500 hover:bg-rose-600 text-white rounded-xl shadow-lg flex items-center gap-2 font-bold transition-all">🌸 Health Guide</button>
-                    <button onClick={() => setShowReportUploader(true)} className="px-5 py-3 bg-pink-600 hover:bg-pink-700 text-white rounded-xl shadow-lg flex items-center gap-2 font-bold transition-all">📋 Upload Report</button>
-                    <button onClick={() => setTakingAssessment(true)}   className="px-6 py-3 bg-green-600 hover:bg-green-700 dark:bg-emerald-600 dark:hover:bg-emerald-700 text-white rounded-xl shadow-lg flex items-center gap-2 font-bold transition-all">📝 Take Assessment</button>
-                    <button onClick={handleVoiceRetake}                 className="px-5 py-3 bg-purple-600 hover:bg-purple-700 text-white rounded-xl shadow-lg flex items-center gap-2 font-bold transition-all">🎙️ Voice Wellness Check</button>
+                    <button 
+                        onClick={() => handleFeatureClick('mental_health_guide', 'Maternal Health Guide', () => setShowHealthGuide(true))}    
+                        className="px-5 py-3 bg-rose-500 hover:bg-rose-600 text-white rounded-xl shadow-lg flex items-center gap-2 font-bold transition-all whitespace-nowrap"
+                    >
+                        🌸 Health Guide {!hasFeature(user, 'mental_health_guide') && '🔒'}
+                    </button>
+                    
+                    <button 
+                        onClick={() => handleFeatureClick('appointment', 'Appointment Scheduler', () => setShowReportUploader(true))} 
+                        className="px-5 py-3 bg-pink-600 hover:bg-pink-700 text-white rounded-xl shadow-lg flex items-center gap-2 font-bold transition-all whitespace-nowrap"
+                    >
+                        📋 Upload Report {!hasFeature(user, 'appointment') && '🔒'}
+                    </button>
+
+                    <button onClick={() => setTakingAssessment(true)}   className="px-6 py-3 bg-green-600 hover:bg-green-700 dark:bg-emerald-600 dark:hover:bg-emerald-700 text-white rounded-xl shadow-lg flex items-center gap-2 font-bold transition-all whitespace-nowrap">📝 Take Assessment</button>
+                    
+                    <button 
+                        onClick={handleVoiceRetake}                 
+                        className="px-5 py-3 bg-purple-600 hover:bg-purple-700 text-white rounded-xl shadow-lg flex items-center gap-2 font-bold transition-all whitespace-nowrap"
+                    >
+                        🎙️ Voice Wellness Check {!hasFeature(user, 'voice_wellness') && '🔒'}
+                    </button>
                 </div>
             </div>
 
@@ -18579,187 +19207,209 @@ function PregnancyDashboard() {
             )}
 
             {/* Quick-action cards */}
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-8">
-                <button onClick={() => setShowHealthGuide(true)} className="group bg-gradient-to-br from-rose-50 to-pink-50 dark:from-rose-900/20 dark:to-pink-900/20 border border-rose-200 dark:border-rose-800 rounded-2xl p-5 text-left hover:shadow-lg hover:border-rose-400 dark:hover:border-rose-600 transition-all">
-                    <div className="text-3xl mb-3">🌸</div>
-                    <h3 className="text-base font-bold text-rose-700 dark:text-rose-300 mb-1">Maternal Health Guide</h3>
-                    <p className="text-sm text-gray-500 dark:text-slate-400">Upload your checkup report and get a simple, friendly health guide — food tips, goals, alerts and more.</p>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-8 items-stretch">
+                <button 
+                    onClick={() => handleFeatureClick('mental_health_guide', 'Maternal Health Guide', () => setShowHealthGuide(true))} 
+                    className="w-full h-full min-h-[160px] group bg-gradient-to-br from-rose-50 to-pink-50 dark:from-rose-900/20 dark:to-pink-900/20 border border-rose-200 dark:border-rose-800 rounded-2xl p-5 text-left hover:shadow-lg hover:border-rose-400 dark:hover:border-rose-600 transition-all relative overflow-hidden"
+                >
+                    <div className="text-3xl mb-3 flex items-center justify-between">
+                        <span>🌸</span>
+                        {!hasFeature(user, 'mental_health_guide') && <span className="text-sm px-2 py-0.5 bg-rose-200 dark:bg-rose-900/40 text-rose-700 dark:text-rose-300 rounded-full font-bold">PREMIUM</span>}
+                    </div>
+                    <h3 className="text-base font-bold text-rose-700 dark:text-rose-300 mb-1 flex items-center gap-2">
+                        Maternal Health Guide
+                    </h3>
+                    <p className="text-xs text-gray-500 dark:text-slate-400">Upload your checkup report and get a simple, friendly health guide — food tips, goals, alerts and more.</p>
                     <span className="mt-3 inline-block text-xs font-semibold text-rose-600 dark:text-rose-400 group-hover:underline">Get my guide →</span>
                 </button>
-                <button onClick={() => setShowReportUploader(true)} className="group bg-gradient-to-br from-blue-50 to-indigo-50 dark:from-blue-900/20 dark:to-indigo-900/20 border border-blue-200 dark:border-blue-800 rounded-2xl p-5 text-left hover:shadow-lg hover:border-blue-400 dark:hover:border-blue-600 transition-all">
-                    <div className="text-3xl mb-3">📅</div>
-                    <h3 className="text-base font-bold text-blue-700 dark:text-blue-300 mb-1">Schedule Appointment</h3>
-                    <p className="text-sm text-gray-500 dark:text-slate-400">Upload your report and we'll automatically extract your next appointment and add it to Google Calendar.</p>
+
+                <button 
+                    onClick={() => handleFeatureClick('appointment', 'Appointment Scheduler', () => setShowReportUploader(true))} 
+                    className="w-full h-full min-h-[160px] group bg-gradient-to-br from-blue-50 to-indigo-50 dark:from-blue-900/20 dark:to-indigo-900/20 border border-blue-200 dark:border-blue-800 rounded-2xl p-5 text-left hover:shadow-lg hover:border-blue-400 dark:hover:border-blue-600 transition-all relative overflow-hidden"
+                >
+                    <div className="text-3xl mb-3 flex items-center justify-between">
+                        <span>📅</span>
+                        {!hasFeature(user, 'appointment') && <span className="text-sm px-2 py-0.5 bg-blue-200 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300 rounded-full font-bold">PREMIUM</span>}
+                    </div>
+                    <h3 className="text-base font-bold text-blue-700 dark:text-blue-300 mb-1 flex items-center gap-2">
+                        Schedule Appointment
+                    </h3>
+                    <p className="text-xs text-gray-500 dark:text-slate-400">Upload your report and we'll automatically extract your next appointment and add it to Google Calendar.</p>
                     <span className="mt-3 inline-block text-xs font-semibold text-blue-600 dark:text-blue-400 group-hover:underline">Upload report →</span>
                 </button>
-                <a href="/mentor-chat?stage=pregnancy" className="group bg-gradient-to-br from-purple-50 to-violet-50 dark:from-purple-900/20 dark:to-violet-900/20 border border-purple-200 dark:border-purple-800 rounded-2xl p-5 text-left hover:shadow-lg hover:border-purple-400 dark:hover:border-purple-600 transition-all">
+
+                <a href="/mentor-chat?stage=pregnancy" className="group min-h-[160px] bg-gradient-to-br from-purple-50 to-violet-50 dark:from-purple-900/20 dark:to-violet-900/20 border border-purple-200 dark:border-purple-800 rounded-2xl p-5 text-left hover:shadow-lg hover:border-purple-400 dark:hover:border-purple-600 transition-all">
                     <div className="text-3xl mb-3">💬</div>
                     <h3 className="text-base font-bold text-purple-700 dark:text-purple-300 mb-1">Chat with Mentor</h3>
-                    <p className="text-sm text-gray-500 dark:text-slate-400">Get one-on-one guidance from an expert pregnancy mentor for diet, wellness, and emotional support.</p>
+                    <p className="text-xs text-gray-500 dark:text-slate-400">Get one-on-one guidance from an expert pregnancy mentor for diet, wellness, and emotional support.</p>
                     <span className="mt-3 inline-block text-xs font-semibold text-purple-600 dark:text-purple-400 group-hover:underline">Open chat →</span>
                 </a>
             </div>
 
             {/* Next appointment */}
-            <div className="mb-8">
-                {apptLoading ? (
-                    <div className="p-6 bg-blue-50 dark:bg-blue-900/20 rounded-xl border border-blue-200 dark:border-blue-800/50 flex items-center gap-3">
-                        <div className="w-5 h-5 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
-                        <span className="text-blue-600 dark:text-blue-400 text-sm">Loading appointment...</span>
-                    </div>
-                ) : nextAppointment ? (
-                    <div className="p-6 bg-blue-50 dark:bg-blue-900/20 rounded-xl border border-blue-300 dark:border-blue-700 shadow-sm">
-                        <div className="flex items-start justify-between gap-4">
-                            <div className="flex items-start gap-4">
-                                <div className="shrink-0 w-14 h-14 bg-blue-600 rounded-xl flex flex-col items-center justify-center shadow-md">
-                                    <span className="text-white text-xs font-bold uppercase leading-none">{new Date(nextAppointment.date_time).toLocaleString('en-IN', { month: 'short' })}</span>
-                                    <span className="text-white text-2xl font-black leading-none">{new Date(nextAppointment.date_time).getDate()}</span>
-                                </div>
-                                <div>
-                                    <p className="text-xs font-semibold text-blue-500 dark:text-blue-400 uppercase tracking-wider mb-1">📅 Next Appointment · {daysUntil(nextAppointment.date_time)}</p>
-                                    <h3 className="text-lg font-bold text-gray-900 dark:text-white">
-                                        🤰 Pregnancy Checkup
-                                        {nextAppointment.doctor && <span className="text-sm font-normal text-gray-500 dark:text-slate-400 ml-2">with {nextAppointment.doctor}</span>}
-                                    </h3>
-                                    <p className="text-sm text-gray-600 dark:text-slate-400 mt-0.5">{formatApptDate(nextAppointment.date_time)} &nbsp;·&nbsp; {formatApptTime(nextAppointment.date_time)}</p>
-                                    {nextAppointment.google_event_id && <p className="text-xs text-green-600 dark:text-green-400 mt-1 font-medium">✅ Added to Google Calendar</p>}
-                                </div>
-                            </div>
-                            <div className="shrink-0">
-                                {!deleteConfirm ? (
-                                    <button onClick={() => setDeleteConfirm(true)} className="px-4 py-2 text-sm font-semibold text-red-600 dark:text-red-400 border border-red-300 dark:border-red-700 rounded-xl hover:bg-red-50 dark:hover:bg-red-900/20 transition-all">🗑 Mark as Done</button>
-                                ) : (
-                                    <div className="flex flex-col gap-2 items-end">
-                                        <p className="text-xs text-gray-600 dark:text-slate-400 text-right max-w-[160px]">Remove this appointment?{nextAppointment.google_event_id && ' It will also be deleted from Google Calendar.'}</p>
-                                        <div className="flex gap-2">
-                                            <button onClick={() => setDeleteConfirm(false)} disabled={deletingAppt} className="px-3 py-1.5 text-xs font-semibold border border-gray-300 dark:border-slate-600 text-gray-600 dark:text-slate-300 rounded-lg hover:bg-gray-50 dark:hover:bg-slate-800 transition-all">Cancel</button>
-                                            <button onClick={handleDeleteAppointment} disabled={deletingAppt} className="px-3 py-1.5 text-xs font-semibold bg-red-600 hover:bg-red-700 disabled:opacity-60 text-white rounded-lg transition-all flex items-center gap-1">
-                                                {deletingAppt ? <><span className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin" /> Deleting...</> : 'Yes, Delete'}
-                                            </button>
-                                        </div>
+            {hasFeature(user, 'appointment') && (
+                <div className="mb-8">
+                    {apptLoading ? (
+                        <div className="p-6 bg-blue-50 dark:bg-blue-900/20 rounded-xl border border-blue-200 dark:border-blue-800/50 flex items-center gap-3">
+                            <div className="w-5 h-5 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
+                            <span className="text-blue-600 dark:text-blue-400 text-sm">Loading appointment...</span>
+                        </div>
+                    ) : nextAppointment ? (
+                        <div className="p-6 bg-blue-50 dark:bg-blue-900/20 rounded-xl border border-blue-300 dark:border-blue-700 shadow-sm">
+                            <div className="flex items-start justify-between gap-4">
+                                <div className="flex items-start gap-4">
+                                    <div className="shrink-0 w-14 h-14 bg-blue-600 rounded-xl flex flex-col items-center justify-center shadow-md">
+                                        <span className="text-white text-xs font-bold uppercase leading-none">{new Date(nextAppointment.date_time).toLocaleString('en-IN', { month: 'short' })}</span>
+                                        <span className="text-white text-2xl font-black leading-none">{new Date(nextAppointment.date_time).getDate()}</span>
                                     </div>
-                                )}
+                                    <div>
+                                        <p className="text-xs font-semibold text-blue-500 dark:text-blue-400 uppercase tracking-wider mb-1">📅 Next Appointment · {daysUntil(nextAppointment.date_time)}</p>
+                                        <h3 className="text-lg font-bold text-gray-900 dark:text-white">
+                                            🤰 Pregnancy Checkup
+                                            {nextAppointment.doctor && <span className="text-sm font-normal text-gray-500 dark:text-slate-400 ml-2">with {nextAppointment.doctor}</span>}
+                                        </h3>
+                                        <p className="text-sm text-gray-600 dark:text-slate-400 mt-0.5">{formatApptDate(nextAppointment.date_time)} &nbsp;·&nbsp; {formatApptTime(nextAppointment.date_time)}</p>
+                                        {nextAppointment.google_event_id && <p className="text-xs text-green-600 dark:text-green-400 mt-1 font-medium">✅ Added to Google Calendar</p>}
+                                    </div>
+                                </div>
+                                <div className="shrink-0">
+                                    {!deleteConfirm ? (
+                                        <button onClick={() => setDeleteConfirm(true)} className="px-4 py-2 text-sm font-semibold text-red-600 dark:text-red-400 border border-red-300 dark:border-red-700 rounded-xl hover:bg-red-50 dark:hover:bg-red-900/20 transition-all">🗑 Mark as Done</button>
+                                    ) : (
+                                        <div className="flex flex-col gap-2 items-end">
+                                            <p className="text-xs text-gray-600 dark:text-slate-400 text-right max-w-[160px]">Remove this appointment?{nextAppointment.google_event_id && ' It will also be deleted from Google Calendar.'}</p>
+                                            <div className="flex gap-2">
+                                                <button onClick={() => setDeleteConfirm(false)} disabled={deletingAppt} className="px-3 py-1.5 text-xs font-semibold border border-gray-300 dark:border-slate-600 text-gray-600 dark:text-slate-300 rounded-lg hover:bg-gray-50 dark:hover:bg-slate-800 transition-all">Cancel</button>
+                                                <button onClick={handleDeleteAppointment} disabled={deletingAppt} className="px-3 py-1.5 text-xs font-semibold bg-red-600 hover:bg-red-700 disabled:opacity-60 text-white rounded-lg transition-all flex items-center gap-1">
+                                                    {deletingAppt ? <><span className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin" /> Deleting...</> : 'Yes, Delete'}
+                                                </button>
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
                             </div>
                         </div>
-                    </div>
-                ) : (
-                    <div className="p-6 bg-pink-50 dark:bg-pink-900/20 rounded-xl border border-pink-200 dark:border-pink-800/50 flex items-center justify-between gap-4">
-                        <div className="flex items-center gap-4">
-                            <span className="text-4xl">📁</span>
-                            <div>
-                                <h3 className="text-lg font-bold text-pink-800 dark:text-pink-300">No Upcoming Appointment</h3>
-                                <p className="text-sm text-gray-600 dark:text-slate-400">Upload a checkup report to auto-schedule your next appointment.</p>
+                    ) : (
+                        <div className="p-6 bg-pink-50 dark:bg-pink-900/20 rounded-xl border border-pink-200 dark:border-pink-800/50 flex items-center justify-between gap-4">
+                            <div className="flex items-center gap-4">
+                                <span className="text-4xl">📁</span>
+                                <div>
+                                    <h3 className="text-lg font-bold text-pink-800 dark:text-pink-300">No Upcoming Appointment</h3>
+                                    <p className="text-sm text-gray-600 dark:text-slate-400">Upload a checkup report to auto-schedule your next appointment.</p>
+                                </div>
                             </div>
+                            <button onClick={() => handleFeatureClick('appointment', 'Appointment Scheduler', () => setShowReportUploader(true))} className="shrink-0 px-5 py-2.5 bg-pink-600 hover:bg-pink-700 text-white rounded-xl font-bold shadow-md transition-all text-sm">Upload Report</button>
                         </div>
-                        <button onClick={() => setShowReportUploader(true)} className="shrink-0 px-5 py-2.5 bg-pink-600 hover:bg-pink-700 text-white rounded-xl font-bold shadow-md transition-all text-sm">Upload Report</button>
-                    </div>
-                )}
-            </div>
+                    )}
+                </div>
+            )}
 
             {/* Scheduled Appointments list */}
-            <div className="mb-8 bg-white dark:bg-slate-800 rounded-2xl shadow-sm border border-gray-100 dark:border-slate-700 overflow-hidden">
-                <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100 dark:border-slate-700">
-                    <div className="flex items-center gap-3">
-                        <span className="text-2xl">🗓️</span>
-                        <div>
-                            <h2 className="text-xl font-bold dark:text-white">Scheduled Appointments</h2>
-                            <p className="text-xs text-gray-400 dark:text-slate-500 mt-0.5">All your pregnancy checkup appointments</p>
-                        </div>
-                    </div>
-                    <button onClick={fetchAllAppointments} disabled={allApptLoading} className="p-2 text-gray-400 hover:text-blue-500 dark:hover:text-blue-400 rounded-lg hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-all" title="Refresh">
-                        <svg className={`w-5 h-5 ${allApptLoading ? 'animate-spin' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                        </svg>
-                    </button>
-                </div>
-
-                {allApptLoading && (
-                    <div className="flex items-center justify-center gap-3 py-10">
-                        <div className="w-5 h-5 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
-                        <span className="text-sm text-gray-500 dark:text-slate-400">Loading appointments…</span>
-                    </div>
-                )}
-
-                {!allApptLoading && (
-                    <>
-                        {upcomingAppointments.length > 0 ? (
+            {hasFeature(user, 'appointment') && (
+                <div className="mb-8 bg-white dark:bg-slate-800 rounded-2xl shadow-sm border border-gray-100 dark:border-slate-700 overflow-hidden">
+                    <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100 dark:border-slate-700">
+                        <div className="flex items-center gap-3">
+                            <span className="text-2xl">🗓️</span>
                             <div>
-                                <div className="px-6 pt-4 pb-1"><span className="text-xs font-bold uppercase tracking-widest text-blue-500 dark:text-blue-400">Upcoming · {upcomingAppointments.length}</span></div>
-                                <ul className="divide-y divide-gray-50 dark:divide-slate-700/50">
-                                    {upcomingAppointments.map((appt) => (
-                                        <li key={appt.id} className="px-6 py-4 flex items-center justify-between gap-4 hover:bg-blue-50/40 dark:hover:bg-blue-900/10 transition-all">
-                                            <div className="shrink-0 w-12 h-12 bg-blue-600 dark:bg-blue-700 rounded-xl flex flex-col items-center justify-center shadow">
-                                                <span className="text-white text-[10px] font-bold uppercase leading-none">{new Date(appt.date_time).toLocaleString('en-IN', { month: 'short' })}</span>
-                                                <span className="text-white text-lg font-black leading-none">{new Date(appt.date_time).getDate()}</span>
-                                            </div>
-                                            <div className="flex-1 min-w-0">
-                                                <div className="flex items-center gap-2 flex-wrap">
-                                                    <p className="text-sm font-bold text-gray-900 dark:text-white truncate">🤰 Pregnancy Checkup{appt.doctor && <span className="text-gray-500 dark:text-slate-400 font-normal ml-1">· {appt.doctor}</span>}</p>
-                                                    <span className={`shrink-0 text-[10px] font-bold px-2 py-0.5 rounded-full ${daysUntil(appt.date_time) === 'Today' ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400' : daysUntil(appt.date_time) === 'Tomorrow' ? 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400' : 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400'}`}>{daysUntil(appt.date_time)}</span>
-                                                </div>
-                                                <p className="text-xs text-gray-500 dark:text-slate-400 mt-0.5">{formatApptDate(appt.date_time)} &nbsp;·&nbsp; {formatApptTime(appt.date_time)}</p>
-                                                {appt.notes && <p className="text-xs text-gray-400 dark:text-slate-500 mt-0.5 italic truncate">{appt.notes}</p>}
-                                                <div className="flex items-center gap-2 mt-1 flex-wrap">
-                                                    {appt.google_event_id && <span className="text-[10px] font-semibold text-green-600 dark:text-green-400">✅ Google Calendar</span>}
-                                                    <span className="text-[10px] text-gray-400 dark:text-slate-500 capitalize">via {appt.source}</span>
-                                                </div>
-                                            </div>
-                                            <div className="shrink-0">
-                                                {confirmDeleteId === appt.id ? (
-                                                    <div className="flex flex-col gap-1.5 items-end">
-                                                        <p className="text-[10px] text-gray-500 dark:text-slate-400 text-right max-w-[130px]">Remove?{appt.google_event_id ? ' Also deletes from Google Calendar.' : ''}</p>
-                                                        <div className="flex gap-1.5">
-                                                            <button onClick={() => setConfirmDeleteId(null)} disabled={deletingId === appt.id} className="px-2.5 py-1 text-[10px] font-semibold border border-gray-300 dark:border-slate-600 text-gray-600 dark:text-slate-300 rounded-lg hover:bg-gray-50 dark:hover:bg-slate-700 transition-all">Cancel</button>
-                                                            <button onClick={() => handleDeleteById(appt.id)} disabled={deletingId === appt.id} className="px-2.5 py-1 text-[10px] font-semibold bg-red-600 hover:bg-red-700 disabled:opacity-60 text-white rounded-lg transition-all flex items-center gap-1">
-                                                                {deletingId === appt.id ? <><span className="w-2.5 h-2.5 border-2 border-white border-t-transparent rounded-full animate-spin" /> Deleting…</> : 'Yes, Remove'}
-                                                            </button>
-                                                        </div>
-                                                    </div>
-                                                ) : (
-                                                    <button onClick={() => setConfirmDeleteId(appt.id)} className="p-2 text-gray-300 hover:text-red-500 dark:text-slate-600 dark:hover:text-red-400 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20 transition-all" title="Mark as done / delete">
-                                                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
-                                                    </button>
-                                                )}
-                                            </div>
-                                        </li>
-                                    ))}
-                                </ul>
+                                <h2 className="text-xl font-bold dark:text-white">Scheduled Appointments</h2>
+                                <p className="text-xs text-gray-400 dark:text-slate-500 mt-0.5">All your pregnancy checkup appointments</p>
                             </div>
-                        ) : (
-                            <div className="flex flex-col items-center justify-center py-10 px-6 text-center">
-                                <span className="text-4xl mb-3">📅</span>
-                                <p className="text-gray-500 dark:text-slate-400 font-medium">No upcoming appointments</p>
-                                <p className="text-xs text-gray-400 dark:text-slate-500 mt-1">Upload a report to auto-schedule your next checkup.</p>
-                                <button onClick={() => setShowReportUploader(true)} className="mt-4 px-5 py-2 bg-pink-600 hover:bg-pink-700 text-white rounded-xl font-bold text-sm shadow transition-all">Upload Report</button>
-                            </div>
-                        )}
+                        </div>
+                        <button onClick={fetchAllAppointments} disabled={allApptLoading} className="p-2 text-gray-400 hover:text-blue-500 dark:hover:text-blue-400 rounded-lg hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-all" title="Refresh">
+                            <svg className={`w-5 h-5 ${allApptLoading ? 'animate-spin' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                            </svg>
+                        </button>
+                    </div>
 
-                        {pastAppointments.length > 0 && (
-                            <details className="group">
-                                <summary className="flex items-center gap-2 px-6 py-3 cursor-pointer border-t border-gray-100 dark:border-slate-700 text-xs font-bold uppercase tracking-widest text-gray-400 dark:text-slate-500 hover:text-gray-600 dark:hover:text-slate-300 select-none list-none">
-                                    <svg className="w-4 h-4 transition-transform group-open:rotate-90" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
-                                    Past Appointments · {pastAppointments.length}
-                                </summary>
-                                <ul className="divide-y divide-gray-50 dark:divide-slate-700/50 opacity-60">
-                                    {pastAppointments.map((appt) => (
-                                        <li key={appt.id} className="px-6 py-3 flex items-center gap-4">
-                                            <div className="shrink-0 w-10 h-10 bg-gray-300 dark:bg-slate-600 rounded-xl flex flex-col items-center justify-center">
-                                                <span className="text-gray-600 dark:text-slate-300 text-[9px] font-bold uppercase leading-none">{new Date(appt.date_time).toLocaleString('en-IN', { month: 'short' })}</span>
-                                                <span className="text-gray-600 dark:text-slate-300 text-sm font-black leading-none">{new Date(appt.date_time).getDate()}</span>
-                                            </div>
-                                            <div className="flex-1 min-w-0">
-                                                <p className="text-sm font-semibold text-gray-500 dark:text-slate-400 truncate line-through">Pregnancy Checkup{appt.doctor && ` · ${appt.doctor}`}</p>
-                                                <p className="text-xs text-gray-400 dark:text-slate-500">{formatApptDate(appt.date_time)} · {formatApptTime(appt.date_time)}</p>
-                                            </div>
-                                            <span className="shrink-0 text-[10px] font-bold px-2 py-0.5 rounded-full bg-gray-100 dark:bg-slate-700 text-gray-500 dark:text-slate-400">Done</span>
-                                        </li>
-                                    ))}
-                                </ul>
-                            </details>
-                        )}
-                    </>
-                )}
-            </div>
+                    {allApptLoading && (
+                        <div className="flex items-center justify-center gap-3 py-10">
+                            <div className="w-5 h-5 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
+                            <span className="text-sm text-gray-500 dark:text-slate-400">Loading appointments…</span>
+                        </div>
+                    )}
+
+                    {!allApptLoading && (
+                        <>
+                            {upcomingAppointments.length > 0 ? (
+                                <div>
+                                    <div className="px-6 pt-4 pb-1"><span className="text-xs font-bold uppercase tracking-widest text-blue-500 dark:text-blue-400">Upcoming · {upcomingAppointments.length}</span></div>
+                                    <ul className="divide-y divide-gray-50 dark:divide-slate-700/50">
+                                        {upcomingAppointments.map((appt) => (
+                                            <li key={appt.id} className="px-6 py-4 flex items-center justify-between gap-4 hover:bg-blue-50/40 dark:hover:bg-blue-900/10 transition-all">
+                                                <div className="shrink-0 w-12 h-12 bg-blue-600 dark:bg-blue-700 rounded-xl flex flex-col items-center justify-center shadow">
+                                                    <span className="text-white text-[10px] font-bold uppercase leading-none">{new Date(appt.date_time).toLocaleString('en-IN', { month: 'short' })}</span>
+                                                    <span className="text-white text-lg font-black leading-none">{new Date(appt.date_time).getDate()}</span>
+                                                </div>
+                                                <div className="flex-1 min-w-0">
+                                                    <div className="flex items-center gap-2 flex-wrap">
+                                                        <p className="text-sm font-bold text-gray-900 dark:text-white truncate">🤰 Pregnancy Checkup{appt.doctor && <span className="text-gray-500 dark:text-slate-400 font-normal ml-1">· {appt.doctor}</span>}</p>
+                                                        <span className={`shrink-0 text-[10px] font-bold px-2 py-0.5 rounded-full ${daysUntil(appt.date_time) === 'Today' ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400' : daysUntil(appt.date_time) === 'Tomorrow' ? 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400' : 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400'}`}>{daysUntil(appt.date_time)}</span>
+                                                    </div>
+                                                    <p className="text-xs text-gray-500 dark:text-slate-400 mt-0.5">{formatApptDate(appt.date_time)} &nbsp;·&nbsp; {formatApptTime(appt.date_time)}</p>
+                                                    {appt.notes && <p className="text-xs text-gray-400 dark:text-slate-500 mt-0.5 italic truncate">{appt.notes}</p>}
+                                                    <div className="flex items-center gap-2 mt-1 flex-wrap">
+                                                        {appt.google_event_id && <span className="text-[10px] font-semibold text-green-600 dark:text-green-400">✅ Google Calendar</span>}
+                                                        <span className="text-[10px] text-gray-400 dark:text-slate-500 capitalize">via {appt.source}</span>
+                                                    </div>
+                                                </div>
+                                                <div className="shrink-0">
+                                                    {confirmDeleteId === appt.id ? (
+                                                        <div className="flex flex-col gap-1.5 items-end">
+                                                            <p className="text-[10px] text-gray-500 dark:text-slate-400 text-right max-w-[130px]">Remove?{appt.google_event_id ? ' Also deletes from Google Calendar.' : ''}</p>
+                                                            <div className="flex gap-1.5">
+                                                                <button onClick={() => setConfirmDeleteId(null)} disabled={deletingId === appt.id} className="px-2.5 py-1 text-[10px] font-semibold border border-gray-300 dark:border-slate-600 text-gray-600 dark:text-slate-300 rounded-lg hover:bg-gray-50 dark:hover:bg-slate-700 transition-all">Cancel</button>
+                                                                <button onClick={() => handleDeleteById(appt.id)} disabled={deletingId === appt.id} className="px-2.5 py-1 text-[10px] font-semibold bg-red-600 hover:bg-red-700 disabled:opacity-60 text-white rounded-lg transition-all flex items-center gap-1">
+                                                                    {deletingId === appt.id ? <><span className="w-2.5 h-2.5 border-2 border-white border-t-transparent rounded-full animate-spin" /> Deleting…</> : 'Yes, Remove'}
+                                                                </button>
+                                                            </div>
+                                                        </div>
+                                                    ) : (
+                                                        <button onClick={() => setConfirmDeleteId(appt.id)} className="p-2 text-gray-300 hover:text-red-500 dark:text-slate-600 dark:hover:text-red-400 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20 transition-all" title="Mark as done / delete">
+                                                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+                                                        </button>
+                                                    )}
+                                                </div>
+                                            </li>
+                                        ))}
+                                    </ul>
+                                </div>
+                            ) : (
+                                <div className="flex flex-col items-center justify-center py-10 px-6 text-center">
+                                    <span className="text-4xl mb-3">📅</span>
+                                    <p className="text-gray-500 dark:text-slate-400 font-medium">No upcoming appointments</p>
+                                    <p className="text-xs text-gray-400 dark:text-slate-500 mt-1">Upload a report to auto-schedule your next checkup.</p>
+                                    <button onClick={() => handleFeatureClick('appointment', 'Appointment Scheduler', () => setShowReportUploader(true))} className="mt-4 px-5 py-2 bg-pink-600 hover:bg-pink-700 text-white rounded-xl font-bold text-sm shadow transition-all">Upload Report</button>
+                                </div>
+                            )}
+
+                            {pastAppointments.length > 0 && (
+                                <details className="group">
+                                    <summary className="flex items-center gap-2 px-6 py-3 cursor-pointer border-t border-gray-100 dark:border-slate-700 text-xs font-bold uppercase tracking-widest text-gray-400 dark:text-slate-500 hover:text-gray-600 dark:hover:text-slate-300 select-none list-none">
+                                        <svg className="w-4 h-4 transition-transform group-open:rotate-90" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
+                                        Past Appointments · {pastAppointments.length}
+                                    </summary>
+                                    <ul className="divide-y divide-gray-50 dark:divide-slate-700/50 opacity-60">
+                                        {pastAppointments.map((appt) => (
+                                            <li key={appt.id} className="px-6 py-3 flex items-center gap-4">
+                                                <div className="shrink-0 w-10 h-10 bg-gray-300 dark:bg-slate-600 rounded-xl flex flex-col items-center justify-center">
+                                                    <span className="text-gray-600 dark:text-slate-300 text-[9px] font-bold uppercase leading-none">{new Date(appt.date_time).toLocaleString('en-IN', { month: 'short' })}</span>
+                                                    <span className="text-gray-600 dark:text-slate-300 text-sm font-black leading-none">{new Date(appt.date_time).getDate()}</span>
+                                                </div>
+                                                <div className="flex-1 min-w-0">
+                                                    <p className="text-sm font-semibold text-gray-500 dark:text-slate-400 truncate line-through">Pregnancy Checkup{appt.doctor && ` · ${appt.doctor}`}</p>
+                                                    <p className="text-xs text-gray-400 dark:text-slate-500">{formatApptDate(appt.date_time)} · {formatApptTime(appt.date_time)}</p>
+                                                </div>
+                                                <span className="shrink-0 text-[10px] font-bold px-2 py-0.5 rounded-full bg-gray-100 dark:bg-slate-700 text-gray-500 dark:text-slate-400">Done</span>
+                                            </li>
+                                        ))}
+                                    </ul>
+                                </details>
+                            )}
+                        </>
+                    )}
+                </div>
+            )}
 
             {/* Latest Assessment */}
             {latestResult ? (
@@ -18789,6 +19439,15 @@ function PregnancyDashboard() {
                     <p className="text-gray-500 dark:text-slate-400 mb-6">Take a pregnancy assessment to track your wellness.</p>
                     <button onClick={() => setTakingAssessment(true)} className="px-8 py-3 bg-green-600 hover:bg-green-700 text-white rounded-xl font-bold shadow-lg transition-all">Start Assessment</button>
                 </div>
+            )}
+            {upgradeModal.isOpen && (
+                <UpgradeModal 
+                    isOpen={upgradeModal.isOpen} 
+                    onClose={() => setUpgradeModal({ ...upgradeModal, isOpen: false })} 
+                    featureName={upgradeModal.feature}
+                    requiredPlan={upgradeModal.plan}
+                    maybeLaterPath="/dashboard/pregnancy"
+                />
             )}
         </div>
     );
@@ -19835,12 +20494,15 @@ FILE: frontend/src/pages/TeenDashboard.jsx
 //                  returns { created: true, count: N, tasks: [...], skipped_duplicates: [...] }
 //
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { useAuth } from '../context/AuthContext';
 import { useSubscription } from '../context/SubscriptionContext';
 import AssessmentPrompt from '../components/Teen/AssessmentPrompt';
 import CareerDiscovery from '../components/Teen/CareerDiscovery';
+import UpgradeModal from '../components/Pricing/UpgradeModal';
+import FeatureGuard from '../components/Common/FeatureGuard';
+import { hasFeature, getRequiredPlan } from '../utils/featureAccess';
 import { getCareerDiscoveryResults, deleteCareerDiscoveryResult } from '../services/assessmentService';
 import api from '../services/api';
 import {
@@ -19850,7 +20512,6 @@ import {
     updateTaskStatus,
     deleteTask,
 } from '../services/studyPlannerService';
-import TeenMoodCheckin from '../components/Relationship/TeenMoodCheckin';  // <-- NEW
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
@@ -19995,7 +20656,9 @@ function MultiTaskPreview({ tasks, onConfirm, onDiscard, saving }) {
 
 // ─── Study Planner ──────────────────────────────────────────────────────────
 
-function StudyPlanner() {
+function StudyPlanner({ onFeatureLock, onBack }) {
+    const { user } = useAuth();
+    const { hasFeature } = useSubscription();
     const [activeTab, setActiveTab]       = useState('upcoming');
     const [tasks, setTasks]               = useState([]);
     const [loading, setLoading]           = useState(false);
@@ -20050,6 +20713,10 @@ function StudyPlanner() {
     };
 
     const handleParse = async () => {
+        if (!hasFeature('study_planner')) {
+            onFeatureLock();
+            return;
+        }
         if (!voiceText.trim()) return;
         setParsing(true);
         setPreviews(null);
@@ -20071,6 +20738,10 @@ function StudyPlanner() {
     };
 
     const handleConfirmSave = async () => {
+        if (!hasFeature('study_planner')) {
+            onFeatureLock();
+            return;
+        }
         if (!voiceText.trim()) return;
         setSaving(true);
         try {
@@ -20109,6 +20780,10 @@ function StudyPlanner() {
     };
 
     const toggleStatus = async (task) => {
+        if (!hasFeature('study_planner')) {
+            onFeatureLock();
+            return;
+        }
         const next = task.status === 'Pending' ? 'Completed' : 'Pending';
         try {
             await updateTaskStatus(task.id, next);
@@ -20119,6 +20794,10 @@ function StudyPlanner() {
     };
 
     const handleDelete = async (id) => {
+        if (!hasFeature('study_planner')) {
+            onFeatureLock();
+            return;
+        }
         if (!window.confirm('Delete this task?')) return;
         try {
             await deleteTask(id);
@@ -20142,12 +20821,21 @@ function StudyPlanner() {
 
     return (
         <div className="card dark:bg-slate-900 border dark:border-slate-800 p-6 md:p-8 shadow-sm">
-            <div className="flex items-center justify-between mb-6">
-                <h2 className="text-2xl font-bold dark:text-white flex items-center gap-2">
-                    <span className="p-2 bg-violet-500/10 rounded-lg text-violet-500">🎓</span>
-                    Study Planner
-                </h2>
-                <span className="text-xs text-gray-400 dark:text-slate-500">AI-powered scheduler</span>
+            <div className="flex justify-between items-center mb-6">
+                <div className="flex items-center gap-4">
+                    <button 
+                        onClick={onBack}
+                        className="p-2 hover:bg-gray-100 dark:hover:bg-slate-800 rounded-full transition-colors text-gray-500"
+                    >
+                        <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+                        </svg>
+                    </button>
+                    <h2 className="text-xl font-bold dark:text-white flex items-center gap-2">
+                        📚 Study Planner
+                    </h2>
+                </div>
+                <div className="text-gray-400 text-xs font-medium">Ai-powered scheduler</div>
             </div>
 
             <div className="mb-6 p-5 bg-violet-50 dark:bg-violet-900/10 border border-violet-200 dark:border-violet-800/40 rounded-2xl">
@@ -20160,13 +20848,27 @@ function StudyPlanner() {
                 <div className="flex gap-2">
                     <textarea
                         value={voiceText}
-                        onChange={(e) => setVoiceText(e.target.value)}
+                        onFocus={() => {
+                            if (!hasFeature('study_planner')) {
+                                onFeatureLock();
+                            }
+                        }}
+                        onChange={(e) => {
+                            if (!hasFeature('study_planner')) return;
+                            setVoiceText(e.target.value);
+                        }}
                         placeholder='Describe all your tasks in one go…'
                         rows={3}
                         className="flex-1 p-3 rounded-xl border border-violet-300 dark:border-violet-700 bg-white dark:bg-slate-800 text-gray-800 dark:text-white text-sm resize-none focus:outline-none focus:ring-2 focus:ring-violet-400"
                     />
                     <button
-                        onClick={isListening ? stopListening : startListening}
+                        onClick={() => {
+                            if (!hasFeature('study_planner')) {
+                                onFeatureLock();
+                            } else {
+                                isListening ? stopListening() : startListening();
+                            }
+                        }}
                         title={isListening ? 'Stop' : 'Speak'}
                         className={`px-4 rounded-xl font-bold text-xl transition-all ${
                             isListening
@@ -20307,8 +21009,9 @@ function StudyPlanner() {
 
 export default function TeenDashboard() {
     const { user, token } = useAuth();
-    const { canAccessInsights } = useSubscription();
+    const { canAccessInsights, hasFeature } = useSubscription();
     const navigate = useNavigate();
+    const location = useLocation();
 
     const [results, setResults]                         = useState([]);
     const [careerResults, setCareerResults]             = useState([]);
@@ -20316,7 +21019,9 @@ export default function TeenDashboard() {
     const [takingAssessment, setTakingAssessment]       = useState(false);
     const [showAssessmentPrompt, setShowAssessmentPrompt] = useState(false);
     const [showCareerDiscovery, setShowCareerDiscovery] = useState(false);
+    const [showStudyPlanner, setShowStudyPlanner] = useState(false);
     const [showCareerHistory, setShowCareerHistory] = useState(false);
+    const [upgradeModal, setUpgradeModal] = useState({ isOpen: false, feature: '', plan: '' });
 
     const [googleConnected, setGoogleConnected]   = useState(null);
     const [connectingGoogle, setConnectingGoogle] = useState(false);
@@ -20345,6 +21050,17 @@ export default function TeenDashboard() {
         checkGoogleStatus();
     }, []);
 
+    // Effect to reset sub-views when navigating back to the base dashboard path
+    // This ensures that "Maybe Later" in UpgradeModal (which navigates to /dashboard/teen)
+    // actually returns the user to the main dashboard view.
+    useEffect(() => {
+        if (location.pathname === '/dashboard/teen' && !location.search) {
+            setShowStudyPlanner(false);
+            setShowCareerDiscovery(false);
+            setTakingAssessment(false);
+        }
+    }, [location]);
+
     const checkGoogleStatus = async () => {
         try {
             const res = await api.get('/users/google_status/');
@@ -20355,15 +21071,17 @@ export default function TeenDashboard() {
     };
 
     const handleConnectGoogle = async () => {
-        setConnectingGoogle(true);
-        try {
-            const res = await api.get('/users/google_oauth_url/');
-            sessionStorage.setItem('redirectAfterGoogle', '/dashboard/teen');
-            window.location.href = res.data.url;
-        } catch {
-            alert("Could not start Google connection. Please try again.");
-            setConnectingGoogle(false);
-        }
+        handleFeatureClick('study_planner', 'Google Calendar Sync', async () => {
+            setConnectingGoogle(true);
+            try {
+                const res = await api.get('/users/google_oauth_url/');
+                sessionStorage.setItem('redirectAfterGoogle', '/dashboard/teen');
+                window.location.href = res.data.url;
+            } catch {
+                alert("Could not start Google connection. Please try again.");
+                setConnectingGoogle(false);
+            }
+        });
     };
 
     const handleAssessmentComplete = () => {
@@ -20372,14 +21090,30 @@ export default function TeenDashboard() {
         window.location.reload();
     };
 
-    const handleDeleteCareerResult = async (id) => {
-        if (!window.confirm('Delete this career discovery result?')) return;
-        try {
-            await deleteCareerDiscoveryResult(id);
-            setCareerResults((prev) => prev.filter(r => r.id !== id));
-        } catch (error) {
-            alert('Failed to delete career result.');
+    const handleFeatureClick = (featureKey, featureName, action) => {
+        // Direct jump to modal for general features
+        // But for Study Planner and Career Discovery, we now use the "Enter-to-Lock" flow
+        if (!hasFeature(featureKey)) {
+            setUpgradeModal({ 
+                isOpen: true, 
+                feature: featureName, 
+                plan: getRequiredPlan(featureKey) 
+            });
+            return;
         }
+        action();
+    };
+
+    const handleDeleteCareerResult = async (id) => {
+        handleFeatureClick('career_discovery', 'Career Discovery', async () => {
+            if (!window.confirm('Delete this career discovery result?')) return;
+            try {
+                await deleteCareerDiscoveryResult(id);
+                setCareerResults((prev) => prev.filter(r => r.id !== id));
+            } catch (error) {
+                alert('Failed to delete career result.');
+            }
+        });
     };
 
     if (loading) {
@@ -20390,8 +21124,60 @@ export default function TeenDashboard() {
         );
     }
 
+    if (showStudyPlanner) {
+        return (
+            <div className="min-h-screen bg-transparent dark:bg-slate-900 p-4 md:p-8">
+                <div className="max-w-4xl mx-auto flex flex-col gap-4">
+                    {/* Back button — Outside guard for accessibility */}
+                    <button 
+                        onClick={() => setShowStudyPlanner(false)}
+                        className="self-start flex items-center gap-2 text-sm font-bold text-gray-500 hover:text-indigo-600 transition-colors uppercase tracking-widest"
+                    >
+                        <span className="text-lg">←</span> Back to Dashboard
+                    </button>
+
+                    {/* Enter-to-Lock Content */}
+                    <FeatureGuard feature="study_planner" maybeLaterPath="/dashboard/teen">
+                        <StudyPlanner 
+                            onBack={() => setShowStudyPlanner(false)}
+                            onFeatureLock={() => {
+                                setUpgradeModal({ 
+                                    isOpen: true, 
+                                    feature: 'Study Planner', 
+                                    plan: getRequiredPlan('study_planner') 
+                                });
+                            }} 
+                        />
+                    </FeatureGuard>
+                </div>
+                {upgradeModal.isOpen && (
+                    <UpgradeModal
+                        isOpen={upgradeModal.isOpen}
+                        onClose={() => setUpgradeModal({ ...upgradeModal, isOpen: false })}
+                        featureName={upgradeModal.feature}
+                        requiredPlan={upgradeModal.plan}
+                        maybeLaterPath="/dashboard/teen"
+                    />
+                )}
+            </div>
+        );
+    }
+
     if (showCareerDiscovery) {
-        return <CareerDiscovery onBack={() => setShowCareerDiscovery(false)} />;
+        return (
+            <>
+                <CareerDiscovery onBack={() => setShowCareerDiscovery(false)} />
+                {upgradeModal.isOpen && (
+                    <UpgradeModal
+                        isOpen={upgradeModal.isOpen}
+                        onClose={() => setUpgradeModal({ ...upgradeModal, isOpen: false })}
+                        featureName={upgradeModal.feature}
+                        requiredPlan={upgradeModal.plan}
+                        maybeLaterPath="/dashboard/teen"
+                    />
+                )}
+            </>
+        );
     }
 
     if (takingAssessment) {
@@ -20407,6 +21193,15 @@ export default function TeenDashboard() {
                     onComplete={handleAssessmentComplete}
                     onDismiss={() => setTakingAssessment(false)}
                 />
+                {upgradeModal.isOpen && (
+                    <UpgradeModal
+                        isOpen={upgradeModal.isOpen}
+                        onClose={() => setUpgradeModal({ ...upgradeModal, isOpen: false })}
+                        featureName={upgradeModal.feature}
+                        requiredPlan={upgradeModal.plan}
+                        maybeLaterPath="/dashboard/teen"
+                    />
+                )}
             </div>
         );
     }
@@ -20424,18 +21219,6 @@ export default function TeenDashboard() {
                 Your Growth <span className="dark:text-pink-500 text-blue-600">Dashboard</span>
             </h1>
 
-            {/* ─── NEW: Mood Check‑In for Teens ───────────────────────────────── */}
-            <TeenMoodCheckin childId={user.id} />
-
-            {/* Google Calendar banner */}
-            {googleConnected !== null && (
-                <GoogleCalendarBanner
-                    connected={googleConnected}
-                    onConnect={handleConnectGoogle}
-                    connecting={connectingGoogle}
-                />
-            )}
-
             {showAssessmentPrompt && (
                 <AssessmentPrompt
                     onComplete={handleAssessmentComplete}
@@ -20443,54 +21226,55 @@ export default function TeenDashboard() {
                 />
             )}
 
-            {/* Study Planner */}
-            <StudyPlanner />
 
-            {/* Career Discovery Journey */}
-            <div
-                onClick={() => setShowCareerDiscovery(true)}
-                className="block cursor-pointer bg-gradient-to-r from-violet-50 to-fuchsia-50 dark:from-slate-800 dark:to-slate-900 p-6 rounded-2xl border border-violet-200 dark:border-slate-700 hover:shadow-lg transition-all group"
-            >
-                <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-4">
-                        <div className="w-14 h-14 bg-gradient-to-br from-violet-600 to-pink-600 rounded-xl flex items-center justify-center text-2xl group-hover:scale-110 transition-transform shadow-lg">
-                            🚀
-                        </div>
-                        <div>
-                            <h3 className="text-lg font-bold text-gray-800 dark:text-white">Career Discovery Journey</h3>
-                            <p className="text-sm text-gray-500 dark:text-slate-400">
-                                Discover your ideal career through an exciting, game-like adventure!
-                            </p>
-                        </div>
+            {/* Quick Actions Grid — Mirrored from Pregnancy Dashboard */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 mb-8">
+                {/* Study Planner Card */}
+                <button 
+                    onClick={() => setShowStudyPlanner(true)} 
+                    className="group bg-gradient-to-br from-violet-50 to-indigo-50 dark:from-violet-900/20 dark:to-indigo-900/20 border border-violet-200 dark:border-violet-800 rounded-2xl p-5 text-left hover:shadow-lg hover:border-violet-400 dark:hover:border-violet-600 transition-all relative overflow-hidden h-full min-h-[160px]"
+                >
+                    <div className="text-3xl mb-3 flex items-center justify-between">
+                        <span>🎓</span>
+                        {!hasFeature('study_planner') && <span className="text-[10px] px-2 py-0.5 bg-violet-200 dark:bg-violet-900/40 text-violet-700 dark:text-violet-300 rounded-full font-bold">🔒 PREMIUM</span>}
                     </div>
-                    <span className="text-violet-600 dark:text-pink-400 font-medium text-sm group-hover:translate-x-1 transition-transform">
-                        Start Journey →
-                    </span>
-                </div>
+                    <h3 className="text-base font-bold text-violet-700 dark:text-violet-300 mb-1 flex items-center gap-2">
+                        AI Study Planner
+                    </h3>
+                    <p className="text-xs text-gray-500 dark:text-slate-400 line-clamp-2">AI-powered task scheduling, Google Calendar sync, and exam prep tracking.</p>
+                    <span className="mt-4 inline-block text-xs font-semibold text-violet-600 dark:text-violet-400 group-hover:underline">Open Planner →</span>
+                </button>
+
+                {/* Career Discovery Card */}
+                <button 
+                    onClick={() => setShowCareerDiscovery(true)} 
+                    className="group bg-gradient-to-br from-pink-50 to-rose-50 dark:from-pink-900/20 dark:to-rose-900/20 border border-pink-200 dark:border-pink-800 rounded-2xl p-5 text-left hover:shadow-lg hover:border-pink-400 dark:hover:border-pink-600 transition-all relative overflow-hidden h-full min-h-[160px]"
+                >
+                    <div className="text-3xl mb-3 flex items-center justify-between">
+                        <span>🚀</span>
+                        {!hasFeature('career_discovery') && <span className="text-[10px] px-2 py-0.5 bg-pink-200 dark:bg-pink-900/40 text-pink-700 dark:text-pink-300 rounded-full font-bold">🔒 PREMIUM</span>}
+                    </div>
+                    <h3 className="text-base font-bold text-pink-700 dark:text-pink-300 mb-1 flex items-center gap-2">
+                        Career Discovery
+                    </h3>
+                    <p className="text-xs text-gray-500 dark:text-slate-400 line-clamp-2">Take an AI journey to find your perfect career path through interest analysis.</p>
+                    <span className="mt-4 inline-block text-xs font-semibold text-pink-600 dark:text-pink-400 group-hover:underline">Start Journey →</span>
+                </button>
+
+                {/* Mentor Chat Card */}
+                <a 
+                    href="/mentor-chat/teen?stage=teen_age" 
+                    className="group bg-gradient-to-br from-purple-50 to-fuchsia-50 dark:from-purple-900/20 dark:to-fuchsia-900/20 border border-purple-200 dark:border-purple-800 rounded-2xl p-5 text-left hover:shadow-lg hover:border-purple-400 dark:hover:border-purple-600 transition-all relative h-full min-h-[160px]"
+                >
+                    <div className="text-3xl mb-3">💬</div>
+                    <h3 className="text-base font-bold text-purple-700 dark:text-purple-300 mb-1">Mentor Chat</h3>
+                    <p className="text-xs text-gray-500 dark:text-slate-400 line-clamp-2">One-on-one guidance for studies, life goals, and personal development.</p>
+                    <span className="mt-4 inline-block text-xs font-semibold text-purple-600 dark:text-purple-400 group-hover:underline">Connect Now →</span>
+                </a>
+
             </div>
 
-            {/* Mentor Chat Section */}
-            <a
-                href="/mentor-chat/teen?stage=teen_age"
-                className="block bg-gradient-to-r from-purple-50 to-pink-50 dark:from-slate-800 dark:to-slate-900 p-6 rounded-2xl border border-purple-200 dark:border-slate-700 hover:shadow-lg transition-all group"
-            >
-                <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-4">
-                        <div className="w-14 h-14 bg-purple-600 dark:bg-pink-600 rounded-xl flex items-center justify-center text-2xl group-hover:scale-110 transition-transform">
-                            💬
-                        </div>
-                        <div>
-                            <h3 className="text-lg font-bold text-gray-800 dark:text-white">Chat with Your Mentor</h3>
-                            <p className="text-sm text-gray-500 dark:text-slate-400">
-                                Get guidance on studies, goals, and personal growth
-                            </p>
-                        </div>
-                    </div>
-                    <span className="text-purple-600 dark:text-pink-400 font-medium text-sm group-hover:translate-x-1 transition-transform">
-                        Open Chat →
-                    </span>
-                </div>
-            </a>
+
 
             {/* Career Discovery Results History */}
             {careerResults && careerResults.length > 0 && (
@@ -20607,25 +21391,48 @@ export default function TeenDashboard() {
                         </div>
 
                         <div className="mt-8">
-                            <h3 className="font-bold mb-6 dark:text-white uppercase text-xs tracking-widest">Growth Recommendations</h3>
-                            {canAccessInsights() ? (
-                                <div className="bg-blue-50 dark:bg-pink-500/5 p-6 rounded-2xl border border-blue-100 dark:border-pink-500/20 shadow-inner space-y-4">
-                                    {latestResult.recommendations.map((rec, i) => (
-                                        <div key={i} className="flex gap-4 items-start">
-                                            <span className="flex-shrink-0 w-6 h-6 bg-blue-600 dark:bg-pink-600 text-white rounded-full flex items-center justify-center text-xs font-bold">{i + 1}</span>
-                                            <p className="text-gray-700 dark:text-slate-300 italic">{rec}</p>
+                            <h3 className="font-bold mb-6 dark:text-white uppercase text-xs tracking-widest flex items-center gap-2">
+                                Growth Recommendations
+                                {!canAccessInsights() && <span className="text-[10px] bg-amber-500 text-white px-2 py-0.5 rounded-full font-black">PREMIUM</span>}
+                            </h3>
+                            
+                            <div className={`relative rounded-2xl overflow-hidden ${!canAccessInsights() ? 'min-h-[200px]' : ''}`}>
+                                {canAccessInsights() ? (
+                                    <div className="bg-blue-50 dark:bg-pink-500/5 p-6 rounded-2xl border border-blue-100 dark:border-pink-500/20 shadow-inner space-y-4">
+                                        {latestResult.recommendations.map((rec, i) => (
+                                            <div key={i} className="flex gap-4 items-start">
+                                                <span className="flex-shrink-0 w-6 h-6 bg-blue-600 dark:bg-pink-600 text-white rounded-full flex items-center justify-center text-xs font-bold">{i + 1}</span>
+                                                <p className="text-gray-700 dark:text-slate-300 italic">{rec}</p>
+                                            </div>
+                                        ))}
+                                    </div>
+                                ) : (
+                                    <div className="bg-gray-50/50 dark:bg-slate-800/50 p-6 rounded-2xl border border-dashed border-gray-200 dark:border-slate-700 space-y-4">
+                                        {[1, 2, 3].map((n) => (
+                                            <div key={n} className="flex gap-4 items-start filter blur-[3px] opacity-40 select-none">
+                                                <span className="flex-shrink-0 w-6 h-6 bg-gray-300 dark:bg-slate-700 text-white rounded-full flex items-center justify-center text-xs font-bold">{n}</span>
+                                                <div className="h-4 bg-gray-200 dark:bg-slate-700 rounded w-full"></div>
+                                            </div>
+                                        ))}
+                                        
+                                        <div className="absolute inset-0 flex flex-col items-center justify-center bg-white/10 dark:bg-slate-900/10 backdrop-blur-[1px]">
+                                            <p className="text-gray-700 dark:text-slate-300 mb-4 font-bold text-center px-6">
+                                                Upgrade to Growth plan to unlock personalised AI recommendations based on your scores.
+                                            </p>
+                                            <button 
+                                                onClick={() => setUpgradeModal({ 
+                                                    isOpen: true, 
+                                                    feature: 'AI Insights', 
+                                                    plan: getRequiredPlan('mental_health_guide') 
+                                                })}
+                                                className="px-8 py-3 bg-blue-600 text-white rounded-xl font-bold hover:bg-blue-700 dark:bg-pink-600 dark:hover:bg-pink-700 shadow-xl transition-all transform hover:scale-105 active:scale-95"
+                                            >
+                                                Unlock Personalized Advice
+                                            </button>
                                         </div>
-                                    ))}
-                                </div>
-                            ) : (
-                                <div className="bg-gray-100 dark:bg-slate-800 p-10 rounded-2xl text-center border dark:border-slate-700">
-                                    <div className="text-3xl mb-4">🔒</div>
-                                    <p className="text-gray-700 dark:text-slate-400 mb-6 font-medium">Upgrade to Growth plan to unlock personalised AI recommendations.</p>
-                                    <button className="px-8 py-3 bg-blue-600 text-white rounded-xl font-bold hover:bg-blue-700 dark:bg-pink-600 dark:hover:bg-pink-700 shadow-lg transition-all">
-                                        Upgrade to Growth
-                                    </button>
-                                </div>
-                            )}
+                                    </div>
+                                )}
+                            </div>
                         </div>
                     </div>
 
@@ -20661,6 +21468,16 @@ export default function TeenDashboard() {
                         Start Your First Assessment
                     </button>
                 </div>
+            )}
+
+            {upgradeModal.isOpen && (
+                <UpgradeModal
+                    isOpen={upgradeModal.isOpen}
+                    onClose={() => setUpgradeModal({ ...upgradeModal, isOpen: false })}
+                    featureName={upgradeModal.feature}
+                    requiredPlan={upgradeModal.plan}
+                    maybeLaterPath="/dashboard/teen"
+                />
             )}
         </div>
     );
@@ -21203,5 +22020,38 @@ export const SUBSCRIPTION_PLANS = {
     STARTER: 'starter',
     GROWTH: 'growth',
     FAMILY: 'family'
+};
+
+
+================================================
+FILE: frontend/src/utils/featureAccess.js
+================================================
+/**
+ * Check if the user has access to a specific feature.
+ * @param {Object} user - The user object from AuthContext
+ * @param {string} feature - The feature key to check
+ * @returns {boolean}
+ */
+export const hasFeature = (user, feature) => {
+  if (!user || !user.features) return false;
+  return user.features.includes(feature);
+};
+
+export const FEATURE_PLAN_MAPPING = {
+  growth_tracking: "FREE",
+  mentor_chat: "FREE",
+  assessment: "FREE",
+  career_discovery: "STARTER",
+  magic_fix: "STARTER",
+  mental_health_guide: "GROWTH",
+  study_planner: "GROWTH",
+  screen_intelligence: "FAMILY",
+  relationship_ai: "FAMILY",
+  appointment: "FAMILY",
+  voice_wellness: "FAMILY",
+};
+
+export const getRequiredPlan = (feature) => {
+  return FEATURE_PLAN_MAPPING[feature] || "UPGRADE";
 };
 
