@@ -6,7 +6,7 @@
 //                  returns { created: true, count: N, tasks: [...], skipped_duplicates: [...] }
 //
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { useAuth } from '../context/AuthContext';
 import { useSubscription } from '../context/SubscriptionContext';
@@ -523,6 +523,7 @@ export default function TeenDashboard() {
     const { user, token } = useAuth();
     const { canAccessInsights, hasFeature } = useSubscription();
     const navigate = useNavigate();
+    const location = useLocation();
 
     const [results, setResults]                         = useState([]);
     const [careerResults, setCareerResults]             = useState([]);
@@ -560,6 +561,17 @@ export default function TeenDashboard() {
         fetchResults();
         checkGoogleStatus();
     }, []);
+
+    // Effect to reset sub-views when navigating back to the base dashboard path
+    // This ensures that "Maybe Later" in UpgradeModal (which navigates to /dashboard/teen)
+    // actually returns the user to the main dashboard view.
+    useEffect(() => {
+        if (location.pathname === '/dashboard/teen' && !location.search) {
+            setShowStudyPlanner(false);
+            setShowCareerDiscovery(false);
+            setTakingAssessment(false);
+        }
+    }, [location]);
 
     const checkGoogleStatus = async () => {
         try {
@@ -650,12 +662,34 @@ export default function TeenDashboard() {
                         />
                     </FeatureGuard>
                 </div>
+                {upgradeModal.isOpen && (
+                    <UpgradeModal
+                        isOpen={upgradeModal.isOpen}
+                        onClose={() => setUpgradeModal({ ...upgradeModal, isOpen: false })}
+                        featureName={upgradeModal.feature}
+                        requiredPlan={upgradeModal.plan}
+                        maybeLaterPath="/dashboard/teen"
+                    />
+                )}
             </div>
         );
     }
 
     if (showCareerDiscovery) {
-        return <CareerDiscovery onBack={() => setShowCareerDiscovery(false)} />;
+        return (
+            <>
+                <CareerDiscovery onBack={() => setShowCareerDiscovery(false)} />
+                {upgradeModal.isOpen && (
+                    <UpgradeModal
+                        isOpen={upgradeModal.isOpen}
+                        onClose={() => setUpgradeModal({ ...upgradeModal, isOpen: false })}
+                        featureName={upgradeModal.feature}
+                        requiredPlan={upgradeModal.plan}
+                        maybeLaterPath="/dashboard/teen"
+                    />
+                )}
+            </>
+        );
     }
 
     if (takingAssessment) {
@@ -671,6 +705,15 @@ export default function TeenDashboard() {
                     onComplete={handleAssessmentComplete}
                     onDismiss={() => setTakingAssessment(false)}
                 />
+                {upgradeModal.isOpen && (
+                    <UpgradeModal
+                        isOpen={upgradeModal.isOpen}
+                        onClose={() => setUpgradeModal({ ...upgradeModal, isOpen: false })}
+                        featureName={upgradeModal.feature}
+                        requiredPlan={upgradeModal.plan}
+                        maybeLaterPath="/dashboard/teen"
+                    />
+                )}
             </div>
         );
     }
