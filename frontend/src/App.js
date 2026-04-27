@@ -20,6 +20,7 @@ import RelationshipIntelligencePage from './pages/RelationshipIntelligencePage';
 import EarlyChildhoodIntelligencePage from './pages/EarlyChildhoodIntelligencePage';
 import MagicFixPage from './pages/MagicFixPage';
 import ScreenTimeIntelligencePage from './pages/ScreenTimeIntelligencePage';
+import HarmonyAIPage from './pages/HarmonyAIPage';
 import { useAuth } from './context/AuthContext';
 
 import ScreenTimePage from './pages/ScreenTimePage';
@@ -110,6 +111,16 @@ function App() {
                 <FeatureGuard feature="screen_intelligence">
                   <ScreenTimeIntelligencePage />
                 </FeatureGuard>
+              </AuthGuard>
+            }
+          />
+
+          {/* Harmony AI Decision Intelligence */}
+          <Route
+            path="/harmony-ai/:childId"
+            element={
+              <AuthGuard role="parent">
+                <HarmonyAIPage />
               </AuthGuard>
             }
           />

@@ -134,6 +134,17 @@ function ChildCard({ child, onTakeAssessment }) {
                                     </span>
                                     <FiBarChart2 className="text-white opacity-80" />
                                 </button>
+
+                                <button
+                                    onClick={() => navigate(`/harmony-ai/${child.id}`)}
+                                    className="w-full px-5 py-4 bg-gradient-to-r from-violet-600 to-fuchsia-600 text-white rounded-[1.5rem] hover:shadow-violet-500/40 hover:scale-[1.02] font-black shadow-lg transition-all flex items-center justify-between group/action border-b-4 border-violet-900"
+                                >
+                                    <span className="flex items-center gap-3">
+                                        <div className="p-2 bg-white/20 rounded-lg"><FiActivity className="text-white" /></div>
+                                        Harmony AI
+                                    </span>
+                                    <FiZap className="text-yellow-300 animate-pulse" />
+                                </button>
                             </>
                         )}
                     </div>

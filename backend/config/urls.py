@@ -29,6 +29,7 @@ urlpatterns = [
     path('api/screen-monitor/', include('apps.screen_monitor.urls')),
     path('api/relationship/', include('apps.relationship_intelligence.urls')),
     path('api/early-childhood/', include('apps.early_childhood.urls')),
+    path('api/insights/', include('apps.insights.urls')),
 ]
 
 if settings.DEBUG:
