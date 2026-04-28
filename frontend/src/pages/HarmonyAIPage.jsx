@@ -1,11 +1,14 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import api from '../services/api';
+import { db } from '../firebase';
+import { doc, onSnapshot } from 'firebase/firestore';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
     FiArrowLeft, FiAlertTriangle, FiCheckCircle, FiActivity,
     FiShield, FiZap, FiRefreshCw, FiMessageCircle, FiPhone,
-    FiEyeOff, FiTarget, FiHeart, FiClock, FiTrendingUp
+    FiEyeOff, FiTarget, FiHeart, FiClock, FiTrendingUp,
+    FiMonitor, FiMic, FiFileText, FiUsers, FiTool, FiDatabase
 } from 'react-icons/fi';
 
 const HarmonyAIPage = () => {
@@ -16,32 +19,68 @@ const HarmonyAIPage = () => {
     const [data, setData] = useState(null);
     const [error, setError] = useState(null);
     const [activeSimTab, setActiveSimTab] = useState('calm_talk');
+    const [realtimeScreen, setRealtimeScreen] = useState(null);
+    const [childInfo, setChildInfo] = useState(null);
+    const [showSources, setShowSources] = useState(false);
+    const [history, setHistory] = useState([]);
+    const [showHistory, setShowHistory] = useState(false);
 
-    useEffect(() => { fetchAnalysis(); }, [childId]);
+    // On mount: load child info + latest saved report from history (NO auto-analysis)
+    useEffect(() => {
+        let unsub = null;
+        const init = async () => {
+            setLoading(true);
+            try {
+                const childRes = await api.get(`/children/${childId}/`);
+                setChildInfo(childRes.data);
 
-    const fetchAnalysis = async () => {
-        setLoading(true);
+                // Load saved history — show the latest report if available
+                const histRes = await api.get(`/insights/harmony-ai/history/${childId}/`);
+                const reports = histRes.data || [];
+                setHistory(reports);
+                if (reports.length > 0) {
+                    setData(reports[0]); // Show the most recent saved report
+                }
+
+                // Firebase listener for live screen data (display-only, never triggers analysis)
+                const fbId = childRes.data?.email || childRes.data?.firebase_id;
+                if (fbId) {
+                    const docRef = doc(db, 'screen_time', fbId);
+                    unsub = onSnapshot(docRef, (snap) => {
+                        if (snap.exists()) setRealtimeScreen(snap.data());
+                    });
+                }
+            } catch (e) {
+                console.error('Init failed:', e);
+            } finally {
+                setLoading(false);
+            }
+        };
+        init();
+        return () => { if (unsub) unsub(); };
+    }, [childId]);
+
+    // Generate a NEW analysis — only called by explicit user action
+    const generateNewAnalysis = async () => {
+        setAnalyzing(true);
         setError(null);
         try {
             const res = await api.get('/insights/harmony-ai/', { params: { child_id: childId } });
             setData(res.data);
+            // Prepend to history
+            setHistory(prev => [res.data, ...prev]);
+            setShowHistory(false);
         } catch (err) {
-            setError(err.response?.data?.error || 'Failed to generate analysis');
-        } finally {
-            setLoading(false);
-        }
-    };
-
-    const refresh = async () => {
-        setAnalyzing(true);
-        try {
-            const res = await api.get('/insights/harmony-ai/', { params: { child_id: childId } });
-            setData(res.data);
-        } catch (err) {
-            setError(err.response?.data?.error || 'Refresh failed');
+            setError(err.response?.data?.error || 'Analysis failed');
         } finally {
             setAnalyzing(false);
         }
+    };
+
+    // Load a past report from history
+    const loadReport = (report) => {
+        setData(report);
+        setShowHistory(false);
     };
 
     const getRiskColor = (level) => {
@@ -81,13 +120,13 @@ const HarmonyAIPage = () => {
                 >
                     <FiZap className="text-5xl text-violet-500 animate-pulse" />
                 </motion.div>
-                <h2 className="text-2xl font-black text-white mb-2">Harmony AI Analyzing...</h2>
-                <p className="text-slate-400 max-w-xs">Combining screen behavior, voice emotions, assessments & relationship data into one unified intelligence report.</p>
+                <h2 className="text-2xl font-black text-white mb-2">Loading Harmony AI...</h2>
+                <p className="text-slate-400 max-w-xs">Fetching your saved intelligence reports.</p>
             </div>
         );
     }
 
-    if (error) {
+    if (error && !data) {
         return (
             <div className="min-h-screen bg-[#020617] p-6 flex flex-col items-center justify-center">
                 <motion.div initial={{ y: 20, opacity: 0 }} animate={{ y: 0, opacity: 1 }}
@@ -99,14 +138,36 @@ const HarmonyAIPage = () => {
                     <p className="text-slate-400 mb-8">{error}</p>
                     <div className="flex gap-3">
                         <button onClick={() => navigate(-1)} className="flex-1 py-4 border border-slate-700 text-white rounded-2xl font-bold hover:bg-slate-800 transition-all">Go Back</button>
-                        <button onClick={fetchAnalysis} className="flex-1 py-4 bg-violet-600 text-white rounded-2xl font-bold hover:bg-violet-700 transition-all">Retry</button>
+                        <button onClick={generateNewAnalysis} className="flex-1 py-4 bg-violet-600 text-white rounded-2xl font-bold hover:bg-violet-700 transition-all">Retry</button>
                     </div>
                 </motion.div>
             </div>
         );
     }
 
-    if (!data) return null;
+    // No saved reports yet — prompt user to generate first one
+    if (!data) {
+        return (
+            <div className="min-h-screen bg-[#020617] flex flex-col items-center justify-center p-6 text-center">
+                <motion.div initial={{ y: 20, opacity: 0 }} animate={{ y: 0, opacity: 1 }}
+                    className="bg-slate-900 p-10 rounded-[2.5rem] shadow-2xl max-w-md w-full text-center border border-violet-900/20">
+                    <div className="w-20 h-20 bg-violet-500/10 rounded-full flex items-center justify-center mx-auto mb-6">
+                        <FiZap className="text-4xl text-violet-500" />
+                    </div>
+                    <h2 className="text-2xl font-black text-white mb-3">No Reports Yet</h2>
+                    <p className="text-slate-400 mb-8">Generate your first Harmony AI analysis to get actionable parenting intelligence.</p>
+                    <div className="flex gap-3">
+                        <button onClick={() => navigate(-1)} className="flex-1 py-4 border border-slate-700 text-white rounded-2xl font-bold hover:bg-slate-800 transition-all">Go Back</button>
+                        <button onClick={generateNewAnalysis} disabled={analyzing}
+                            className="flex-1 py-4 bg-violet-600 text-white rounded-2xl font-bold hover:bg-violet-700 transition-all flex items-center justify-center gap-2">
+                            <FiZap className={analyzing ? 'animate-spin' : ''} />
+                            {analyzing ? 'Analyzing...' : 'Generate Analysis'}
+                        </button>
+                    </div>
+                </motion.div>
+            </div>
+        );
+    }
 
     const conflict = data.conflict_prediction || {};
     const childState = data.child_state || {};
@@ -115,6 +176,17 @@ const HarmonyAIPage = () => {
     const guidance = data.parent_guidance || {};
     const riskMeta = getRiskColor(conflict.level);
     const confidenceScore = data.confidence_score || 0;
+    const dataSources = data.data_sources || {};
+    const liveApps = realtimeScreen?.apps || {};
+    const liveTotal = Object.values(liveApps).reduce((s, v) => s + (parseInt(v) || 0), 0);
+
+    const sourceItems = [
+        { key: 'screen_time', label: 'Screen Time', icon: <FiMonitor />, color: 'violet' },
+        { key: 'voice_emotion', label: 'Voice Emotion', icon: <FiMic />, color: 'cyan' },
+        { key: 'assessment', label: 'Assessment', icon: <FiFileText />, color: 'amber' },
+        { key: 'relationship_intelligence', label: 'Relationship AI', icon: <FiUsers />, color: 'fuchsia' },
+        { key: 'magic_fix_history', label: 'Magic Fix', icon: <FiTool />, color: 'emerald' },
+    ];
 
     const simTabs = [
         { key: 'calm_talk', label: 'Calm Talk', icon: <FiMessageCircle />, color: 'from-emerald-500 to-teal-500' },
@@ -161,19 +233,188 @@ const HarmonyAIPage = () => {
                             <p className="text-slate-400 text-sm">Real-time parenting intelligence powered by AI</p>
                         </motion.div>
 
-                        <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}
-                            onClick={refresh} disabled={analyzing}
-                            className="bg-white text-slate-900 px-6 py-3 rounded-2xl font-black transition-all shadow-lg flex items-center gap-3 text-xs uppercase tracking-widest">
-                            <FiRefreshCw className={`text-lg ${analyzing ? "animate-spin" : "group-hover:rotate-180 transition-transform duration-700"}`} />
-                            {analyzing ? "Analyzing..." : "Refresh"}
-                        </motion.button>
+                        <div className="flex items-center gap-3">
+                            {history.length > 0 && (
+                                <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}
+                                    onClick={() => setShowHistory(!showHistory)}
+                                    className="bg-white/10 text-white px-5 py-3 rounded-2xl font-black transition-all shadow-lg flex items-center gap-2 text-xs uppercase tracking-widest border border-white/10 backdrop-blur-xl">
+                                    <FiClock className="text-lg" />
+                                    History ({history.length})
+                                </motion.button>
+                            )}
+                            <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}
+                                onClick={generateNewAnalysis} disabled={analyzing}
+                                className="bg-white text-slate-900 px-6 py-3 rounded-2xl font-black transition-all shadow-lg flex items-center gap-3 text-xs uppercase tracking-widest">
+                                <FiRefreshCw className={`text-lg ${analyzing ? "animate-spin" : ""}`} />
+                                {analyzing ? "Analyzing..." : "New Analysis"}
+                            </motion.button>
+                        </div>
                     </div>
                 </div>
             </header>
 
+            {/* ─── HISTORY PANEL (slides in from top) ─── */}
+            <AnimatePresence>
+                {showHistory && (
+                    <motion.div
+                        initial={{ height: 0, opacity: 0 }}
+                        animate={{ height: 'auto', opacity: 1 }}
+                        exit={{ height: 0, opacity: 0 }}
+                        className="overflow-hidden bg-[#050a1f] border-b border-white/5"
+                    >
+                        <div className="max-w-6xl mx-auto px-6 py-6">
+                            <div className="flex items-center justify-between mb-4">
+                                <h3 className="text-sm font-black text-white uppercase tracking-widest flex items-center gap-2">
+                                    <FiClock className="text-violet-400" /> Past Reports
+                                </h3>
+                                <button onClick={() => setShowHistory(false)}
+                                    className="text-xs text-slate-500 hover:text-white transition-colors font-bold uppercase tracking-wider">
+                                    Close
+                                </button>
+                            </div>
+                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 max-h-[300px] overflow-y-auto pr-2">
+                                {history.map((report, idx) => {
+                                    const isActive = report.id === data?.id || (report.report_id === data?.report_id && report.report_id);
+                                    const riskLevel = report.conflict_prediction?.level || 'LOW';
+                                    const rc = getRiskColor(riskLevel);
+                                    const dateStr = report.created_at
+                                        ? new Date(report.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' })
+                                        : 'Unknown date';
+                                    return (
+                                        <button key={report.id || idx} onClick={() => loadReport(report)}
+                                            className={`text-left p-4 rounded-2xl border transition-all hover:scale-[1.02] ${
+                                                isActive
+                                                    ? 'bg-violet-500/10 border-violet-500/30'
+                                                    : 'bg-white/5 border-white/5 hover:border-white/10'
+                                            }`}>
+                                            <div className="flex items-center justify-between mb-2">
+                                                <span className="text-[10px] font-black uppercase tracking-widest text-slate-500">{dateStr}</span>
+                                                <span className={`px-2 py-0.5 rounded-full text-[9px] font-black uppercase ${rc.light} ${rc.text} border ${rc.border}`}>
+                                                    {riskLevel}
+                                                </span>
+                                            </div>
+                                            <p className="text-sm font-bold text-white truncate mb-1">
+                                                {report.best_strategy?.recommended_action || 'Harmony Report'}
+                                            </p>
+                                            <p className="text-xs text-slate-500 truncate">
+                                                {report.child_state?.summary?.substring(0, 80) || 'AI analysis report'}...
+                                            </p>
+                                            {isActive && (
+                                                <span className="text-[9px] font-black text-violet-400 uppercase tracking-widest mt-2 inline-block">Currently Viewing</span>
+                                            )}
+                                        </button>
+                                    );
+                                })}
+                            </div>
+                        </div>
+                    </motion.div>
+                )}
+            </AnimatePresence>
+
+            {/* ─── REPORT TIMESTAMP ─── */}
+            {data.created_at && (
+                <div className="max-w-6xl mx-auto px-6 mt-4">
+                    <div className="flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-slate-600">
+                        <FiClock size={10} />
+                        <span>Report generated: {new Date(data.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' })}</span>
+                        {data.saved && <span className="text-emerald-500 ml-2">• Saved</span>}
+                    </div>
+                </div>
+            )}
+
             {/* ─── MAIN CONTENT ─── */}
-            <main className="max-w-6xl mx-auto px-6 -mt-6 pb-32 relative z-20">
+            <main className="max-w-6xl mx-auto px-6 -mt-2 pb-32 relative z-20">
                 <div className="space-y-8">
+
+                    {/* ─── DATA SOURCES PANEL ─── */}
+                    <motion.div initial={{ y: 20, opacity: 0 }} animate={{ y: 0, opacity: 1 }}
+                        className="bg-slate-900/50 backdrop-blur-2xl rounded-[2rem] p-6 border border-white/5 shadow-2xl">
+                        <button onClick={() => setShowSources(!showSources)}
+                            className="w-full flex items-center justify-between">
+                            <div className="flex items-center gap-3">
+                                <div className="w-10 h-10 bg-white/5 rounded-xl flex items-center justify-center">
+                                    <FiDatabase className="text-lg text-violet-400" />
+                                </div>
+                                <div className="text-left">
+                                    <h3 className="text-sm font-black text-white">Intelligence Sources</h3>
+                                    <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest">
+                                        {sourceItems.filter(s => dataSources[s.key]?.available).length} of {sourceItems.length} active
+                                    </p>
+                                </div>
+                            </div>
+                            <div className="flex items-center gap-2">
+                                {sourceItems.map(s => (
+                                    <div key={s.key} className={`w-2.5 h-2.5 rounded-full transition-all ${
+                                        dataSources[s.key]?.available
+                                            ? `bg-${s.color}-400 shadow-[0_0_6px_rgba(167,139,250,0.4)]`
+                                            : 'bg-slate-700'
+                                    }`} />
+                                ))}
+                            </div>
+                        </button>
+                        <AnimatePresence>
+                            {showSources && (
+                                <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }}
+                                    exit={{ height: 0, opacity: 0 }} className="overflow-hidden">
+                                    <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mt-5">
+                                        {sourceItems.map(s => {
+                                            const src = dataSources[s.key] || {};
+                                            const active = src.available;
+                                            return (
+                                                <div key={s.key} className={`p-4 rounded-2xl border transition-all ${
+                                                    active
+                                                        ? 'bg-white/5 border-white/10'
+                                                        : 'bg-slate-900/30 border-slate-800/50 opacity-50'
+                                                }`}>
+                                                    <div className="flex items-center gap-2 mb-2">
+                                                        <span className={active ? 'text-violet-400' : 'text-slate-600'}>{s.icon}</span>
+                                                        <span className="text-[10px] font-black uppercase tracking-wider text-slate-400">{s.label}</span>
+                                                    </div>
+                                                    <div className="flex items-center gap-1.5">
+                                                        <div className={`w-1.5 h-1.5 rounded-full ${active ? 'bg-emerald-400' : 'bg-red-500'}`} />
+                                                        <span className="text-[9px] font-bold text-slate-500">{active ? 'Connected' : 'No Data'}</span>
+                                                    </div>
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                </motion.div>
+                            )}
+                        </AnimatePresence>
+                    </motion.div>
+
+                    {/* ─── REAL-TIME SCREEN DATA (Firebase) ─── */}
+                    {Object.keys(liveApps).length > 0 && (
+                        <motion.div initial={{ y: 30, opacity: 0 }} animate={{ y: 0, opacity: 1 }} transition={{ delay: 0.05 }}
+                            className="bg-slate-900/50 backdrop-blur-2xl rounded-[2.5rem] p-8 border border-white/5 shadow-2xl">
+                            <div className="flex items-center justify-between mb-6">
+                                <div className="flex items-center gap-3">
+                                    <div className="w-12 h-12 bg-emerald-500/10 rounded-2xl flex items-center justify-center">
+                                        <FiMonitor className="text-2xl text-emerald-400" />
+                                    </div>
+                                    <div>
+                                        <h2 className="text-lg font-black">Live Screen Activity</h2>
+                                        <p className="text-[10px] font-black uppercase tracking-widest text-slate-500">Firebase Real-Time</p>
+                                    </div>
+                                </div>
+                                <div className="flex items-center gap-3">
+                                    <div className="flex items-center gap-2 bg-emerald-500/10 px-3 py-1.5 rounded-full border border-emerald-500/20">
+                                        <div className="w-2 h-2 bg-emerald-400 rounded-full animate-pulse shadow-[0_0_8px_rgba(52,211,153,0.6)]" />
+                                        <span className="text-[9px] font-black uppercase tracking-widest text-emerald-400">Live</span>
+                                    </div>
+                                    <span className="text-2xl font-black text-white">{liveTotal}<span className="text-xs text-slate-500 ml-1">min</span></span>
+                                </div>
+                            </div>
+                            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                                {Object.entries(liveApps).slice(0, 8).map(([name, mins]) => (
+                                    <div key={name} className="bg-white/5 rounded-xl p-3 border border-white/5 hover:border-emerald-500/20 transition-all">
+                                        <p className="text-sm font-black text-white truncate">{name}</p>
+                                        <p className="text-lg font-black text-emerald-400">{mins}<span className="text-[10px] text-slate-500 ml-1">min</span></p>
+                                    </div>
+                                ))}
+                            </div>
+                        </motion.div>
+                    )}
 
                     {/* ─── CHILD STATE + CONFLICT RISK ─── */}
                     <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -347,6 +588,11 @@ const HarmonyAIPage = () => {
                                     className="h-full bg-gradient-to-r from-violet-500 to-fuchsia-500 rounded-full" />
                             </div>
                             <span className="text-lg font-black text-white">{confidenceScore}%</span>
+                            {data.saved && (
+                                <span className="flex items-center gap-1.5 px-3 py-1 bg-emerald-500/10 border border-emerald-500/20 rounded-full text-[10px] font-black uppercase tracking-widest text-emerald-400">
+                                    <FiCheckCircle size={12} /> Saved
+                                </span>
+                            )}
                         </div>
                     </motion.div>
                 </div>

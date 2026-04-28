@@ -21,10 +21,11 @@ class HarmonyAIEngine:
 You are an advanced AI system called "Parent-Child Harmony AI".
 
 You act as a decision intelligence engine for parents by combining outputs from multiple systems:
-- Screen Behavior Analysis
+- Screen Behavior Analysis (real-time Firebase data)
 - Voice Emotion Detection
 - Psychological Assessment
 - Relationship Intelligence
+- Magic Fix Engine (past conflict resolution history)
 
 You DO NOT analyze raw data.
 You ONLY use structured summaries provided below.
@@ -45,6 +46,9 @@ Assessment Summary:
 
 Relationship Summary:
 {relationship_summary}
+
+Magic Fix History:
+{magic_fix_summary}
 
 Behavior Flags:
 {behavior_flags}
@@ -335,8 +339,35 @@ Now analyze the input and return the result.
 
         return " ".join(patterns) if patterns else "Insufficient historical data to determine patterns."
 
+    @staticmethod
+    def _build_magic_fix_summary(magic_fix_data):
+        """Converts magic fix history into a summary of past conflict resolutions."""
+        if not magic_fix_data:
+            return "No past Magic Fix conflict resolution data available."
+
+        parts = []
+        parts.append(f"Total past conflict interventions: {len(magic_fix_data)}.")
+
+        for i, fix in enumerate(magic_fix_data[:3]):  # Last 3 fixes
+            problem = fix.get("problem", "")
+            behavior = fix.get("behavior", "")
+            mood = fix.get("mood", "")
+            result = fix.get("fix_result", {})
+            why = result.get("why", "") if isinstance(result, dict) else ""
+            created = fix.get("created_at", "")
+
+            entry = f"Fix #{i+1}"
+            if created:
+                entry += f" ({str(created)[:10]})"
+            entry += f": Problem='{problem}', Behavior='{behavior}', Mood='{mood}'."
+            if why:
+                entry += f" Root cause: {why[:150]}"
+            parts.append(entry)
+
+        return " ".join(parts)
+
     @classmethod
-    def generate_harmony_report(cls, screen_data, voice_data, assessment_data, relationship_data):
+    def generate_harmony_report(cls, screen_data, voice_data, assessment_data, relationship_data, magic_fix_data=None):
         """
         Main entry point. Aggregates all structured data into summaries,
         sends to Gemini, and returns the Harmony AI JSON response.
@@ -345,6 +376,7 @@ Now analyze the input and return the result.
         emotion_summary = cls._build_emotion_summary(voice_data)
         assessment_summary = cls._build_assessment_summary(assessment_data)
         relationship_summary = cls._build_relationship_summary(relationship_data)
+        magic_fix_summary = cls._build_magic_fix_summary(magic_fix_data)
         behavior_flags = cls._build_behavior_flags(screen_data, voice_data, assessment_data)
         recent_pattern = cls._build_recent_pattern(screen_data, voice_data, assessment_data)
 
@@ -353,6 +385,7 @@ Now analyze the input and return the result.
             emotion_summary=emotion_summary,
             assessment_summary=assessment_summary,
             relationship_summary=relationship_summary,
+            magic_fix_summary=magic_fix_summary,
             behavior_flags=behavior_flags,
             recent_pattern=recent_pattern,
         )
@@ -378,6 +411,7 @@ Now analyze the input and return the result.
                     "emotion_summary": emotion_summary,
                     "assessment_summary": assessment_summary,
                     "relationship_summary": relationship_summary,
+                    "magic_fix_summary": magic_fix_summary,
                     "behavior_flags": behavior_flags,
                     "recent_pattern": recent_pattern,
                 }

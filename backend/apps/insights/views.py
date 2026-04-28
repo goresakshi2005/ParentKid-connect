@@ -14,7 +14,7 @@ from apps.utils.firebase_helper import FirebaseHelper
 from apps.screen_monitor.models import Device, AppUsage
 from apps.voice_assessments.models import VoiceAssessmentSession
 from apps.assessments.models import AssessmentResult
-from apps.relationship_intelligence.models import RelationshipAnalysis
+from apps.relationship_intelligence.models import RelationshipAnalysis, MagicFixHistory
 
 import logging
 
@@ -57,32 +57,66 @@ class HarmonyAIView(APIView):
         # ─── 4. Relationship Data ──────────────────────────────────────
         relationship_data = self._get_relationship_data(request.user, child)
 
-        # ─── 5. Call Harmony AI Engine ─────────────────────────────────
+        # ─── 5. Magic Fix History ──────────────────────────────────────
+        magic_fix_data = self._get_magic_fix_data(request.user, child)
+
+        # ─── 6. Call Harmony AI Engine ─────────────────────────────────
         result = HarmonyAIEngine.generate_harmony_report(
             screen_data=screen_data,
             voice_data=voice_data,
             assessment_data=assessment_data,
             relationship_data=relationship_data,
+            magic_fix_data=magic_fix_data,
         )
 
         if "error" in result:
             return Response(result, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
-        # ─── 6. Persist the report ─────────────────────────────────────
+        # ─── 7. Persist the report ─────────────────────────────────────
         meta = result.pop("_meta", {})
+        saved_id = None
         try:
-            HarmonyReport.objects.create(
+            saved_report = HarmonyReport.objects.create(
                 parent=request.user,
                 child=child,
                 analysis_result=result,
                 input_summaries=meta,
             )
+            saved_id = saved_report.id
+            logger.info(f"Harmony Report saved: id={saved_id}, child={child.name}")
         except Exception as e:
-            logger.warning(f"Could not persist Harmony Report: {e}")
+            logger.error(f"Could not persist Harmony Report: {e}", exc_info=True)
 
-        # Add child context
+        # Add child context + saved report reference
         result["child_name"] = child.name
         result["child_age"] = child.get_age()
+        result["report_id"] = saved_id
+        result["saved"] = saved_id is not None
+
+        # ─── 8. Include data source availability for frontend ─────────
+        result["data_sources"] = {
+            "screen_time": {
+                "available": screen_data is not None,
+                "summary": meta.get("screen_summary", "No data"),
+            },
+            "voice_emotion": {
+                "available": voice_data is not None,
+                "summary": meta.get("emotion_summary", "No data"),
+            },
+            "assessment": {
+                "available": assessment_data is not None,
+                "summary": meta.get("assessment_summary", "No data"),
+            },
+            "relationship_intelligence": {
+                "available": relationship_data is not None,
+                "summary": meta.get("relationship_summary", "No data"),
+            },
+            "magic_fix_history": {
+                "available": magic_fix_data is not None and len(magic_fix_data) > 0,
+                "count": len(magic_fix_data) if magic_fix_data else 0,
+                "summary": meta.get("magic_fix_summary", "No data"),
+            },
+        }
 
         return Response(result, status=status.HTTP_200_OK)
 
@@ -199,6 +233,30 @@ class HarmonyAIView(APIView):
             logger.warning(f"Relationship data fetch failed: {e}")
         return None
 
+    def _get_magic_fix_data(self, user, child):
+        """Fetches recent magic fix history for the child."""
+        try:
+            fixes = (
+                MagicFixHistory.objects
+                .filter(parent=user, child=child)
+                .order_by('-created_at')[:5]
+            )
+            if fixes:
+                return [
+                    {
+                        "problem": f.problem,
+                        "behavior": f.behavior,
+                        "mood": f.mood,
+                        "context": f.context,
+                        "fix_result": f.fix_result,
+                        "created_at": f.created_at.isoformat() if f.created_at else "",
+                    }
+                    for f in fixes
+                ]
+        except Exception as e:
+            logger.warning(f"Magic fix data fetch failed: {e}")
+        return None
+
 
 class HarmonyHistoryView(APIView):
     """
@@ -213,10 +271,39 @@ class HarmonyHistoryView(APIView):
 
         data = []
         for r in reports:
-            entry = r.analysis_result
+            entry = dict(r.analysis_result)  # make a copy to avoid mutating DB
             entry["id"] = r.id
+            entry["report_id"] = r.id
             entry["created_at"] = r.created_at.isoformat()
             entry["child_name"] = child.name
+            entry["child_age"] = child.get_age()
+            entry["saved"] = True
+
+            # Reconstruct data_sources from stored input_summaries
+            summaries = r.input_summaries or {}
+            entry["data_sources"] = {
+                "screen_time": {
+                    "available": "No screen time data" not in summaries.get("screen_summary", "No"),
+                    "summary": summaries.get("screen_summary", "No data"),
+                },
+                "voice_emotion": {
+                    "available": "No voice emotion" not in summaries.get("emotion_summary", "No"),
+                    "summary": summaries.get("emotion_summary", "No data"),
+                },
+                "assessment": {
+                    "available": "No psychological" not in summaries.get("assessment_summary", "No"),
+                    "summary": summaries.get("assessment_summary", "No data"),
+                },
+                "relationship_intelligence": {
+                    "available": "No relationship" not in summaries.get("relationship_summary", "No"),
+                    "summary": summaries.get("relationship_summary", "No data"),
+                },
+                "magic_fix_history": {
+                    "available": "No past Magic Fix" not in summaries.get("magic_fix_summary", "No"),
+                    "count": 0,
+                    "summary": summaries.get("magic_fix_summary", "No data"),
+                },
+            }
             data.append(entry)
 
         return Response(data, status=status.HTTP_200_OK)
