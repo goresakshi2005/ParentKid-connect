@@ -24,6 +24,7 @@ const HarmonyAIPage = () => {
     const [showSources, setShowSources] = useState(false);
     const [history, setHistory] = useState([]);
     const [showHistory, setShowHistory] = useState(false);
+    const [analyzingStep, setAnalyzingStep] = useState(0);
 
     // On mount: load child info + latest saved report from history (NO auto-analysis)
     useEffect(() => {
@@ -60,20 +61,44 @@ const HarmonyAIPage = () => {
         return () => { if (unsub) unsub(); };
     }, [childId]);
 
+    // Analysis progress steps
+    const analysisSteps = [
+        { label: 'Fetching screen time data from Firebase...', icon: <FiMonitor /> },
+        { label: 'Analyzing relationship intelligence...', icon: <FiUsers /> },
+        { label: 'Processing Magic Fix history...', icon: <FiTool /> },
+        { label: 'Evaluating voice & assessment data...', icon: <FiMic /> },
+        { label: 'Generating Harmony AI report...', icon: <FiZap /> },
+    ];
+
     // Generate a NEW analysis — only called by explicit user action
     const generateNewAnalysis = async () => {
         setAnalyzing(true);
+        setAnalyzingStep(0);
         setError(null);
+
+        // Animate through progress steps
+        const stepInterval = setInterval(() => {
+            setAnalyzingStep(prev => {
+                if (prev < analysisSteps.length - 1) return prev + 1;
+                return prev;
+            });
+        }, 2500);
+
         try {
             const res = await api.get('/insights/harmony-ai/', { params: { child_id: childId } });
+            clearInterval(stepInterval);
+            setAnalyzingStep(analysisSteps.length - 1); // Jump to last step
+            // Brief pause to show completion
+            await new Promise(r => setTimeout(r, 600));
             setData(res.data);
-            // Prepend to history
             setHistory(prev => [res.data, ...prev]);
             setShowHistory(false);
         } catch (err) {
+            clearInterval(stepInterval);
             setError(err.response?.data?.error || 'Analysis failed');
         } finally {
             setAnalyzing(false);
+            setAnalyzingStep(0);
         }
     };
 
@@ -165,6 +190,111 @@ const HarmonyAIPage = () => {
                         </button>
                     </div>
                 </motion.div>
+            </div>
+        );
+    }
+
+    // ─── ANALYZING PROGRESS OVERLAY ───
+    if (analyzing) {
+        const progress = ((analyzingStep + 1) / analysisSteps.length) * 100;
+        return (
+            <div className="min-h-screen bg-[#020617] flex flex-col items-center justify-center p-6 text-center relative overflow-hidden">
+                {/* Background Effects */}
+                <div className="absolute inset-0 pointer-events-none">
+                    <motion.div
+                        animate={{ scale: [1, 1.3, 1], rotate: [0, 180, 360] }}
+                        transition={{ duration: 15, repeat: Infinity, ease: "linear" }}
+                        className="absolute top-[20%] left-[10%] w-[60%] h-[60%] bg-gradient-to-br from-violet-600 to-fuchsia-600 opacity-[0.07] blur-[100px] rounded-full"
+                    />
+                    <motion.div
+                        animate={{ scale: [1.2, 1, 1.2], rotate: [360, 180, 0] }}
+                        transition={{ duration: 20, repeat: Infinity, ease: "linear" }}
+                        className="absolute bottom-[10%] right-[10%] w-[50%] h-[50%] bg-gradient-to-br from-cyan-500 to-emerald-500 opacity-[0.05] blur-[80px] rounded-full"
+                    />
+                </div>
+
+                <div className="relative z-10 max-w-lg w-full">
+                    {/* Pulsing Icon */}
+                    <motion.div
+                        initial={{ scale: 0.5, opacity: 0 }}
+                        animate={{ scale: 1, opacity: 1 }}
+                        className="mx-auto mb-8"
+                    >
+                        <motion.div
+                            animate={{ scale: [1, 1.1, 1] }}
+                            transition={{ duration: 2, repeat: Infinity, ease: "easeInOut" }}
+                            className="w-28 h-28 bg-gradient-to-br from-violet-500/20 to-fuchsia-500/20 rounded-[2rem] flex items-center justify-center mx-auto border border-violet-500/10 shadow-2xl shadow-violet-500/10"
+                        >
+                            <motion.div
+                                key={analyzingStep}
+                                initial={{ scale: 0, rotate: -90 }}
+                                animate={{ scale: 1, rotate: 0 }}
+                                transition={{ type: 'spring', stiffness: 200 }}
+                                className="text-4xl text-violet-400"
+                            >
+                                {analysisSteps[analyzingStep]?.icon}
+                            </motion.div>
+                        </motion.div>
+                    </motion.div>
+
+                    {/* Title */}
+                    <h2 className="text-2xl font-black text-white mb-2">Analyzing Intelligence...</h2>
+                    <p className="text-slate-500 text-sm mb-10">Combining all data sources into your Harmony report</p>
+
+                    {/* Progress Bar */}
+                    <div className="w-full max-w-sm mx-auto mb-8">
+                        <div className="w-full h-2 bg-slate-800 rounded-full overflow-hidden">
+                            <motion.div
+                                initial={{ width: 0 }}
+                                animate={{ width: `${progress}%` }}
+                                transition={{ duration: 0.8, ease: "easeOut" }}
+                                className="h-full bg-gradient-to-r from-violet-500 to-fuchsia-500 rounded-full"
+                            />
+                        </div>
+                        <div className="flex justify-between mt-2">
+                            <span className="text-[10px] font-black uppercase tracking-widest text-slate-600">Step {analyzingStep + 1} of {analysisSteps.length}</span>
+                            <span className="text-[10px] font-black uppercase tracking-widest text-violet-400">{Math.round(progress)}%</span>
+                        </div>
+                    </div>
+
+                    {/* Step List */}
+                    <div className="space-y-3 text-left">
+                        {analysisSteps.map((step, idx) => {
+                            const isDone = idx < analyzingStep;
+                            const isActive = idx === analyzingStep;
+                            return (
+                                <motion.div
+                                    key={idx}
+                                    initial={{ x: -20, opacity: 0 }}
+                                    animate={{ x: 0, opacity: isActive || isDone ? 1 : 0.3 }}
+                                    transition={{ delay: idx * 0.1 }}
+                                    className={`flex items-center gap-4 p-4 rounded-2xl transition-all duration-500 ${
+                                        isActive
+                                            ? 'bg-violet-500/10 border border-violet-500/20'
+                                            : isDone
+                                                ? 'bg-white/[0.02] border border-white/5'
+                                                : 'border border-transparent'
+                                    }`}
+                                >
+                                    <div className={`w-8 h-8 rounded-xl flex items-center justify-center text-sm transition-all duration-500 ${
+                                        isDone
+                                            ? 'bg-emerald-500/20 text-emerald-400'
+                                            : isActive
+                                                ? 'bg-violet-500/20 text-violet-400'
+                                                : 'bg-slate-800 text-slate-600'
+                                    }`}>
+                                        {isDone ? <FiCheckCircle /> : isActive ? <motion.div animate={{ rotate: 360 }} transition={{ duration: 2, repeat: Infinity, ease: 'linear' }}>{step.icon}</motion.div> : step.icon}
+                                    </div>
+                                    <span className={`text-sm font-bold transition-colors duration-500 ${
+                                        isDone ? 'text-emerald-400' : isActive ? 'text-white' : 'text-slate-600'
+                                    }`}>
+                                        {isDone ? step.label.replace('...', ' ✓') : step.label}
+                                    </span>
+                                </motion.div>
+                            );
+                        })}
+                    </div>
+                </div>
             </div>
         );
     }
