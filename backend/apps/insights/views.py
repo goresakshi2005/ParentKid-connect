@@ -307,3 +307,16 @@ class HarmonyHistoryView(APIView):
             data.append(entry)
 
         return Response(data, status=status.HTTP_200_OK)
+
+
+class HarmonyDeleteView(APIView):
+    """
+    DELETE /api/insights/harmony-ai/delete/<int:report_id>/
+    Deletes a specific Harmony AI report.
+    """
+    permission_classes = [IsAuthenticated]
+
+    def delete(self, request, report_id):
+        report = get_object_or_404(HarmonyReport, id=report_id, parent=request.user)
+        report.delete()
+        return Response({"message": "Report deleted successfully."}, status=status.HTTP_200_OK)

@@ -8,7 +8,8 @@ import {
     FiArrowLeft, FiAlertTriangle, FiCheckCircle, FiActivity,
     FiShield, FiZap, FiRefreshCw, FiMessageCircle, FiPhone,
     FiEyeOff, FiTarget, FiHeart, FiClock, FiTrendingUp,
-    FiMonitor, FiMic, FiFileText, FiUsers, FiTool, FiDatabase
+    FiMonitor, FiMic, FiFileText, FiUsers, FiTool, FiDatabase,
+    FiTrash2
 } from 'react-icons/fi';
 
 const HarmonyAIPage = () => {
@@ -106,6 +107,23 @@ const HarmonyAIPage = () => {
     const loadReport = (report) => {
         setData(report);
         setShowHistory(false);
+    };
+
+    // Delete a report from history
+    const deleteReport = async (e, reportId) => {
+        e.stopPropagation(); // prevent loadReport from firing
+        if (!window.confirm('Delete this Harmony AI report?')) return;
+        try {
+            await api.delete(`/insights/harmony-ai/delete/${reportId}/`);
+            setHistory(prev => prev.filter(r => r.id !== reportId && r.report_id !== reportId));
+            // If currently viewing this report, switch to next available or clear
+            if (data?.id === reportId || data?.report_id === reportId) {
+                const remaining = history.filter(r => r.id !== reportId && r.report_id !== reportId);
+                setData(remaining.length > 0 ? remaining[0] : null);
+            }
+        } catch (err) {
+            console.error('Delete failed:', err);
+        }
     };
 
     const getRiskColor = (level) => {
@@ -419,9 +437,18 @@ const HarmonyAIPage = () => {
                                             }`}>
                                             <div className="flex items-center justify-between mb-2">
                                                 <span className="text-[10px] font-black uppercase tracking-widest text-slate-500">{dateStr}</span>
-                                                <span className={`px-2 py-0.5 rounded-full text-[9px] font-black uppercase ${rc.light} ${rc.text} border ${rc.border}`}>
-                                                    {riskLevel}
-                                                </span>
+                                                <div className="flex items-center gap-2">
+                                                    <span className={`px-2 py-0.5 rounded-full text-[9px] font-black uppercase ${rc.light} ${rc.text} border ${rc.border}`}>
+                                                        {riskLevel}
+                                                    </span>
+                                                    <button
+                                                        onClick={(e) => deleteReport(e, report.id || report.report_id)}
+                                                        className="p-1.5 rounded-lg bg-red-500/0 hover:bg-red-500/10 text-slate-600 hover:text-red-400 transition-all"
+                                                        title="Delete report"
+                                                    >
+                                                        <FiTrash2 size={12} />
+                                                    </button>
+                                                </div>
                                             </div>
                                             <p className="text-sm font-bold text-white truncate mb-1">
                                                 {report.best_strategy?.recommended_action || 'Harmony Report'}
