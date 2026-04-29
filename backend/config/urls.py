@@ -30,6 +30,7 @@ urlpatterns = [
     path('api/relationship/', include('apps.relationship_intelligence.urls')),
     path('api/early-childhood/', include('apps.early_childhood.urls')),
     path('api/insights/', include('apps.insights.urls')),
+    path('api/habit-builder/', include('apps.habit_builder.urls')),
 ]
 
 if settings.DEBUG:

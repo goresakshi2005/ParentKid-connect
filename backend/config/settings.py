@@ -33,6 +33,7 @@ INSTALLED_APPS = [
     'apps.screen_monitor',
     'apps.relationship_intelligence',
     'apps.early_childhood',
+    'apps.habit_builder',
 ]
 
 MIDDLEWARE = [
@@ -129,3 +130,7 @@ GOOGLE_CLIENT_ID = config('GOOGLE_CLIENT_ID', default='')
 GOOGLE_CLIENT_SECRET = config('GOOGLE_CLIENT_SECRET', default='')
 # ✅ NEW: The frontend URL that Google will redirect back to after OAuth
 GOOGLE_REDIRECT_URI = config('GOOGLE_REDIRECT_URI', default='http://localhost:3000/google-callback')
+
+# Email backend (console in dev, configure SMTP for production)
+EMAIL_BACKEND = 'django.core.mail.backends.console.EmailBackend'
+DEFAULT_FROM_EMAIL = 'ParentKid Connect <noreply@parentkidconnect.com>'

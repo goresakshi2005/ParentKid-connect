@@ -11,6 +11,7 @@ import AssessmentView from '../components/Parent/AssessmentView';
 import ChildSelfAssessment from '../components/Child/ChildSelfAssessment';
 import ResultsDisplay from '../components/Assessment/ResultsDisplay';
 import Loading from '../components/Common/Loading';
+import HabitMonitor from '../components/Parent/HabitMonitor';
 import { getCareerDiscoveryResults, deleteCareerDiscoveryResult } from '../services/assessmentService';
 
 function ParentDashboard() {
@@ -23,6 +24,7 @@ function ParentDashboard() {
     const [showParentResult, setShowParentResult] = useState(false);
     const [careerResults, setCareerResults] = useState([]);
     const [showCareerHistory, setShowCareerHistory] = useState(false);
+    const [showHabitMonitor, setShowHabitMonitor] = useState(false);
 
     useEffect(() => {
         fetchChildren();
@@ -90,6 +92,26 @@ function ParentDashboard() {
     };
 
     if (loading) return <Loading />;
+
+    // Extract linked teens for the habit monitor
+    const linkedTeens = children
+        .filter(c => c.stage === 'teen_age')
+        .map(c => ({
+            id: c.teen_user_id || c.id,
+            name: c.name,
+            email: c.email,
+        }));
+
+    if (showHabitMonitor) {
+        return (
+            <div className="min-h-screen bg-transparent dark:bg-slate-900 p-4 md:p-8">
+                <HabitMonitor
+                    onBack={() => setShowHabitMonitor(false)}
+                    linkedTeens={linkedTeens}
+                />
+            </div>
+        );
+    }
 
     if (takingParentAssessment) {
         return (
@@ -199,6 +221,31 @@ function ParentDashboard() {
                         </span>
                     </div>
                 </a>
+            </div>
+
+            {/* AI Habit Monitor Section */}
+            <div className="mb-10">
+                <button
+                    onClick={() => setShowHabitMonitor(true)}
+                    className="w-full block bg-gradient-to-r from-emerald-50 to-teal-50 dark:from-slate-800 dark:to-slate-900 p-6 rounded-2xl border border-emerald-200 dark:border-slate-700 hover:shadow-lg transition-all group text-left"
+                >
+                    <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-4">
+                            <div className="w-14 h-14 bg-emerald-600 dark:bg-emerald-700 rounded-xl flex items-center justify-center text-2xl group-hover:scale-110 transition-transform">
+                                🧠
+                            </div>
+                            <div>
+                                <h3 className="text-lg font-bold text-gray-800 dark:text-white">AI Habit Builder & Monitor</h3>
+                                <p className="text-sm text-gray-500 dark:text-slate-400">
+                                    Create habits for your teen, track streaks, and monitor progress
+                                </p>
+                            </div>
+                        </div>
+                        <span className="text-emerald-600 dark:text-emerald-400 font-medium text-sm group-hover:translate-x-1 transition-transform">
+                            Open Monitor →
+                        </span>
+                    </div>
+                </button>
             </div>
 
             {/* Children Section */}

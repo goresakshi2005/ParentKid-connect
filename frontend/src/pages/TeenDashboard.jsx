@@ -16,6 +16,7 @@ import UpgradeModal from '../components/Pricing/UpgradeModal';
 import FeatureGuard from '../components/Common/FeatureGuard';
 import { hasFeature, getRequiredPlan } from '../utils/featureAccess';
 import { getCareerDiscoveryResults, deleteCareerDiscoveryResult } from '../services/assessmentService';
+import HabitBuilder from '../components/Teen/HabitBuilder';
 import api from '../services/api';
 import {
     parseVoiceText,
@@ -532,6 +533,7 @@ export default function TeenDashboard() {
     const [showAssessmentPrompt, setShowAssessmentPrompt] = useState(false);
     const [showCareerDiscovery, setShowCareerDiscovery] = useState(false);
     const [showStudyPlanner, setShowStudyPlanner] = useState(false);
+    const [showHabitBuilder, setShowHabitBuilder] = useState(false);
     const [showCareerHistory, setShowCareerHistory] = useState(false);
     const [upgradeModal, setUpgradeModal] = useState({ isOpen: false, feature: '', plan: '' });
 
@@ -569,6 +571,7 @@ export default function TeenDashboard() {
         if (location.pathname === '/dashboard/teen' && !location.search) {
             setShowStudyPlanner(false);
             setShowCareerDiscovery(false);
+            setShowHabitBuilder(false);
             setTakingAssessment(false);
         }
     }, [location]);
@@ -632,6 +635,14 @@ export default function TeenDashboard() {
         return (
             <div className="flex items-center justify-center min-h-screen">
                 <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-pink-500" />
+            </div>
+        );
+    }
+
+    if (showHabitBuilder) {
+        return (
+            <div className="min-h-screen bg-transparent dark:bg-slate-900 p-4 md:p-8">
+                <HabitBuilder onBack={() => setShowHabitBuilder(false)} />
             </div>
         );
     }
@@ -740,7 +751,22 @@ export default function TeenDashboard() {
 
 
             {/* Quick Actions Grid — Mirrored from Pregnancy Dashboard */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 mb-8">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+                {/* Habit Builder Card */}
+                <button 
+                    onClick={() => setShowHabitBuilder(true)} 
+                    className="group bg-gradient-to-br from-emerald-50 to-teal-50 dark:from-emerald-900/20 dark:to-teal-900/20 border border-emerald-200 dark:border-emerald-800 rounded-2xl p-5 text-left hover:shadow-lg hover:border-emerald-400 dark:hover:border-emerald-600 transition-all relative overflow-hidden h-full min-h-[160px]"
+                >
+                    <div className="text-3xl mb-3 flex items-center justify-between">
+                        <span>🧠</span>
+                    </div>
+                    <h3 className="text-base font-bold text-emerald-700 dark:text-emerald-300 mb-1 flex items-center gap-2">
+                        AI Habit Builder
+                    </h3>
+                    <p className="text-xs text-gray-500 dark:text-slate-400 line-clamp-2">Build daily habits with streaks, rewards, and AI-powered scheduling.</p>
+                    <span className="mt-4 inline-block text-xs font-semibold text-emerald-600 dark:text-emerald-400 group-hover:underline">Open Builder →</span>
+                </button>
+
                 {/* Study Planner Card */}
                 <button 
                     onClick={() => setShowStudyPlanner(true)} 
