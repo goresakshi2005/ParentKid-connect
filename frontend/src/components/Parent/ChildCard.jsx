@@ -94,17 +94,17 @@ function ChildCard({ child, onTakeAssessment }) {
                         {isEarlyChildhood && (
                             <button
                                 onClick={() => navigate(`/early-childhood/${child.id}`)}
-                                className="relative w-full p-4 bg-white/60 dark:bg-slate-800/40 backdrop-blur-xl rounded-[1.5rem] border border-white/80 dark:border-white/10 shadow-sm hover:shadow-lg hover:shadow-emerald-500/10 transition-all duration-300 group/action flex items-center justify-between hover:-translate-y-1 overflow-hidden"
+                                className="relative w-full p-4 bg-white/60 dark:bg-slate-800/40 backdrop-blur-xl rounded-[1.5rem] border border-white/80 dark:border-white/5 shadow-sm hover:shadow-[0_8px_30px_rgba(16,185,129,0.2)] dark:hover:shadow-[0_0_20px_rgba(16,185,129,0.3)] hover:border-emerald-400/50 dark:hover:border-emerald-500/50 dark:hover:bg-emerald-500/10 transition-all duration-500 group/action flex items-center justify-between hover:-translate-y-1 overflow-hidden"
                             >
-                                <div className="absolute top-0 right-0 w-32 h-32 bg-emerald-400/20 rounded-full blur-3xl group-hover:bg-emerald-400/40 transition-colors pointer-events-none"></div>
+                                <div className="absolute top-0 right-0 w-32 h-32 bg-emerald-400/20 rounded-full blur-3xl group-hover:bg-emerald-400/50 transition-colors pointer-events-none duration-500"></div>
                                 <span className="flex items-center gap-4 relative z-10">
-                                    <div className="p-3 bg-white dark:bg-slate-900 rounded-2xl shadow-sm text-emerald-500 group-hover:scale-110 transition-transform border border-gray-100 dark:border-slate-800">
+                                    <div className="p-3 bg-white dark:bg-slate-900 rounded-2xl shadow-sm text-emerald-500 group-hover:scale-110 transition-transform border border-gray-100 dark:border-slate-800 group-hover:border-emerald-200 dark:group-hover:border-emerald-500/30">
                                         <FiActivity className="text-xl" />
                                     </div>
-                                    <span className="font-bold text-slate-700 dark:text-slate-200 tracking-wide">Growth Tracking</span>
+                                    <span className="font-bold text-slate-700 dark:text-slate-200 tracking-wide group-hover:text-emerald-700 dark:group-hover:text-emerald-300 transition-colors">Growth Tracking</span>
                                 </span>
-                                <div className="w-8 h-8 rounded-full bg-white dark:bg-slate-800 flex items-center justify-center relative z-10 border border-gray-200 dark:border-slate-700 group-hover:border-emerald-400/50 transition-colors shadow-sm">
-                                    <FiZap className="text-emerald-500 text-sm animate-pulse" />
+                                <div className="w-8 h-8 rounded-full bg-white dark:bg-slate-800 flex items-center justify-center relative z-10 border border-gray-200 dark:border-slate-700 group-hover:border-emerald-400/50 group-hover:bg-emerald-50 dark:group-hover:bg-emerald-500/20 transition-all shadow-sm">
+                                    <FiZap className="text-emerald-500 text-sm group-hover:scale-125 transition-transform animate-pulse" />
                                 </div>
                             </button>
                         )}
@@ -113,65 +113,65 @@ function ChildCard({ child, onTakeAssessment }) {
                             <>
                                 <button
                                     onClick={() => navigate(`/relationship-intelligence/${child.id}`)}
-                                    className="relative w-full p-4 bg-white/60 dark:bg-slate-800/40 backdrop-blur-xl rounded-[1.5rem] border border-white/80 dark:border-white/10 shadow-sm hover:shadow-lg hover:shadow-indigo-500/10 transition-all duration-300 group/action flex items-center justify-between hover:-translate-y-1 overflow-hidden"
+                                    className="relative w-full p-4 bg-white/60 dark:bg-slate-800/40 backdrop-blur-xl rounded-[1.5rem] border border-white/80 dark:border-white/5 shadow-sm hover:shadow-[0_8px_30px_rgba(99,102,241,0.2)] dark:hover:shadow-[0_0_20px_rgba(99,102,241,0.3)] hover:border-indigo-400/50 dark:hover:border-indigo-500/50 dark:hover:bg-indigo-500/10 transition-all duration-500 group/action flex items-center justify-between hover:-translate-y-1 overflow-hidden"
                                 >
-                                    <div className="absolute top-0 right-0 w-32 h-32 bg-indigo-400/20 rounded-full blur-3xl group-hover:bg-indigo-400/40 transition-colors pointer-events-none"></div>
+                                    <div className="absolute top-0 right-0 w-32 h-32 bg-indigo-400/20 rounded-full blur-3xl group-hover:bg-indigo-400/50 transition-colors pointer-events-none duration-500"></div>
                                     <span className="flex items-center gap-4 relative z-10">
-                                        <div className="p-3 bg-white dark:bg-slate-900 rounded-2xl shadow-sm text-indigo-500 group-hover:scale-110 transition-transform border border-gray-100 dark:border-slate-800">
+                                        <div className="p-3 bg-white dark:bg-slate-900 rounded-2xl shadow-sm text-indigo-500 group-hover:scale-110 transition-transform border border-gray-100 dark:border-slate-800 group-hover:border-indigo-200 dark:group-hover:border-indigo-500/30">
                                             <FiShield className="text-xl" />
                                         </div>
-                                        <span className="font-bold text-slate-700 dark:text-slate-200 tracking-wide">Relationship AI</span>
+                                        <span className="font-bold text-slate-700 dark:text-slate-200 tracking-wide group-hover:text-indigo-700 dark:group-hover:text-indigo-300 transition-colors">Relationship AI</span>
                                     </span>
-                                    <div className="w-8 h-8 rounded-full bg-white dark:bg-slate-800 flex items-center justify-center relative z-10 border border-gray-200 dark:border-slate-700 group-hover:border-indigo-400/50 transition-colors shadow-sm">
-                                        <FiZap className="text-indigo-500 text-sm" />
+                                    <div className="w-8 h-8 rounded-full bg-white dark:bg-slate-800 flex items-center justify-center relative z-10 border border-gray-200 dark:border-slate-700 group-hover:border-indigo-400/50 group-hover:bg-indigo-50 dark:group-hover:bg-indigo-500/20 transition-all shadow-sm">
+                                        <FiZap className="text-indigo-500 text-sm group-hover:scale-125 transition-transform" />
                                     </div>
                                 </button>
 
                                 <button
                                     onClick={() => navigate(`/magic-fix/${child.id}`)}
-                                    className="relative w-full p-4 bg-white/60 dark:bg-slate-800/40 backdrop-blur-xl rounded-[1.5rem] border border-white/80 dark:border-white/10 shadow-sm hover:shadow-lg hover:shadow-rose-500/10 transition-all duration-300 group/action flex items-center justify-between hover:-translate-y-1 overflow-hidden"
+                                    className="relative w-full p-4 bg-white/60 dark:bg-slate-800/40 backdrop-blur-xl rounded-[1.5rem] border border-white/80 dark:border-white/5 shadow-sm hover:shadow-[0_8px_30px_rgba(244,63,94,0.2)] dark:hover:shadow-[0_0_20px_rgba(244,63,94,0.3)] hover:border-rose-400/50 dark:hover:border-rose-500/50 dark:hover:bg-rose-500/10 transition-all duration-500 group/action flex items-center justify-between hover:-translate-y-1 overflow-hidden"
                                 >
-                                    <div className="absolute top-0 right-0 w-32 h-32 bg-rose-400/20 rounded-full blur-3xl group-hover:bg-rose-400/40 transition-colors pointer-events-none"></div>
+                                    <div className="absolute top-0 right-0 w-32 h-32 bg-rose-400/20 rounded-full blur-3xl group-hover:bg-rose-400/50 transition-colors pointer-events-none duration-500"></div>
                                     <span className="flex items-center gap-4 relative z-10">
-                                        <div className="p-3 bg-white dark:bg-slate-900 rounded-2xl shadow-sm text-rose-500 group-hover:scale-110 transition-transform border border-gray-100 dark:border-slate-800">
+                                        <div className="p-3 bg-white dark:bg-slate-900 rounded-2xl shadow-sm text-rose-500 group-hover:scale-110 transition-transform border border-gray-100 dark:border-slate-800 group-hover:border-rose-200 dark:group-hover:border-rose-500/30">
                                             <FiCommand className="text-xl" />
                                         </div>
-                                        <span className="font-bold text-slate-700 dark:text-slate-200 tracking-wide">Magic Fix Engine</span>
+                                        <span className="font-bold text-slate-700 dark:text-slate-200 tracking-wide group-hover:text-rose-700 dark:group-hover:text-rose-300 transition-colors">Magic Fix Engine</span>
                                     </span>
-                                    <div className="w-8 h-8 rounded-full bg-white dark:bg-slate-800 flex items-center justify-center relative z-10 border border-gray-200 dark:border-slate-700 group-hover:border-rose-400/50 transition-colors shadow-sm">
-                                        <FiZap className="text-rose-500 text-sm" />
+                                    <div className="w-8 h-8 rounded-full bg-white dark:bg-slate-800 flex items-center justify-center relative z-10 border border-gray-200 dark:border-slate-700 group-hover:border-rose-400/50 group-hover:bg-rose-50 dark:group-hover:bg-rose-500/20 transition-all shadow-sm">
+                                        <FiZap className="text-rose-500 text-sm group-hover:scale-125 transition-transform" />
                                     </div>
                                 </button>
 
                                 <button
                                     onClick={() => navigate(`/screen-intelligence/${child.id}`)}
-                                    className="relative w-full p-4 bg-white/60 dark:bg-slate-800/40 backdrop-blur-xl rounded-[1.5rem] border border-white/80 dark:border-white/10 shadow-sm hover:shadow-lg hover:shadow-cyan-500/10 transition-all duration-300 group/action flex items-center justify-between hover:-translate-y-1 overflow-hidden"
+                                    className="relative w-full p-4 bg-white/60 dark:bg-slate-800/40 backdrop-blur-xl rounded-[1.5rem] border border-white/80 dark:border-white/5 shadow-sm hover:shadow-[0_8px_30px_rgba(6,182,212,0.2)] dark:hover:shadow-[0_0_20px_rgba(6,182,212,0.3)] hover:border-cyan-400/50 dark:hover:border-cyan-500/50 dark:hover:bg-cyan-500/10 transition-all duration-500 group/action flex items-center justify-between hover:-translate-y-1 overflow-hidden"
                                 >
-                                    <div className="absolute top-0 right-0 w-32 h-32 bg-cyan-400/20 rounded-full blur-3xl group-hover:bg-cyan-400/40 transition-colors pointer-events-none"></div>
+                                    <div className="absolute top-0 right-0 w-32 h-32 bg-cyan-400/20 rounded-full blur-3xl group-hover:bg-cyan-400/50 transition-colors pointer-events-none duration-500"></div>
                                     <span className="flex items-center gap-4 relative z-10">
-                                        <div className="p-3 bg-white dark:bg-slate-900 rounded-2xl shadow-sm text-cyan-500 group-hover:scale-110 transition-transform border border-gray-100 dark:border-slate-800">
+                                        <div className="p-3 bg-white dark:bg-slate-900 rounded-2xl shadow-sm text-cyan-500 group-hover:scale-110 transition-transform border border-gray-100 dark:border-slate-800 group-hover:border-cyan-200 dark:group-hover:border-cyan-500/30">
                                             <FiSmartphone className="text-xl" />
                                         </div>
-                                        <span className="font-bold text-slate-700 dark:text-slate-200 tracking-wide">Screen Intelligence</span>
+                                        <span className="font-bold text-slate-700 dark:text-slate-200 tracking-wide group-hover:text-cyan-700 dark:group-hover:text-cyan-300 transition-colors">Screen Intelligence</span>
                                     </span>
-                                    <div className="w-8 h-8 rounded-full bg-white dark:bg-slate-800 flex items-center justify-center relative z-10 border border-gray-200 dark:border-slate-700 group-hover:border-cyan-400/50 transition-colors shadow-sm">
-                                        <FiBarChart2 className="text-cyan-500 text-sm" />
+                                    <div className="w-8 h-8 rounded-full bg-white dark:bg-slate-800 flex items-center justify-center relative z-10 border border-gray-200 dark:border-slate-700 group-hover:border-cyan-400/50 group-hover:bg-cyan-50 dark:group-hover:bg-cyan-500/20 transition-all shadow-sm">
+                                        <FiBarChart2 className="text-cyan-500 text-sm group-hover:scale-125 transition-transform" />
                                     </div>
                                 </button>
 
                                 <button
                                     onClick={() => navigate(`/harmony-ai/${child.id}`)}
-                                    className="relative w-full p-4 bg-white/60 dark:bg-slate-800/40 backdrop-blur-xl rounded-[1.5rem] border border-white/80 dark:border-white/10 shadow-sm hover:shadow-lg hover:shadow-fuchsia-500/10 transition-all duration-300 group/action flex items-center justify-between hover:-translate-y-1 overflow-hidden"
+                                    className="relative w-full p-4 bg-white/60 dark:bg-slate-800/40 backdrop-blur-xl rounded-[1.5rem] border border-white/80 dark:border-white/5 shadow-sm hover:shadow-[0_8px_30px_rgba(217,70,239,0.2)] dark:hover:shadow-[0_0_20px_rgba(217,70,239,0.3)] hover:border-fuchsia-400/50 dark:hover:border-fuchsia-500/50 dark:hover:bg-fuchsia-500/10 transition-all duration-500 group/action flex items-center justify-between hover:-translate-y-1 overflow-hidden"
                                 >
-                                    <div className="absolute top-0 right-0 w-32 h-32 bg-fuchsia-400/20 rounded-full blur-3xl group-hover:bg-fuchsia-400/40 transition-colors pointer-events-none"></div>
+                                    <div className="absolute top-0 right-0 w-32 h-32 bg-fuchsia-400/20 rounded-full blur-3xl group-hover:bg-fuchsia-400/50 transition-colors pointer-events-none duration-500"></div>
                                     <span className="flex items-center gap-4 relative z-10">
-                                        <div className="p-3 bg-white dark:bg-slate-900 rounded-2xl shadow-sm text-fuchsia-500 group-hover:scale-110 transition-transform border border-gray-100 dark:border-slate-800">
+                                        <div className="p-3 bg-white dark:bg-slate-900 rounded-2xl shadow-sm text-fuchsia-500 group-hover:scale-110 transition-transform border border-gray-100 dark:border-slate-800 group-hover:border-fuchsia-200 dark:group-hover:border-fuchsia-500/30">
                                             <FiActivity className="text-xl" />
                                         </div>
-                                        <span className="font-bold text-slate-700 dark:text-slate-200 tracking-wide">Harmony AI</span>
+                                        <span className="font-bold text-slate-700 dark:text-slate-200 tracking-wide group-hover:text-fuchsia-700 dark:group-hover:text-fuchsia-300 transition-colors">Harmony AI</span>
                                     </span>
-                                    <div className="w-8 h-8 rounded-full bg-white dark:bg-slate-800 flex items-center justify-center relative z-10 border border-gray-200 dark:border-slate-700 group-hover:border-fuchsia-400/50 transition-colors shadow-sm">
-                                        <FiZap className="text-fuchsia-500 text-sm animate-pulse" />
+                                    <div className="w-8 h-8 rounded-full bg-white dark:bg-slate-800 flex items-center justify-center relative z-10 border border-gray-200 dark:border-slate-700 group-hover:border-fuchsia-400/50 group-hover:bg-fuchsia-50 dark:group-hover:bg-fuchsia-500/20 transition-all shadow-sm">
+                                        <FiZap className="text-fuchsia-500 text-sm group-hover:scale-125 transition-transform animate-pulse" />
                                     </div>
                                 </button>
                             </>
