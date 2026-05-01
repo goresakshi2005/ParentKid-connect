@@ -91,14 +91,24 @@ const TeenHabitScheduler = ({ user, onFeatureLock }) => {
                         <span className="animate-pulse text-2xl">⏳</span> Tasks awaiting your decision
                     </h3>
                     {pendingApproval.map(h => (
-                        <div key={h.id} className="flex justify-between items-center mb-3 p-3 bg-white dark:bg-transparent hb-pending-item rounded-xl shadow-sm border border-transparent">
-                            <div>
-                                <p className="font-semibold text-gray-800 dark:text-white text-lg">{h.title}</p>
-                                <p className="text-sm text-gray-500 dark:text-gray-300">⏱️ {h.duration_minutes} min</p>
+                        <div key={h.id} className="group flex flex-col sm:flex-row sm:justify-between sm:items-center mb-4 p-4 bg-white dark:bg-transparent hb-pending-item rounded-xl shadow-md border border-transparent hover:border-yellow-400/50 transition-all relative overflow-hidden">
+                            <div className="absolute top-0 right-0 w-24 h-24 bg-yellow-500/10 dark:bg-yellow-500/20 rounded-full blur-2xl group-hover:bg-orange-500/20 transition-colors pointer-events-none"></div>
+                            <div className="mb-3 sm:mb-0 relative z-10">
+                                <p className="font-extrabold text-gray-800 dark:text-white text-xl tracking-tight group-hover:text-yellow-600 dark:group-hover:text-yellow-400 transition-colors">{h.title}</p>
+                                <div className="flex items-center gap-3 mt-2">
+                                    <span className="text-xs font-bold text-yellow-700 dark:text-yellow-300 bg-yellow-100 dark:bg-yellow-500/20 px-2.5 py-1 rounded-lg flex items-center gap-1">
+                                        ⏱️ {h.duration_minutes} min
+                                    </span>
+                                    {h.suggested_time && (
+                                        <span className="text-xs font-bold text-yellow-700 dark:text-yellow-300 bg-yellow-100 dark:bg-yellow-500/20 px-2.5 py-1 rounded-lg flex items-center gap-1">
+                                            🕒 {h.suggested_time}
+                                        </span>
+                                    )}
+                                </div>
                             </div>
-                            <div className="space-x-2">
-                                <button onClick={() => setShowModal(h)} className="px-4 py-2 hb-btn-glow text-white rounded-xl text-sm font-bold shadow-md hover:shadow-lg transition">
-                                    Review
+                            <div className="shrink-0 relative z-10">
+                                <button onClick={() => setShowModal(h)} className="w-full sm:w-auto px-6 py-2.5 hb-btn-glow text-white rounded-xl text-sm font-bold shadow-md hover:shadow-xl transition-all hover:-translate-y-1">
+                                    Review Task ✨
                                 </button>
                             </div>
                         </div>
@@ -109,28 +119,44 @@ const TeenHabitScheduler = ({ user, onFeatureLock }) => {
             {habits.length === 0 ? (
                 <p className="text-gray-500">No tasks scheduled yet. Your parent might suggest some habits for you.</p>
             ) : (
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                     {habits.map(h => (
-                        <div key={h.id} className="bg-white dark:bg-transparent hb-glass rounded-2xl p-6 shadow-md border border-gray-100 flex flex-col justify-between">
-                            <div>
-                                <h3 className="text-xl font-bold text-gray-800 dark:text-white mb-1">{h.title}</h3>
-                                <div className="flex gap-3 mb-3">
-                                    <p className="text-sm text-gray-500 dark:text-gray-300 font-medium">⏱️ {h.duration_minutes} min</p>
-                                    {h.suggested_time && <p className="text-sm text-gray-400 dark:text-gray-400">🕒 {h.suggested_time}</p>}
+                        <div key={h.id} className="relative bg-white dark:bg-transparent hb-glass rounded-3xl p-6 shadow-xl border border-gray-100 dark:border-white/10 flex flex-col justify-between overflow-hidden group">
+                            {/* Decorative glowing orb */}
+                            <div className="absolute -top-12 -right-12 w-40 h-40 bg-indigo-500/10 dark:bg-purple-500/20 rounded-full blur-3xl group-hover:bg-pink-500/20 transition-colors duration-500 pointer-events-none"></div>
+                            
+                            <div className="relative z-10">
+                                <h3 className="text-2xl font-extrabold text-gray-800 dark:text-white tracking-tight leading-tight mb-4 group-hover:text-transparent group-hover:bg-clip-text group-hover:bg-gradient-to-r group-hover:from-indigo-500 group-hover:to-pink-500 transition-all duration-300">
+                                    {h.title}
+                                </h3>
+                                
+                                <div className="flex flex-wrap items-center gap-3 mb-5">
+                                    <div className="flex items-center gap-1.5 text-xs font-bold text-indigo-700 dark:text-purple-300 bg-indigo-50 dark:bg-purple-500/10 px-3 py-1.5 rounded-xl border border-indigo-100 dark:border-purple-500/20">
+                                        <span className="text-base leading-none">⏱️</span> {h.duration_minutes} min
+                                    </div>
+                                    {h.suggested_time && (
+                                        <div className="flex items-center gap-1.5 text-xs font-bold text-pink-700 dark:text-pink-300 bg-pink-50 dark:bg-pink-500/10 px-3 py-1.5 rounded-xl border border-pink-100 dark:border-pink-500/20">
+                                            <span className="text-base leading-none">🕒</span> {h.suggested_time}
+                                        </div>
+                                    )}
                                 </div>
-                                <div className="mt-2 flex items-center gap-2">
-                                    <span className="text-xs font-bold hb-badge hb-badge-streak px-3 py-1 rounded-full">
+
+                                <div className="flex flex-wrap items-center gap-2 mt-2">
+                                    <span className="text-xs font-extrabold hb-badge hb-badge-streak px-3 py-1.5 rounded-full flex items-center gap-1 shadow-sm">
                                         🔥 Streak: {h.streak}
                                     </span>
-                                    <span className="text-xs font-bold hb-badge hb-badge-pts px-3 py-1 rounded-full">
+                                    <span className="text-xs font-extrabold hb-badge hb-badge-pts px-3 py-1.5 rounded-full flex items-center gap-1 shadow-sm">
                                         ⭐ {h.points_earned} pts
                                     </span>
                                 </div>
-                                <div className="mt-3 text-xs text-gray-400 font-medium uppercase tracking-wider">Stage: {h.stage.replace('_', ' ')}</div>
+                                <div className="mt-4 inline-block text-[10px] font-black uppercase tracking-[0.2em] text-gray-400 dark:text-gray-500 bg-gray-100 dark:bg-gray-800/50 px-3 py-1 rounded-lg">
+                                    {h.stage.replace('_', ' ')}
+                                </div>
                             </div>
+
                             <button
                                 onClick={() => handleComplete(h.id)}
-                                className="mt-5 w-full py-3 hb-btn-glow text-white rounded-xl font-bold hover:shadow-lg shadow-md transition"
+                                className="relative z-10 mt-6 w-full py-3.5 hb-btn-glow text-white rounded-xl font-extrabold text-lg tracking-wide hover:shadow-2xl shadow-lg transition-all duration-300 group-hover:scale-[1.02]"
                             >
                                 ✓ I Did It
                             </button>
