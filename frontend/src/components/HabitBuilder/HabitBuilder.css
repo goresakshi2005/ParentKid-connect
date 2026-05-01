@@ -140,21 +140,21 @@
 
 /* ── Pending Approvals ───────────────────────────────────────────────────── */
 .hb-pending-card {
-    background: linear-gradient(135deg, rgba(245, 158, 11, 0.1), rgba(217, 119, 6, 0.05));
-    border: 1px solid rgba(245, 158, 11, 0.3);
+    background: linear-gradient(135deg, rgba(236, 72, 153, 0.1), rgba(219, 39, 119, 0.05));
+    border: 1px solid rgba(236, 72, 153, 0.3);
     border-radius: 16px;
     padding: 1.25rem;
-    box-shadow: 0 4px 15px rgba(245, 158, 11, 0.1);
+    box-shadow: 0 4px 15px rgba(236, 72, 153, 0.1);
 }
 
 .dark .hb-pending-card {
-    background: linear-gradient(135deg, rgba(245, 158, 11, 0.15), rgba(217, 119, 6, 0.05));
+    background: linear-gradient(135deg, rgba(236, 72, 153, 0.15), rgba(219, 39, 119, 0.05));
     box-shadow: none;
 }
 
 .hb-pending-item {
     background: rgba(255, 255, 255, 0.7);
-    border: 1px solid rgba(245, 158, 11, 0.2);
+    border: 1px solid rgba(236, 72, 153, 0.2);
     border-radius: 12px;
     padding: 1rem;
     margin-bottom: 0.75rem;
@@ -166,9 +166,9 @@
 }
 
 .hb-pending-item:hover {
-    border-color: rgba(245, 158, 11, 0.6);
+    border-color: rgba(236, 72, 153, 0.6);
     background: rgba(255, 255, 255, 0.9);
-    box-shadow: 0 4px 12px rgba(245, 158, 11, 0.1);
+    box-shadow: 0 4px 12px rgba(236, 72, 153, 0.1);
 }
 
 .dark .hb-pending-item:hover {

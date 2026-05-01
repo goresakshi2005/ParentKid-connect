@@ -85,34 +85,32 @@ const TeenHabitScheduler = ({ user, onFeatureLock }) => {
             </h2>
 
             {pendingApproval.length > 0 && (
-                <div className="bg-yellow-50 dark:bg-transparent hb-pending-card p-6 rounded-2xl border border-yellow-200 shadow-lg relative overflow-hidden">
-                    <div className="absolute inset-0 bg-gradient-to-r from-yellow-400/10 to-orange-400/10 dark:opacity-20 pointer-events-none"></div>
-                    <h3 className="font-bold mb-4 text-yellow-800 dark:text-yellow-400 flex items-center gap-2 text-lg">
-                        <span className="animate-pulse text-2xl">⏳</span> Tasks awaiting your decision
+                <div className="mb-6 bg-white/60 dark:bg-white/5 backdrop-blur-md border border-gray-200 dark:border-white/10 rounded-2xl p-5 shadow-sm">
+                    <h3 className="font-semibold text-gray-500 dark:text-gray-400 flex items-center gap-2 text-sm uppercase tracking-wider mb-2 ml-1">
+                        <span className="text-pink-500">⏳</span> Awaiting Decision
                     </h3>
-                    {pendingApproval.map(h => (
-                        <div key={h.id} className="group flex flex-col sm:flex-row sm:justify-between sm:items-center mb-4 p-4 bg-white dark:bg-transparent hb-pending-item rounded-xl shadow-md border border-transparent hover:border-yellow-400/50 transition-all relative overflow-hidden">
-                            <div className="absolute top-0 right-0 w-24 h-24 bg-yellow-500/10 dark:bg-yellow-500/20 rounded-full blur-2xl group-hover:bg-orange-500/20 transition-colors pointer-events-none"></div>
-                            <div className="mb-3 sm:mb-0 relative z-10">
-                                <p className="font-extrabold text-gray-800 dark:text-white text-xl tracking-tight group-hover:text-yellow-600 dark:group-hover:text-yellow-400 transition-colors">{h.title}</p>
-                                <div className="flex items-center gap-3 mt-2">
-                                    <span className="text-xs font-bold text-yellow-700 dark:text-yellow-300 bg-yellow-100 dark:bg-yellow-500/20 px-2.5 py-1 rounded-lg flex items-center gap-1">
-                                        ⏱️ {h.duration_minutes} min
-                                    </span>
-                                    {h.suggested_time && (
-                                        <span className="text-xs font-bold text-yellow-700 dark:text-yellow-300 bg-yellow-100 dark:bg-yellow-500/20 px-2.5 py-1 rounded-lg flex items-center gap-1">
-                                            🕒 {h.suggested_time}
+                    <div className="space-y-1">
+                        {pendingApproval.map(h => (
+                            <div key={h.id} className="flex justify-between items-center py-2.5 border-b border-gray-100 dark:border-white/5 hover:bg-gray-50 dark:hover:bg-white/5 px-3 rounded-xl transition-colors last:border-0">
+                                <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-4">
+                                    <p className="font-medium text-gray-800 dark:text-gray-200">{h.title}</p>
+                                    <div className="flex items-center gap-3">
+                                        <span className="text-xs text-gray-500 dark:text-gray-400">
+                                            ⏱️ {h.duration_minutes}m
                                         </span>
-                                    )}
+                                        {h.suggested_time && (
+                                            <span className="text-xs text-gray-500 dark:text-gray-400">
+                                                🕒 {h.suggested_time}
+                                            </span>
+                                        )}
+                                    </div>
                                 </div>
-                            </div>
-                            <div className="shrink-0 relative z-10">
-                                <button onClick={() => setShowModal(h)} className="w-full sm:w-auto px-6 py-2.5 hb-btn-glow text-white rounded-xl text-sm font-bold shadow-md hover:shadow-xl transition-all hover:-translate-y-1">
-                                    Review Task ✨
+                                <button onClick={() => setShowModal(h)} className="shrink-0 text-xs font-bold text-pink-600 dark:text-pink-400 bg-pink-50 dark:bg-pink-500/10 border border-pink-200 dark:border-pink-500/30 px-4 py-1.5 rounded-full hover:bg-pink-100 dark:hover:bg-pink-500/20 hover:text-pink-800 dark:hover:text-pink-300 transition-colors shadow-sm">
+                                    Review →
                                 </button>
                             </div>
-                        </div>
-                    ))}
+                        ))}
+                    </div>
                 </div>
             )}
 
