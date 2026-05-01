@@ -70,6 +70,7 @@ def get_user_features(user):
 FEATURE_PLAN_MAPPING = {
     "study_planner": "growth",
     "career_discovery": "starter",
+    "habit_builder": "growth",
 }
 
 PLAN_HIERARCHY = ["free", "starter", "growth", "family"]

@@ -1,9 +1,10 @@
 // frontend/src/pages/TeenDashboard.jsx
 //
-// Key change: voice / text input may contain MULTIPLE tasks in one paragraph.
-// parse_voice  → returns { parsed: [task, task, ...] }
-// add_from_voice → saves ALL tasks, syncs each to Google Calendar,
-//                  returns { created: true, count: N, tasks: [...], skipped_duplicates: [...] }
+// Teen dashboard with:
+// - Voice/text study planner (multi-task support)
+// - Career discovery journey
+// - Assessment results & progress chart
+// - Habit Builder (collaborative habits with parent approval)
 //
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
@@ -16,7 +17,6 @@ import UpgradeModal from '../components/Pricing/UpgradeModal';
 import FeatureGuard from '../components/Common/FeatureGuard';
 import { hasFeature, getRequiredPlan } from '../utils/featureAccess';
 import { getCareerDiscoveryResults, deleteCareerDiscoveryResult } from '../services/assessmentService';
-import HabitBuilder from '../components/Teen/HabitBuilder';
 import api from '../services/api';
 import {
     parseVoiceText,
@@ -25,8 +25,9 @@ import {
     updateTaskStatus,
     deleteTask,
 } from '../services/studyPlannerService';
+import TeenHabitScheduler from '../components/HabitBuilder/TeenHabitScheduler';
 
-// ─── Helpers ────────────────────────────────────────────────────────────────
+// --- Helpers -------------------------------------------------------------
 
 const PRIORITY_COLORS = {
     High:   'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400',
@@ -49,7 +50,7 @@ function Badge({ text, color }) {
     );
 }
 
-// ─── Google Calendar banner ─────────────────────────────────────────────────
+// --- Google Calendar banner ---------------------------------------------
 
 function GoogleCalendarBanner({ connected, onConnect, connecting }) {
     if (connected === null) return null;
@@ -94,7 +95,7 @@ function GoogleCalendarBanner({ connected, onConnect, connecting }) {
     );
 }
 
-// ─── Multi-task preview card ────────────────────────────────────────────────
+// --- Multi-task preview card -------------------------------------------
 
 function MultiTaskPreview({ tasks, onConfirm, onDiscard, saving }) {
     if (!tasks || tasks.length === 0) return null;
@@ -167,7 +168,7 @@ function MultiTaskPreview({ tasks, onConfirm, onDiscard, saving }) {
     );
 }
 
-// ─── Study Planner ──────────────────────────────────────────────────────────
+// --- Study Planner (original) ------------------------------------------
 
 function StudyPlanner({ onFeatureLock, onBack }) {
     const { user } = useAuth();
@@ -518,7 +519,7 @@ function StudyPlanner({ onFeatureLock, onBack }) {
     );
 }
 
-// ─── Main TeenDashboard ─────────────────────────────────────────────────────
+// --- Main TeenDashboard -------------------------------------------------
 
 export default function TeenDashboard() {
     const { user, token } = useAuth();
@@ -533,7 +534,6 @@ export default function TeenDashboard() {
     const [showAssessmentPrompt, setShowAssessmentPrompt] = useState(false);
     const [showCareerDiscovery, setShowCareerDiscovery] = useState(false);
     const [showStudyPlanner, setShowStudyPlanner] = useState(false);
-    const [showHabitBuilder, setShowHabitBuilder] = useState(false);
     const [showCareerHistory, setShowCareerHistory] = useState(false);
     const [upgradeModal, setUpgradeModal] = useState({ isOpen: false, feature: '', plan: '' });
 
@@ -564,14 +564,10 @@ export default function TeenDashboard() {
         checkGoogleStatus();
     }, []);
 
-    // Effect to reset sub-views when navigating back to the base dashboard path
-    // This ensures that "Maybe Later" in UpgradeModal (which navigates to /dashboard/teen)
-    // actually returns the user to the main dashboard view.
     useEffect(() => {
         if (location.pathname === '/dashboard/teen' && !location.search) {
             setShowStudyPlanner(false);
             setShowCareerDiscovery(false);
-            setShowHabitBuilder(false);
             setTakingAssessment(false);
         }
     }, [location]);
@@ -606,8 +602,6 @@ export default function TeenDashboard() {
     };
 
     const handleFeatureClick = (featureKey, featureName, action) => {
-        // Direct jump to modal for general features
-        // But for Study Planner and Career Discovery, we now use the "Enter-to-Lock" flow
         if (!hasFeature(featureKey)) {
             setUpgradeModal({ 
                 isOpen: true, 
@@ -639,27 +633,16 @@ export default function TeenDashboard() {
         );
     }
 
-    if (showHabitBuilder) {
-        return (
-            <div className="min-h-screen bg-transparent dark:bg-slate-900 p-4 md:p-8">
-                <HabitBuilder onBack={() => setShowHabitBuilder(false)} />
-            </div>
-        );
-    }
-
     if (showStudyPlanner) {
         return (
             <div className="min-h-screen bg-transparent dark:bg-slate-900 p-4 md:p-8">
                 <div className="max-w-4xl mx-auto flex flex-col gap-4">
-                    {/* Back button — Outside guard for accessibility */}
                     <button 
                         onClick={() => setShowStudyPlanner(false)}
                         className="self-start flex items-center gap-2 text-sm font-bold text-gray-500 hover:text-indigo-600 transition-colors uppercase tracking-widest"
                     >
                         <span className="text-lg">←</span> Back to Dashboard
                     </button>
-
-                    {/* Enter-to-Lock Content */}
                     <FeatureGuard feature="study_planner" maybeLaterPath="/dashboard/teen">
                         <StudyPlanner 
                             onBack={() => setShowStudyPlanner(false)}
@@ -749,24 +732,8 @@ export default function TeenDashboard() {
                 />
             )}
 
-
-            {/* Quick Actions Grid — Mirrored from Pregnancy Dashboard */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
-                {/* Habit Builder Card */}
-                <button 
-                    onClick={() => setShowHabitBuilder(true)} 
-                    className="group bg-gradient-to-br from-emerald-50 to-teal-50 dark:from-emerald-900/20 dark:to-teal-900/20 border border-emerald-200 dark:border-emerald-800 rounded-2xl p-5 text-left hover:shadow-lg hover:border-emerald-400 dark:hover:border-emerald-600 transition-all relative overflow-hidden h-full min-h-[160px]"
-                >
-                    <div className="text-3xl mb-3 flex items-center justify-between">
-                        <span>🧠</span>
-                    </div>
-                    <h3 className="text-base font-bold text-emerald-700 dark:text-emerald-300 mb-1 flex items-center gap-2">
-                        AI Habit Builder
-                    </h3>
-                    <p className="text-xs text-gray-500 dark:text-slate-400 line-clamp-2">Build daily habits with streaks, rewards, and AI-powered scheduling.</p>
-                    <span className="mt-4 inline-block text-xs font-semibold text-emerald-600 dark:text-emerald-400 group-hover:underline">Open Builder →</span>
-                </button>
-
+            {/* Quick Actions Grid */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 mb-8">
                 {/* Study Planner Card */}
                 <button 
                     onClick={() => setShowStudyPlanner(true)} 
@@ -809,12 +776,20 @@ export default function TeenDashboard() {
                     <p className="text-xs text-gray-500 dark:text-slate-400 line-clamp-2">One-on-one guidance for studies, life goals, and personal development.</p>
                     <span className="mt-4 inline-block text-xs font-semibold text-purple-600 dark:text-purple-400 group-hover:underline">Connect Now →</span>
                 </a>
-
             </div>
 
+            {/* Habit Builder Section */}
+            <div className="mt-12">
+                <TeenHabitScheduler user={user} onFeatureLock={() => {
+                    setUpgradeModal({ 
+                        isOpen: true, 
+                        feature: 'Habit Builder', 
+                        plan: getRequiredPlan('habit_builder') 
+                    });
+                }} />
+            </div>
 
-
-            {/* Career Discovery Results History Toggle */}
+            {/* Career History Toggle */}
             {careerResults && careerResults.length > 0 && (
                 <div className="flex justify-center mt-4">
                     <button
@@ -838,7 +813,6 @@ export default function TeenDashboard() {
                 </div>
             )}
 
-            {/* Career Discovery Results History Section */}
             {showCareerHistory && careerResults && careerResults.length > 0 && (
                 <div className="space-y-6 animate-in fade-in slide-in-from-top-4 duration-500">
                     <div className="flex items-center justify-between">
@@ -849,13 +823,10 @@ export default function TeenDashboard() {
                         <div className="h-px flex-1 bg-gradient-to-r from-violet-500/20 to-transparent ml-6 hidden md:block"></div>
                     </div>
 
-
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                         {careerResults.map((cres, idx) => (
                             <div key={cres.id || idx} className="group relative bg-white/40 dark:bg-slate-900/40 backdrop-blur-xl border border-white/20 dark:border-slate-800 rounded-[2rem] p-8 shadow-xl hover:shadow-2xl transition-all duration-500 hover:-translate-y-1 overflow-hidden">
-                                {/* Gradient Background Pulse */}
                                 <div className="absolute -top-24 -right-24 w-48 h-48 bg-violet-500/10 blur-[80px] group-hover:bg-violet-500/20 transition-all duration-500"></div>
-                                
                                 <div className="relative z-10">
                                     <div className="flex justify-between items-start mb-6">
                                         <div className="px-4 py-1.5 bg-violet-100 dark:bg-violet-900/30 text-violet-700 dark:text-violet-300 text-[10px] font-black uppercase tracking-[0.2em] rounded-full border border-violet-200 dark:border-violet-800/50">

@@ -18,6 +18,7 @@ class Command(BaseCommand):
             ("relationship_ai", "Relationship AI"),
             ("appointment", "Appointment"),
             ("voice_wellness", "Voice Wellness"),
+            ("habit_builder", "Habit Builder"),
         ]
 
         features_obj = {}
@@ -43,12 +44,12 @@ class Command(BaseCommand):
             {
                 "name": "growth",
                 "price": 1000,
-                "features": ["growth_tracking", "mentor_chat", "assessment", "magic_fix", "career_discovery", "mental_health_guide", "study_planner"]
+                "features": ["growth_tracking", "mentor_chat", "assessment", "magic_fix", "career_discovery", "mental_health_guide", "study_planner", "habit_builder"]
             },
             {
                 "name": "family",
                 "price": 2000,
-                "features": ["growth_tracking", "mentor_chat", "assessment", "magic_fix", "career_discovery", "mental_health_guide", "study_planner", "screen_intelligence", "relationship_ai", "appointment", "voice_wellness"]
+                "features": ["growth_tracking", "mentor_chat", "assessment", "magic_fix", "career_discovery", "mental_health_guide", "study_planner", "screen_intelligence", "relationship_ai", "appointment", "voice_wellness", "habit_builder"]
             },
         ]
 

@@ -1,6 +1,6 @@
 // frontend/src/pages/ParentDashboard.jsx
-// This dashboard is ONLY for regular (non-expecting) parents.
-// Expecting/pregnancy parents are routed to /dashboard/pregnancy directly.
+// Regular (non-expecting) parents dashboard.
+// Includes child management, assessments, and now Habit Builder oversight.
 
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
@@ -11,11 +11,13 @@ import AssessmentView from '../components/Parent/AssessmentView';
 import ChildSelfAssessment from '../components/Child/ChildSelfAssessment';
 import ResultsDisplay from '../components/Assessment/ResultsDisplay';
 import Loading from '../components/Common/Loading';
-import HabitMonitor from '../components/Parent/HabitMonitor';
 import { getCareerDiscoveryResults, deleteCareerDiscoveryResult } from '../services/assessmentService';
+import ParentHabitApproval from '../components/HabitBuilder/ParentHabitApproval';
+import { hasFeature, getRequiredPlan } from '../utils/featureAccess';
+import UpgradeModal from '../components/Pricing/UpgradeModal';
 
 function ParentDashboard() {
-    const { token } = useAuth();
+    const { token, user } = useAuth();
     const [children, setChildren] = useState([]);
     const [loading, setLoading] = useState(true);
     const [takingParentAssessment, setTakingParentAssessment] = useState(false);
@@ -24,12 +26,21 @@ function ParentDashboard() {
     const [showParentResult, setShowParentResult] = useState(false);
     const [careerResults, setCareerResults] = useState([]);
     const [showCareerHistory, setShowCareerHistory] = useState(false);
-    const [showHabitMonitor, setShowHabitMonitor] = useState(false);
+    const [selectedTeenId, setSelectedTeenId] = useState(null);
+    const [upgradeModal, setUpgradeModal] = useState({ isOpen: false, feature: '', plan: '' });
 
     useEffect(() => {
         fetchChildren();
         fetchParentResults();
     }, [token]);
+
+    // Auto-select first teen child when children load
+    useEffect(() => {
+        if (children.length > 0 && !selectedTeenId) {
+            const firstTeen = children.find(c => c.stage === 'teen_age');
+            if (firstTeen) setSelectedTeenId(firstTeen.id);
+        }
+    }, [children, selectedTeenId]);
 
     const fetchChildren = async () => {
         try {
@@ -91,27 +102,19 @@ function ParentDashboard() {
         setTakingParentAssessment(true);
     };
 
+    const handleFeatureClick = (featureKey, featureName, action) => {
+        if (!hasFeature(user, featureKey)) {
+            setUpgradeModal({
+                isOpen: true,
+                feature: featureName,
+                plan: getRequiredPlan(featureKey)
+            });
+            return;
+        }
+        action();
+    };
+
     if (loading) return <Loading />;
-
-    // Extract linked teens for the habit monitor
-    const linkedTeens = children
-        .filter(c => c.stage === 'teen_age')
-        .map(c => ({
-            id: c.teen_user_id || c.id,
-            name: c.name,
-            email: c.email,
-        }));
-
-    if (showHabitMonitor) {
-        return (
-            <div className="min-h-screen bg-transparent dark:bg-slate-900 p-4 md:p-8">
-                <HabitMonitor
-                    onBack={() => setShowHabitMonitor(false)}
-                    linkedTeens={linkedTeens}
-                />
-            </div>
-        );
-    }
 
     if (takingParentAssessment) {
         return (
@@ -149,6 +152,8 @@ function ParentDashboard() {
             </div>
         );
     }
+
+    const teenChildren = children.filter(c => c.stage === 'teen_age');
 
     return (
         <div className="max-w-7xl mx-auto px-4 py-8">
@@ -223,30 +228,49 @@ function ParentDashboard() {
                 </a>
             </div>
 
-            {/* AI Habit Monitor Section */}
-            <div className="mb-10">
-                <button
-                    onClick={() => setShowHabitMonitor(true)}
-                    className="w-full block bg-gradient-to-r from-emerald-50 to-teal-50 dark:from-slate-800 dark:to-slate-900 p-6 rounded-2xl border border-emerald-200 dark:border-slate-700 hover:shadow-lg transition-all group text-left"
-                >
-                    <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-4">
-                            <div className="w-14 h-14 bg-emerald-600 dark:bg-emerald-700 rounded-xl flex items-center justify-center text-2xl group-hover:scale-110 transition-transform">
-                                🧠
-                            </div>
-                            <div>
-                                <h3 className="text-lg font-bold text-gray-800 dark:text-white">AI Habit Builder & Monitor</h3>
-                                <p className="text-sm text-gray-500 dark:text-slate-400">
-                                    Create habits for your teen, track streaks, and monitor progress
-                                </p>
-                            </div>
-                        </div>
-                        <span className="text-emerald-600 dark:text-emerald-400 font-medium text-sm group-hover:translate-x-1 transition-transform">
-                            Open Monitor →
-                        </span>
+            {/* Habit Builder Section for Teens */}
+            {teenChildren.length > 0 && (
+                <div className="mb-12">
+                    <div className="flex items-center justify-between mb-6">
+                        <h2 className="text-2xl font-bold dark:text-white flex items-center gap-2">
+                            <span className="p-2 bg-indigo-500/10 rounded-lg text-indigo-500">🏆</span>
+                            Habit Builder Oversight
+                        </h2>
+                        {!hasFeature(user, 'habit_builder') && (
+                            <button
+                                onClick={() => handleFeatureClick('habit_builder', 'Habit Builder', () => {})}
+                                className="px-4 py-2 text-xs font-bold bg-indigo-600 text-white rounded-full"
+                            >
+                                Unlock Premium
+                            </button>
+                        )}
                     </div>
-                </button>
-            </div>
+
+                    {/* Child selector for teens */}
+                    {teenChildren.length > 1 && (
+                        <div className="mb-4 flex items-center gap-3">
+                            <label className="text-sm font-semibold text-gray-600 dark:text-slate-400">Select teen:</label>
+                            <select
+                                value={selectedTeenId || ''}
+                                onChange={(e) => setSelectedTeenId(Number(e.target.value))}
+                                className="px-4 py-2 border rounded-xl bg-white dark:bg-slate-800"
+                            >
+                                {teenChildren.map(child => (
+                                    <option key={child.id} value={child.id}>{child.name}</option>
+                                ))}
+                            </select>
+                        </div>
+                    )}
+
+                    {selectedTeenId && (
+                        <ParentHabitApproval
+                            user={user}
+                            selectedTeenId={selectedTeenId}
+                            onFeatureLock={() => handleFeatureClick('habit_builder', 'Habit Builder', () => {})}
+                        />
+                    )}
+                </div>
+            )}
 
             {/* Children Section */}
             <h2 className="text-2xl font-bold mb-6 dark:text-white">Your Children</h2>
@@ -260,7 +284,6 @@ function ParentDashboard() {
                     {children.map((child) => (
                         <div key={child.id}>
                             <ChildCard child={child} onTakeAssessment={handleTakeChildSelfAssessment} />
-
                         </div>
                     ))}
                 </div>
@@ -328,6 +351,16 @@ function ParentDashboard() {
                         </div>
                     )}
                 </div>
+            )}
+
+            {upgradeModal.isOpen && (
+                <UpgradeModal
+                    isOpen={upgradeModal.isOpen}
+                    onClose={() => setUpgradeModal({ ...upgradeModal, isOpen: false })}
+                    featureName={upgradeModal.feature}
+                    requiredPlan={upgradeModal.plan}
+                    maybeLaterPath="/dashboard/parent"
+                />
             )}
         </div>
     );

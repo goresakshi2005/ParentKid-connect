@@ -21,6 +21,7 @@ export const FEATURE_PLAN_MAPPING = {
   relationship_ai: "FAMILY",
   appointment: "FAMILY",
   voice_wellness: "FAMILY",
+  habit_builder: "GROWTH",
 };
 
 export const getRequiredPlan = (feature) => {

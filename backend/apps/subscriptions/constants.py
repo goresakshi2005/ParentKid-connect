@@ -10,4 +10,5 @@ FEATURES = {
     "RELATIONSHIP_AI": "relationship_ai",
     "APPOINTMENT": "appointment",
     "VOICE_WELLNESS": "voice_wellness",
+    "HABIT_BUILDER": "habit_builder",
 }
