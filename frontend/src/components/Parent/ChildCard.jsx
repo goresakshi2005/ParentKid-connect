@@ -64,18 +64,22 @@ function ChildCard({ child, onTakeAssessment }) {
             {/* Content Area */}
             <div className="p-6 space-y-6">
                 {/* Core Actions */}
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-2 gap-4">
                     <button
                         onClick={() => onTakeAssessment(child.id)}
-                        className="px-4 py-3 bg-slate-900 dark:bg-white text-white dark:text-slate-900 rounded-2xl hover:bg-slate-800 dark:hover:bg-slate-100 font-black shadow-lg transition-all flex items-center justify-center gap-2 text-sm group/btn"
+                        className="relative px-4 py-3.5 bg-gradient-to-r from-slate-900 to-slate-800 dark:from-indigo-600 dark:to-violet-600 text-white rounded-[1.25rem] font-black shadow-[0_8px_20px_rgba(0,0,0,0.15)] dark:shadow-[0_8px_20px_rgba(99,102,241,0.3)] transition-all duration-300 hover:shadow-xl hover:-translate-y-1 flex items-center justify-center gap-2 text-sm group/btn overflow-hidden"
                     >
-                        <FiClipboard className="group-hover/btn:rotate-12 transition-transform" /> Assessment
+                        <div className="absolute inset-0 bg-white/10 dark:bg-white/20 -translate-x-full group-hover/btn:translate-x-0 transition-transform duration-300"></div>
+                        <FiClipboard className="group-hover/btn:rotate-12 transition-transform relative z-10" /> 
+                        <span className="relative z-10">Assessment</span>
                     </button>
                     <button
                         onClick={() => setShowResults(!showResults)}
-                        className="px-4 py-3 border-2 border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 rounded-2xl hover:bg-slate-50 dark:hover:bg-slate-800 font-bold transition-all flex items-center justify-center gap-2 text-sm"
+                        className="relative px-4 py-3.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 rounded-[1.25rem] font-black shadow-[0_4px_10px_rgba(0,0,0,0.05)] transition-all duration-300 hover:shadow-md hover:border-slate-300 dark:hover:border-slate-500 hover:-translate-y-1 flex items-center justify-center gap-2 text-sm group/btn2 overflow-hidden"
                     >
-                        <FiBarChart2 /> {showResults ? 'Hide' : 'Results'}
+                        <div className="absolute inset-0 bg-slate-50 dark:bg-slate-700/50 -translate-y-full group-hover/btn2:translate-y-0 transition-transform duration-300"></div>
+                        <FiBarChart2 className="relative z-10" /> 
+                        <span className="relative z-10">{showResults ? 'Hide' : 'Results'}</span>
                     </button>
                 </div>
 
@@ -90,13 +94,18 @@ function ChildCard({ child, onTakeAssessment }) {
                         {isEarlyChildhood && (
                             <button
                                 onClick={() => navigate(`/early-childhood/${child.id}`)}
-                                className="w-full px-5 py-4 bg-gradient-to-r from-emerald-500 to-teal-400 text-white rounded-[1.5rem] hover:shadow-emerald-500/40 hover:scale-[1.02] font-black shadow-lg transition-all flex items-center justify-between group/action"
+                                className="relative w-full p-4 bg-white/60 dark:bg-slate-800/40 backdrop-blur-xl rounded-[1.5rem] border border-white/80 dark:border-white/10 shadow-sm hover:shadow-lg hover:shadow-emerald-500/10 transition-all duration-300 group/action flex items-center justify-between hover:-translate-y-1 overflow-hidden"
                             >
-                                <span className="flex items-center gap-3">
-                                    <div className="p-2 bg-white/20 rounded-lg"><FiActivity className="text-white" /></div>
-                                    Growth Tracking
+                                <div className="absolute top-0 right-0 w-32 h-32 bg-emerald-400/20 rounded-full blur-3xl group-hover:bg-emerald-400/40 transition-colors pointer-events-none"></div>
+                                <span className="flex items-center gap-4 relative z-10">
+                                    <div className="p-3 bg-white dark:bg-slate-900 rounded-2xl shadow-sm text-emerald-500 group-hover:scale-110 transition-transform border border-gray-100 dark:border-slate-800">
+                                        <FiActivity className="text-xl" />
+                                    </div>
+                                    <span className="font-bold text-slate-700 dark:text-slate-200 tracking-wide">Growth Tracking</span>
                                 </span>
-                                <FiZap className="text-yellow-300 animate-pulse" />
+                                <div className="w-8 h-8 rounded-full bg-white dark:bg-slate-800 flex items-center justify-center relative z-10 border border-gray-200 dark:border-slate-700 group-hover:border-emerald-400/50 transition-colors shadow-sm">
+                                    <FiZap className="text-emerald-500 text-sm animate-pulse" />
+                                </div>
                             </button>
                         )}
 
@@ -104,46 +113,66 @@ function ChildCard({ child, onTakeAssessment }) {
                             <>
                                 <button
                                     onClick={() => navigate(`/relationship-intelligence/${child.id}`)}
-                                    className="w-full px-5 py-4 bg-gradient-to-r from-indigo-600 to-violet-600 text-white rounded-[1.5rem] hover:shadow-indigo-500/40 hover:scale-[1.02] font-black shadow-lg transition-all flex items-center justify-between group/action border-b-4 border-indigo-800"
+                                    className="relative w-full p-4 bg-white/60 dark:bg-slate-800/40 backdrop-blur-xl rounded-[1.5rem] border border-white/80 dark:border-white/10 shadow-sm hover:shadow-lg hover:shadow-indigo-500/10 transition-all duration-300 group/action flex items-center justify-between hover:-translate-y-1 overflow-hidden"
                                 >
-                                    <span className="flex items-center gap-3">
-                                        <div className="p-2 bg-white/20 rounded-lg"><FiShield className="text-white" /></div>
-                                        Relationship AI
+                                    <div className="absolute top-0 right-0 w-32 h-32 bg-indigo-400/20 rounded-full blur-3xl group-hover:bg-indigo-400/40 transition-colors pointer-events-none"></div>
+                                    <span className="flex items-center gap-4 relative z-10">
+                                        <div className="p-3 bg-white dark:bg-slate-900 rounded-2xl shadow-sm text-indigo-500 group-hover:scale-110 transition-transform border border-gray-100 dark:border-slate-800">
+                                            <FiShield className="text-xl" />
+                                        </div>
+                                        <span className="font-bold text-slate-700 dark:text-slate-200 tracking-wide">Relationship AI</span>
                                     </span>
-                                    <FiZap className="text-yellow-400" />
+                                    <div className="w-8 h-8 rounded-full bg-white dark:bg-slate-800 flex items-center justify-center relative z-10 border border-gray-200 dark:border-slate-700 group-hover:border-indigo-400/50 transition-colors shadow-sm">
+                                        <FiZap className="text-indigo-500 text-sm" />
+                                    </div>
                                 </button>
 
                                 <button
                                     onClick={() => navigate(`/magic-fix/${child.id}`)}
-                                    className="w-full px-5 py-4 bg-gradient-to-r from-pink-500 to-rose-500 text-white rounded-[1.5rem] hover:shadow-pink-500/40 hover:scale-[1.02] font-black shadow-lg transition-all flex items-center justify-between group/action border-b-4 border-rose-800"
+                                    className="relative w-full p-4 bg-white/60 dark:bg-slate-800/40 backdrop-blur-xl rounded-[1.5rem] border border-white/80 dark:border-white/10 shadow-sm hover:shadow-lg hover:shadow-rose-500/10 transition-all duration-300 group/action flex items-center justify-between hover:-translate-y-1 overflow-hidden"
                                 >
-                                    <span className="flex items-center gap-3">
-                                        <div className="p-2 bg-white/20 rounded-lg"><FiCommand className="text-white" /></div>
-                                        Magic Fix Engine
+                                    <div className="absolute top-0 right-0 w-32 h-32 bg-rose-400/20 rounded-full blur-3xl group-hover:bg-rose-400/40 transition-colors pointer-events-none"></div>
+                                    <span className="flex items-center gap-4 relative z-10">
+                                        <div className="p-3 bg-white dark:bg-slate-900 rounded-2xl shadow-sm text-rose-500 group-hover:scale-110 transition-transform border border-gray-100 dark:border-slate-800">
+                                            <FiCommand className="text-xl" />
+                                        </div>
+                                        <span className="font-bold text-slate-700 dark:text-slate-200 tracking-wide">Magic Fix Engine</span>
                                     </span>
-                                    <FiZap className="text-white opacity-80" />
+                                    <div className="w-8 h-8 rounded-full bg-white dark:bg-slate-800 flex items-center justify-center relative z-10 border border-gray-200 dark:border-slate-700 group-hover:border-rose-400/50 transition-colors shadow-sm">
+                                        <FiZap className="text-rose-500 text-sm" />
+                                    </div>
                                 </button>
 
                                 <button
                                     onClick={() => navigate(`/screen-intelligence/${child.id}`)}
-                                    className="w-full px-5 py-4 bg-gradient-to-r from-emerald-500 to-cyan-500 text-white rounded-[1.5rem] hover:shadow-emerald-500/40 hover:scale-[1.02] font-black shadow-lg transition-all flex items-center justify-between group/action border-b-4 border-emerald-800"
+                                    className="relative w-full p-4 bg-white/60 dark:bg-slate-800/40 backdrop-blur-xl rounded-[1.5rem] border border-white/80 dark:border-white/10 shadow-sm hover:shadow-lg hover:shadow-cyan-500/10 transition-all duration-300 group/action flex items-center justify-between hover:-translate-y-1 overflow-hidden"
                                 >
-                                    <span className="flex items-center gap-3">
-                                        <div className="p-2 bg-white/20 rounded-lg"><FiSmartphone className="text-white" /></div>
-                                        Screen Intelligence
+                                    <div className="absolute top-0 right-0 w-32 h-32 bg-cyan-400/20 rounded-full blur-3xl group-hover:bg-cyan-400/40 transition-colors pointer-events-none"></div>
+                                    <span className="flex items-center gap-4 relative z-10">
+                                        <div className="p-3 bg-white dark:bg-slate-900 rounded-2xl shadow-sm text-cyan-500 group-hover:scale-110 transition-transform border border-gray-100 dark:border-slate-800">
+                                            <FiSmartphone className="text-xl" />
+                                        </div>
+                                        <span className="font-bold text-slate-700 dark:text-slate-200 tracking-wide">Screen Intelligence</span>
                                     </span>
-                                    <FiBarChart2 className="text-white opacity-80" />
+                                    <div className="w-8 h-8 rounded-full bg-white dark:bg-slate-800 flex items-center justify-center relative z-10 border border-gray-200 dark:border-slate-700 group-hover:border-cyan-400/50 transition-colors shadow-sm">
+                                        <FiBarChart2 className="text-cyan-500 text-sm" />
+                                    </div>
                                 </button>
 
                                 <button
                                     onClick={() => navigate(`/harmony-ai/${child.id}`)}
-                                    className="w-full px-5 py-4 bg-gradient-to-r from-violet-600 to-fuchsia-600 text-white rounded-[1.5rem] hover:shadow-violet-500/40 hover:scale-[1.02] font-black shadow-lg transition-all flex items-center justify-between group/action border-b-4 border-violet-900"
+                                    className="relative w-full p-4 bg-white/60 dark:bg-slate-800/40 backdrop-blur-xl rounded-[1.5rem] border border-white/80 dark:border-white/10 shadow-sm hover:shadow-lg hover:shadow-fuchsia-500/10 transition-all duration-300 group/action flex items-center justify-between hover:-translate-y-1 overflow-hidden"
                                 >
-                                    <span className="flex items-center gap-3">
-                                        <div className="p-2 bg-white/20 rounded-lg"><FiActivity className="text-white" /></div>
-                                        Harmony AI
+                                    <div className="absolute top-0 right-0 w-32 h-32 bg-fuchsia-400/20 rounded-full blur-3xl group-hover:bg-fuchsia-400/40 transition-colors pointer-events-none"></div>
+                                    <span className="flex items-center gap-4 relative z-10">
+                                        <div className="p-3 bg-white dark:bg-slate-900 rounded-2xl shadow-sm text-fuchsia-500 group-hover:scale-110 transition-transform border border-gray-100 dark:border-slate-800">
+                                            <FiActivity className="text-xl" />
+                                        </div>
+                                        <span className="font-bold text-slate-700 dark:text-slate-200 tracking-wide">Harmony AI</span>
                                     </span>
-                                    <FiZap className="text-yellow-300 animate-pulse" />
+                                    <div className="w-8 h-8 rounded-full bg-white dark:bg-slate-800 flex items-center justify-center relative z-10 border border-gray-200 dark:border-slate-700 group-hover:border-fuchsia-400/50 transition-colors shadow-sm">
+                                        <FiZap className="text-fuchsia-500 text-sm animate-pulse" />
+                                    </div>
                                 </button>
                             </>
                         )}
