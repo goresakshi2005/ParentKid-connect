@@ -791,15 +791,15 @@ export default function TeenDashboard() {
 
             {/* Career History Toggle */}
             {careerResults && careerResults.length > 0 && (
-                <div className="flex justify-center mt-4">
+                <div className="flex justify-center mt-12 mb-6">
                     <button
                         onClick={() => setShowCareerHistory(!showCareerHistory)}
                         className="group relative px-8 py-3.5 bg-white dark:bg-slate-900 border border-violet-200 dark:border-slate-800 rounded-2xl shadow-xl hover:shadow-violet-500/20 transition-all duration-300 flex items-center gap-3 active:scale-95 overflow-hidden"
                     >
                         <div className="absolute inset-0 bg-gradient-to-r from-violet-500/5 to-fuchsia-500/5 opacity-0 group-hover:opacity-100 transition-opacity"></div>
-                        <span className="text-xl">{showCareerHistory ? '🙈' : '🏆'}</span>
+                        <span className="text-xl">{showCareerHistory ? '🙈' : '🚀'}</span>
                         <span className="text-sm font-black text-gray-700 dark:text-white tracking-wide">
-                            {showCareerHistory ? 'Hide My Career Quests' : 'Reveal Career Journey History'}
+                            {showCareerHistory ? 'Hide Career Discovery History' : 'Show Career Discovery History'}
                         </span>
                         <svg 
                             className={`w-5 h-5 text-violet-500 transition-transform duration-500 ${showCareerHistory ? 'rotate-180' : ''}`} 

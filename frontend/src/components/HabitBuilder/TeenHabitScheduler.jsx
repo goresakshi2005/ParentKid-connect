@@ -117,46 +117,57 @@ const TeenHabitScheduler = ({ user, onFeatureLock }) => {
             {habits.length === 0 ? (
                 <p className="text-gray-500">No tasks scheduled yet. Your parent might suggest some habits for you.</p>
             ) : (
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                     {habits.map(h => (
-                        <div key={h.id} className="relative bg-white dark:bg-transparent hb-glass rounded-3xl p-6 shadow-xl border border-gray-100 dark:border-white/10 flex flex-col justify-between overflow-hidden group">
-                            {/* Decorative glowing orb */}
-                            <div className="absolute -top-12 -right-12 w-40 h-40 bg-indigo-500/10 dark:bg-purple-500/20 rounded-full blur-3xl group-hover:bg-pink-500/20 transition-colors duration-500 pointer-events-none"></div>
+                        <div key={h.id} className="relative p-7 bg-white/5 dark:bg-slate-900/60 backdrop-blur-3xl rounded-[2.5rem] shadow-2xl border border-white/20 dark:border-white/10 flex flex-col justify-between overflow-hidden group hover:-translate-y-2 transition-transform duration-500">
+                            {/* Massive, soft ambient orb for premium aesthetic */}
+                            <div className="absolute -top-20 -right-20 w-72 h-72 bg-gradient-to-br from-indigo-500/20 to-purple-500/20 rounded-full blur-[4rem] group-hover:from-indigo-500/30 group-hover:to-pink-500/20 transition-all duration-700 pointer-events-none"></div>
                             
                             <div className="relative z-10">
-                                <h3 className="text-2xl font-extrabold text-gray-800 dark:text-white tracking-tight leading-tight mb-4 group-hover:text-transparent group-hover:bg-clip-text group-hover:bg-gradient-to-r group-hover:from-indigo-500 group-hover:to-pink-500 transition-all duration-300">
+                                <h3 className="text-2xl font-black text-slate-800 dark:text-white tracking-tight mb-5 leading-tight">
                                     {h.title}
                                 </h3>
                                 
-                                <div className="flex flex-wrap items-center gap-3 mb-5">
-                                    <div className="flex items-center gap-1.5 text-xs font-bold text-indigo-700 dark:text-purple-300 bg-indigo-50 dark:bg-purple-500/10 px-3 py-1.5 rounded-xl border border-indigo-100 dark:border-purple-500/20">
-                                        <span className="text-base leading-none">⏱️</span> {h.duration_minutes} min
+                                <div className="flex flex-wrap items-center gap-3 mb-6">
+                                    <div className="flex items-center gap-2 text-xs font-semibold text-slate-700 dark:text-slate-300 bg-black/5 dark:bg-black/30 backdrop-blur-md px-4 py-2 rounded-full border border-black/5 dark:border-white/5">
+                                        <span className="text-base opacity-70">⏱️</span> {h.duration_minutes} min
                                     </div>
                                     {h.suggested_time && (
-                                        <div className="flex items-center gap-1.5 text-xs font-bold text-pink-700 dark:text-pink-300 bg-pink-50 dark:bg-pink-500/10 px-3 py-1.5 rounded-xl border border-pink-100 dark:border-pink-500/20">
-                                            <span className="text-base leading-none">🕒</span> {h.suggested_time}
+                                        <div className="flex items-center gap-2 text-xs font-semibold text-slate-700 dark:text-slate-300 bg-black/5 dark:bg-black/30 backdrop-blur-md px-4 py-2 rounded-full border border-black/5 dark:border-white/5">
+                                            <span className="text-base opacity-70">🕒</span> {h.suggested_time}
                                         </div>
                                     )}
                                 </div>
 
-                                <div className="flex flex-wrap items-center gap-2 mt-2">
-                                    <span className="text-xs font-extrabold hb-badge hb-badge-streak px-3 py-1.5 rounded-full flex items-center gap-1 shadow-sm">
+                                <div className="flex flex-wrap items-center gap-3 mb-4">
+                                    <span className="text-xs font-bold text-orange-600 dark:text-orange-400 bg-orange-500/10 px-4 py-2 rounded-full flex items-center gap-2 border border-orange-500/20">
                                         🔥 Streak: {h.streak}
                                     </span>
-                                    <span className="text-xs font-extrabold hb-badge hb-badge-pts px-3 py-1.5 rounded-full flex items-center gap-1 shadow-sm">
+                                    <span className="text-xs font-bold text-indigo-600 dark:text-indigo-400 bg-indigo-500/10 px-4 py-2 rounded-full flex items-center gap-2 border border-indigo-500/20">
                                         ⭐ {h.points_earned} pts
                                     </span>
                                 </div>
-                                <div className="mt-4 inline-block text-[10px] font-black uppercase tracking-[0.2em] text-gray-400 dark:text-gray-500 bg-gray-100 dark:bg-gray-800/50 px-3 py-1 rounded-lg">
+                                <div className="inline-block text-[10px] font-bold uppercase tracking-widest text-slate-500 dark:text-slate-400 bg-slate-100 dark:bg-white/5 px-3 py-1.5 rounded-lg">
                                     {h.stage.replace('_', ' ')}
                                 </div>
                             </div>
 
                             <button
                                 onClick={() => handleComplete(h.id)}
-                                className="relative z-10 mt-6 w-full py-3.5 hb-btn-glow text-white rounded-xl font-extrabold text-lg tracking-wide hover:shadow-2xl shadow-lg transition-all duration-300 group-hover:scale-[1.02]"
+                                className="relative z-10 mt-6 w-full py-3 rounded-[1.5rem] font-extrabold text-lg tracking-wide flex items-center justify-center gap-3 overflow-hidden group/btn transition-all duration-500 hover:scale-[1.02] hover:-translate-y-1 shadow-[0_4px_20px_rgba(217,70,239,0.15)] hover:shadow-[0_10px_40px_rgba(217,70,239,0.4)] border border-white/20 dark:border-white/10"
                             >
-                                ✓ I Did It
+                                {/* Always Visible Vibrant Background */}
+                                <div className="absolute inset-0 bg-gradient-to-r from-indigo-600 via-purple-500 to-pink-500 opacity-90 group-hover/btn:opacity-100 transition-opacity duration-500"></div>
+                                
+                                {/* Sweeping Glass Reflection */}
+                                <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/30 to-transparent -translate-x-full group-hover/btn:translate-x-full transition-transform duration-700 ease-out"></div>
+
+                                <span className="relative z-10 flex items-center gap-2 text-white transition-colors duration-300">
+                                    <div className="bg-white/20 group-hover/btn:bg-white/30 rounded-full p-1.5 transition-colors shadow-sm">
+                                        <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3.5" d="M5 13l4 4L19 7"></path></svg>
+                                    </div>
+                                    I Did It
+                                </span>
                             </button>
                         </div>
                     ))}
