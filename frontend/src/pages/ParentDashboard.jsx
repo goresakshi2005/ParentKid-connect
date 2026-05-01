@@ -228,9 +228,26 @@ function ParentDashboard() {
                 </a>
             </div>
 
+            {/* Children Section */}
+            <h2 className="text-2xl font-bold mb-6 dark:text-white">Your Children</h2>
+            {children.length === 0 ? (
+                <div className="card dark:bg-slate-900 border dark:border-slate-800 p-12 text-center flex flex-col items-center justify-center">
+                    <div className="w-20 h-20 bg-blue-100 dark:bg-pink-500/10 rounded-full flex items-center justify-center mb-6 text-4xl">👶</div>
+                    <p className="text-gray-600 dark:text-slate-400 mb-8 text-xl">No children added to your profile yet.</p>
+                </div>
+            ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                    {children.map((child) => (
+                        <div key={child.id}>
+                            <ChildCard child={child} onTakeAssessment={handleTakeChildSelfAssessment} />
+                        </div>
+                    ))}
+                </div>
+            )}
+
             {/* Habit Builder Section for Teens */}
             {teenChildren.length > 0 && (
-                <div className="mb-12">
+                <div className="mb-12 mt-12">
                     <div className="flex items-center justify-between mb-6">
                         <h2 className="text-2xl font-bold dark:text-white flex items-center gap-2">
                             <span className="p-2 bg-indigo-500/10 rounded-lg text-indigo-500">🏆</span>
@@ -269,23 +286,6 @@ function ParentDashboard() {
                             onFeatureLock={() => handleFeatureClick('habit_builder', 'Habit Builder', () => {})}
                         />
                     )}
-                </div>
-            )}
-
-            {/* Children Section */}
-            <h2 className="text-2xl font-bold mb-6 dark:text-white">Your Children</h2>
-            {children.length === 0 ? (
-                <div className="card dark:bg-slate-900 border dark:border-slate-800 p-12 text-center flex flex-col items-center justify-center">
-                    <div className="w-20 h-20 bg-blue-100 dark:bg-pink-500/10 rounded-full flex items-center justify-center mb-6 text-4xl">👶</div>
-                    <p className="text-gray-600 dark:text-slate-400 mb-8 text-xl">No children added to your profile yet.</p>
-                </div>
-            ) : (
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                    {children.map((child) => (
-                        <div key={child.id}>
-                            <ChildCard child={child} onTakeAssessment={handleTakeChildSelfAssessment} />
-                        </div>
-                    ))}
                 </div>
             )}
 
