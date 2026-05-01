@@ -130,7 +130,7 @@ const TeenHabitScheduler = ({ user, onFeatureLock }) => {
                             </div>
                             <button
                                 onClick={() => handleComplete(h.id)}
-                                className="mt-5 w-full py-3 hb-btn-glow hb-btn-success text-white rounded-xl font-bold hover:bg-green-700 shadow-md transition"
+                                className="mt-5 w-full py-3 hb-btn-glow text-white rounded-xl font-bold hover:shadow-lg shadow-md transition"
                             >
                                 ✓ I Did It
                             </button>
