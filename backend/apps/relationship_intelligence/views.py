@@ -118,3 +118,39 @@ class MagicFixHistoryListView(APIView):
         history = MagicFixHistory.objects.filter(child=child).order_by('-created_at')
         serializer = MagicFixHistorySerializer(history, many=True)
         return Response(serializer.data, status=status.HTTP_200_OK)
+
+
+class BondBridgeView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request):
+        child_id = request.data.get('child_id')
+        teen_mood = request.data.get('teen_mood', 'okay')
+        teen_thought = request.data.get('teen_thought', '')
+        parent_mood = request.data.get('parent_mood', 'calm')
+        parent_thought = request.data.get('parent_thought', '')
+        context = request.data.get('context', '')
+
+        # Handle both parent and teen roles for verification
+        if request.user.role == 'parent':
+            if not child_id:
+                return Response({"error": "child_id is required for parents"}, status=status.HTTP_400_BAD_REQUEST)
+            child = get_object_or_404(Child, id=child_id, parent=request.user)
+        elif request.user.role == 'teen':
+            # Teens are mapped to their Child profile via email
+            child = Child.objects.filter(email=request.user.email).first()
+            if not child:
+                return Response({"error": "Child profile not found for this teen account."}, status=status.HTTP_404_NOT_FOUND)
+        else:
+            return Response({"error": "Only parents and teens can use BondBridge."}, status=status.HTTP_403_FORBIDDEN)
+
+        from .services.ai_engine import BondBridgeEngine
+        
+        result = BondBridgeEngine.get_bond_bridge(teen_mood, teen_thought, parent_mood, parent_thought, context)
+        
+        if "error" in result:
+            return Response(result, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            
+        return Response({
+            "bond_bridge": result
+        }, status=status.HTTP_200_OK)

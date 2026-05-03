@@ -15,6 +15,7 @@ import { getCareerDiscoveryResults, deleteCareerDiscoveryResult } from '../servi
 import ParentHabitApproval from '../components/HabitBuilder/ParentHabitApproval';
 import { hasFeature, getRequiredPlan } from '../utils/featureAccess';
 import UpgradeModal from '../components/Pricing/UpgradeModal';
+import BondBridgeParent from '../components/Relationship/BondBridgeParent';
 
 function ParentDashboard() {
     const { token, user } = useAuth();
@@ -280,11 +281,17 @@ function ParentDashboard() {
                     )}
 
                     {selectedTeenId && (
-                        <ParentHabitApproval
-                            user={user}
-                            selectedTeenId={selectedTeenId}
-                            onFeatureLock={() => handleFeatureClick('habit_builder', 'Habit Builder', () => {})}
-                        />
+                        <div className="space-y-8">
+                            <BondBridgeParent
+                                selectedTeenId={selectedTeenId}
+                                onFeatureLock={() => handleFeatureClick('relationship_ai', 'BondBridge', () => {})}
+                            />
+                            <ParentHabitApproval
+                                user={user}
+                                selectedTeenId={selectedTeenId}
+                                onFeatureLock={() => handleFeatureClick('habit_builder', 'Habit Builder', () => {})}
+                            />
+                        </div>
                     )}
                 </div>
             )}

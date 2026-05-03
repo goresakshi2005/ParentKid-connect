@@ -26,6 +26,7 @@ import {
     deleteTask,
 } from '../services/studyPlannerService';
 import TeenHabitScheduler from '../components/HabitBuilder/TeenHabitScheduler';
+import BondBridgeTeen from '../components/Relationship/BondBridgeTeen';
 
 // --- Helpers -------------------------------------------------------------
 
@@ -779,7 +780,14 @@ export default function TeenDashboard() {
             </div>
 
             {/* Habit Builder Section */}
-            <div className="mt-12">
+            <div className="mt-12 space-y-8">
+                <BondBridgeTeen user={user} onFeatureLock={() => {
+                    setUpgradeModal({ 
+                        isOpen: true, 
+                        feature: 'BondBridge', 
+                        plan: getRequiredPlan('relationship_ai') 
+                    });
+                }} />
                 <TeenHabitScheduler user={user} onFeatureLock={() => {
                     setUpgradeModal({ 
                         isOpen: true, 
